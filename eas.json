@@ -1,0 +1,57 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdutzfrojytvjxpdffsv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_o3Ro3NE6C4owTe16r2auIg_TMpVeid1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "624354662853-uecrk8rg718ebcigiu98h80s23di2ngd.apps.googleusercontent.com"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "channel": "preview",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "REACT_NATIVE_ARCHITECTURES": "arm64-v8a",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdutzfrojytvjxpdffsv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_o3Ro3NE6C4owTe16r2auIg_TMpVeid1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "624354662853-uecrk8rg718ebcigiu98h80s23di2ngd.apps.googleusercontent.com"
+      }
+    },
+    "preview-universal": {
+      "distribution": "internal",
+      "channel": "preview",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdutzfrojytvjxpdffsv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_o3Ro3NE6C4owTe16r2auIg_TMpVeid1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "624354662853-uecrk8rg718ebcigiu98h80s23di2ngd.apps.googleusercontent.com"
+      }
+    },
+    "production": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdutzfrojytvjxpdffsv.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_o3Ro3NE6C4owTe16r2auIg_TMpVeid1",
+        "EXPO_PUBLIC_GOOGLE_CLIENT_ID": "624354662853-uecrk8rg718ebcigiu98h80s23di2ngd.apps.googleusercontent.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

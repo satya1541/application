@@ -1,0 +1,1133 @@
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+index 992239b..eb4b57f 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioModule.kt
+@@ -541,6 +541,12 @@ class AudioModule : Module() {
+         }
+       }
+ 
++      Function("setAcousticProfile") { player: AudioPlayer, profileId: String ->
++        runOnMain {
++          player.applyAcousticProfile(profileId)
++        }
++      }
++
+       Function("remove") { player: AudioPlayer ->
+         players.remove(player.id)
+       }
+@@ -856,6 +862,63 @@ class AudioModule : Module() {
+         playlists.remove(playlist.id)
+       }
+     }
++
++    AsyncFunction("openMediaOutputSwitcher") {
++      val activity = appContext.currentActivity ?: context
++      var opened = false
++      try {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
++          val intent = android.content.Intent("com.android.settings.panel.action.MEDIA_OUTPUT").apply {
++            putExtra("com.android.settings.panel.extra.PACKAGE_NAME", context.packageName)
++            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
++          }
++          activity.startActivity(intent)
++          opened = true
++        }
++      } catch (e: Exception) {
++        Log.w(TAG, "Failed to open Media Output panel: ${e.message}")
++      }
++
++      if (!opened) {
++        try {
++          val intent = android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS).apply {
++            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
++          }
++          activity.startActivity(intent)
++          opened = true
++        } catch (e: Exception) {
++          Log.e(TAG, "Failed to open Bluetooth settings: ${e.message}")
++        }
++      }
++      opened
++    }
++
++    AsyncFunction("getConnectedAudioDeviceName") {
++      var deviceName = "This Device"
++      try {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
++          val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
++          for (device in devices) {
++            val type = device.type
++            if (type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
++                type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
++                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == android.media.AudioDeviceInfo.TYPE_BLE_HEADSET) ||
++                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER)) {
++              val name = device.productName?.toString()
++              if (!name.isNullOrEmpty()) {
++                deviceName = name
++                break
++              } else {
++                deviceName = "Bluetooth Speaker"
++              }
++            }
++          }
++        }
++      } catch (e: Exception) {
++        Log.w(TAG, "Failed to inspect audio devices: ${e.message}")
++      }
++      deviceName
++    }
+   }
+ 
+   private fun createMediaItem(source: AudioSource?): MediaSource? = source?.uri?.let { uriString ->
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+index c76a9fd..293f025 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioPlayer.kt
+@@ -3,6 +3,9 @@ package expo.modules.audio
+ import android.Manifest
+ import android.content.Context
+ import android.content.pm.PackageManager
++import android.media.audiofx.BassBoost
++import android.media.audiofx.Equalizer
++import android.media.audiofx.Virtualizer
+ import android.media.audiofx.Visualizer
+ import android.util.Log
+ import androidx.core.content.ContextCompat
+@@ -78,6 +81,187 @@ class AudioPlayer(
+ 
+   private var samplingEnabled = false
+   private var visualizer: Visualizer? = null
++  private var equalizer: Equalizer? = null
++  private var bassBoost: BassBoost? = null
++  private var virtualizer: Virtualizer? = null
++  private var currentSessionId: Int = 0
++  private var activeAcousticProfile: String = "studio-master"
++
++  private fun releaseAcousticEffects() {
++    try { equalizer?.release() } catch (e: Throwable) {}
++    try { bassBoost?.release() } catch (e: Throwable) {}
++    try { virtualizer?.release() } catch (e: Throwable) {}
++    equalizer = null
++    bassBoost = null
++    virtualizer = null
++    currentSessionId = 0
++  }
++
++  fun applyAcousticProfile(profileId: String) {
++    activeAcousticProfile = profileId
++    try {
++      val sessionId = ref.audioSessionId
++      if (sessionId <= 0) return
++
++      if (sessionId != currentSessionId) {
++        releaseAcousticEffects()
++        currentSessionId = sessionId
++      }
++
++      if (equalizer == null) {
++        try {
++          equalizer = Equalizer(0, sessionId).apply { enabled = true }
++        } catch (e: Throwable) {
++          Log.w(TAG, "Equalizer init failed for session $sessionId: ${e.message}")
++        }
++      }
++
++      if (bassBoost == null) {
++        try {
++          bassBoost = BassBoost(0, sessionId).apply { enabled = true }
++        } catch (e: Throwable) {
++          Log.w(TAG, "BassBoost init failed for session $sessionId: ${e.message}")
++        }
++      }
++
++      if (virtualizer == null) {
++        try {
++          virtualizer = Virtualizer(0, sessionId).apply { enabled = true }
++        } catch (e: Throwable) {
++          Log.w(TAG, "Virtualizer init failed for session $sessionId: ${e.message}")
++        }
++      }
++
++      // Configure BassBoost
++      bassBoost?.let { bb ->
++        try {
++          when (profileId) {
++            "bass-punch", "bass-heavy" -> {
++              bb.enabled = true
++              bb.setStrength(1000.toShort())
++            }
++            "cinema-spatial", "club-surround" -> {
++              bb.enabled = true
++              bb.setStrength(550.toShort())
++            }
++            "lofi-warmth" -> {
++              bb.enabled = true
++              bb.setStrength(400.toShort())
++            }
++            else -> {
++              bb.setStrength(0.toShort())
++              bb.enabled = false
++            }
++          }
++        } catch (e: Throwable) {
++          Log.w(TAG, "BassBoost setStrength failed: ${e.message}")
++        }
++      }
++
++      // Configure Virtualizer (3D audio stage)
++      virtualizer?.let { virt ->
++        try {
++          when (profileId) {
++            "cinema-spatial", "club-surround" -> {
++              virt.enabled = true
++              virt.setStrength(1000.toShort())
++            }
++            "vocal-clarity", "vocal-air" -> {
++              virt.enabled = true
++              virt.setStrength(250.toShort())
++            }
++            "bass-punch" -> {
++              virt.enabled = true
++              virt.setStrength(150.toShort())
++            }
++            else -> {
++              virt.setStrength(0.toShort())
++              virt.enabled = false
++            }
++          }
++        } catch (e: Throwable) {
++          Log.w(TAG, "Virtualizer setStrength failed: ${e.message}")
++        }
++      }
++
++      // Configure Equalizer
++      equalizer?.let { eq ->
++        try {
++          eq.enabled = true
++          val numBands = eq.numberOfBands.toInt()
++          val bandRange = eq.bandLevelRange
++          val minLevel = bandRange[0].toInt()
++          val maxLevel = bandRange[1].toInt()
++
++          fun clampMB(mB: Int): Short {
++            return mB.coerceIn(minLevel, maxLevel).toShort()
++          }
++
++          for (i in 0 until numBands) {
++            val bandIdx = i.toShort()
++            val freqHz = try {
++              eq.getCenterFreq(bandIdx) / 1000
++            } catch (e: Throwable) {
++              when (i) {
++                0 -> 60
++                1 -> 250
++                2 -> 1000
++                3 -> 4000
++                else -> 14000
++              }
++            }
++
++            val targetMB = when (profileId) {
++              "bass-punch", "bass-heavy" -> {
++                when {
++                  freqHz < 150 -> 1200   // +12dB Sub-bass punch
++                  freqHz < 500 -> 600    // +6dB Mid-bass warmth
++                  freqHz < 2000 -> -250  // -2.5dB Mid scoop
++                  freqHz < 6000 -> 150   // +1.5dB Presence
++                  else -> 300            // +3dB Air
++                }
++              }
++              "vocal-clarity", "vocal-air" -> {
++                when {
++                  freqHz < 150 -> -800   // -8dB Mud & boom strip
++                  freqHz < 500 -> -300   // -3dB Low-mid cut
++                  freqHz < 2000 -> 450   // +4.5dB Vocal body
++                  freqHz < 6000 -> 1000  // +10dB Crystal presence & diction
++                  else -> 600            // +6dB Crisp vocal air
++                }
++              }
++              "cinema-spatial", "club-surround" -> {
++                when {
++                  freqHz < 150 -> 600    // +6dB Theater rumble
++                  freqHz < 500 -> 250    // +2.5dB Body
++                  freqHz < 2000 -> -200  // -2dB Soundstage depth
++                  freqHz < 6000 -> 500   // +5dB Spatial detail
++                  else -> 900            // +9dB Holographic sparkle
++                }
++              }
++              "lofi-warmth" -> {
++                when {
++                  freqHz < 150 -> 400    // +4dB Low-end
++                  freqHz < 500 -> 750    // +7.5dB Warm tape resonance
++                  freqHz < 2000 -> 200   // +2dB Mid
++                  freqHz < 6000 -> -500  // -5dB High-mid softening
++                  else -> -1400          // -14dB Steep analog tape rolloff
++                }
++              }
++              else -> 0 // studio-master: reference flat 0dB
++            }
++
++            eq.setBandLevel(bandIdx, clampMB(targetMB))
++          }
++        } catch (e: Throwable) {
++          Log.w(TAG, "Equalizer setBandLevel failed: ${e.message}")
++        }
++      }
++    } catch (e: Throwable) {
++      Log.e(TAG, "Error applying acoustic profile $profileId: ${e.message}", e)
++    }
++  }
++
+   private val context by lazy {
+     appContext.reactContext
+       ?: throw Exceptions.ReactContextLost()
+@@ -145,6 +329,9 @@ class AudioPlayer(
+   }
+ 
+   override fun onPlaybackStateUpdated(playbackState: Int, justFinished: Boolean) {
++    if (playbackState == Player.STATE_READY) {
++      applyAcousticProfile(activeAcousticProfile)
++    }
+     val updateMap = mutableMapOf<String, Any?>(
+       "playbackState" to playbackStateToString(playbackState)
+     )
+@@ -283,9 +470,17 @@ class AudioPlayer(
+     }
+     serviceConnection.unbind()
+     visualizer?.release()
++    releaseAcousticEffects()
+     super.releasePlayer()
+   }
+ 
++  fun emitPlaybackMediaAction(action: String) {
++    appContext.mainQueue.launch {
++      emit("playbackMediaAction", mapOf("action" to action))
++      sendStatusUpdate(mapOf("mediaAction" to action))
++    }
++  }
++
+   companion object {
+     val TAG = AudioPlayer::class.simpleName
+   }
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+index 86880d9..dff53af 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/AudioRecords.kt
+@@ -55,7 +55,8 @@ class Metadata(
+   @Field val title: String?,
+   @Field val artist: String?,
+   @Field val albumTitle: String?,
+-  @Field val artworkUrl: URL?
++  @Field val artworkUrl: URL?,
++  @Field val duration: Double? = null
+ ) : Record
+ 
+ enum class AndroidOutputFormat(val value: String) : Enumerable {
+@@ -108,8 +109,10 @@ enum class AndroidAudioEncoder(val value: String) : Enumerable {
+ 
+ @OptimizedRecord
+ class AudioLockScreenOptions(
+-  @Field val showSeekForward: Boolean,
+-  @Field val showSeekBackward: Boolean,
++  @Field val showSeekForward: Boolean = false,
++  @Field val showSeekBackward: Boolean = false,
++  @Field val showNext: Boolean = true,
++  @Field val showPrevious: Boolean = true,
+   @Field val isLiveStream: Boolean? = null
+ ) : Record
+ 
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+index 196a5d5..2fbd142 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
+@@ -88,8 +88,10 @@ class AudioControlsService : MediaSessionService() {
+             currentPlayerRef.play()
+           }
+ 
+-        ACTION_SEEK_FORWARD -> currentPlayerRef.seekTo(currentPlayerRef.currentPosition + SEEK_INTERVAL_MS)
+-        ACTION_SEEK_BACKWARD -> currentPlayerRef.seekTo(currentPlayerRef.currentPosition - SEEK_INTERVAL_MS)
++        ACTION_NEXT -> handleMediaAction("next")
++        ACTION_PREV -> handleMediaAction("prev")
++        ACTION_SEEK_FORWARD -> handleMediaAction("next")
++        ACTION_SEEK_BACKWARD -> handleMediaAction("prev")
+       }
+     }
+ 
+@@ -128,6 +130,7 @@ class AudioControlsService : MediaSessionService() {
+ 
+   override fun onCreate() {
+     super.onCreate()
++    activeService = this
+     audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+     createNotificationChannelIfNeeded()
+   }
+@@ -187,51 +190,52 @@ class AudioControlsService : MediaSessionService() {
+ 
+     val style = MediaStyleNotificationHelper.MediaStyle(session)
+ 
+-    // Older Android system UI expects explicit notification actions for transport controls.
+-    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+-      val compactViewIndices = mutableListOf<Int>()
+-      var currentIndex = 0
+-
+-      if (currentOptions?.showSeekBackward == true) {
+-        builder.addAction(
+-          NotificationCompat.Action(
+-            androidx.media3.session.R.drawable.media3_icon_skip_back,
+-            "Seek Backward",
+-            buildActionPendingIntent(ACTION_SEEK_BACKWARD)
+-          )
+-        )
+-        compactViewIndices.add(currentIndex)
+-        currentIndex++
+-      }
++    val compactViewIndices = mutableListOf<Int>()
++    var currentIndex = 0
++
++    val showPrev = currentOptions?.showPrevious ?: true
++    val showNext = currentOptions?.showNext ?: true
+ 
++    if (showPrev) {
+       builder.addAction(
+         NotificationCompat.Action(
+-          if (session.player.isPlaying) {
+-            androidx.media3.session.R.drawable.media3_icon_pause
+-          } else {
+-            androidx.media3.session.R.drawable.media3_icon_play
+-          },
+-          if (session.player.isPlaying) "Pause" else "Play",
+-          buildActionPendingIntent(if (session.player.isPlaying) ACTION_PAUSE else ACTION_PLAY)
++          androidx.media3.session.R.drawable.media3_icon_skip_back,
++          "Previous",
++          buildActionPendingIntent(ACTION_PREV)
+         )
+       )
+       compactViewIndices.add(currentIndex)
+       currentIndex++
++    }
+ 
+-      if (currentOptions?.showSeekForward == true) {
+-        builder.addAction(
+-          NotificationCompat.Action(
+-            androidx.media3.session.R.drawable.media3_icon_skip_forward,
+-            "Seek Forward",
+-            buildActionPendingIntent(ACTION_SEEK_FORWARD)
+-          )
+-        )
+-        compactViewIndices.add(currentIndex)
+-      }
++    builder.addAction(
++      NotificationCompat.Action(
++        if (session.player.isPlaying) {
++          androidx.media3.session.R.drawable.media3_icon_pause
++        } else {
++          androidx.media3.session.R.drawable.media3_icon_play
++        },
++        if (session.player.isPlaying) "Pause" else "Play",
++        buildActionPendingIntent(if (session.player.isPlaying) ACTION_PAUSE else ACTION_PLAY)
++      )
++    )
++    compactViewIndices.add(currentIndex)
++    currentIndex++
+ 
+-      style.setShowActionsInCompactView(*compactViewIndices.toIntArray())
++    if (showNext) {
++      builder.addAction(
++        NotificationCompat.Action(
++          androidx.media3.session.R.drawable.media3_icon_skip_forward,
++          "Next",
++          buildActionPendingIntent(ACTION_NEXT)
++        )
++      )
++      compactViewIndices.add(currentIndex)
++      currentIndex++
+     }
+ 
++    style.setShowActionsInCompactView(*compactViewIndices.toIntArray())
++
+     builder.setStyle(style)
+     return builder.build()
+   }
+@@ -240,19 +244,22 @@ class AudioControlsService : MediaSessionService() {
+     val session = mediaSession ?: return
+     val mediaButtons = mutableListOf<CommandButton>()
+ 
+-    // Add seek backward button if enabled
+-    if (currentOptions?.showSeekBackward == true) {
++    val showPrev = currentOptions?.showPrevious ?: true
++    val showNext = currentOptions?.showNext ?: true
++
++    // Add previous track button (SLOT_BACK)
++    if (showPrev) {
+       mediaButtons.add(
+-        CommandButton.Builder(CommandButton.ICON_SKIP_BACK_10)
+-          .setDisplayName("Seek Backward")
++        CommandButton.Builder(CommandButton.ICON_PREVIOUS)
++          .setDisplayName("Previous")
+           .setEnabled(true)
+-          .setSessionCommand(SessionCommand(ACTION_SEEK_BACKWARD, Bundle.EMPTY))
++          .setSessionCommand(SessionCommand(ACTION_PREV, Bundle.EMPTY))
+           .setSlots(CommandButton.SLOT_BACK)
+           .build()
+       )
+     }
+ 
+-    // Add play/pause button (always present)
++    // Add play/pause button (SLOT_CENTRAL)
+     mediaButtons.add(
+       CommandButton.Builder(if (isPlaying) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY)
+         .setDisplayName(if (isPlaying) "Pause" else "Play")
+@@ -262,13 +269,13 @@ class AudioControlsService : MediaSessionService() {
+         .build()
+     )
+ 
+-    // Add seek forward button if enabled
+-    if (currentOptions?.showSeekForward == true) {
++    // Add next track button (SLOT_FORWARD)
++    if (showNext) {
+       mediaButtons.add(
+-        CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_10)
+-          .setDisplayName("Seek Forward")
++        CommandButton.Builder(CommandButton.ICON_NEXT)
++          .setDisplayName("Next")
+           .setEnabled(true)
+-          .setSessionCommand(SessionCommand(ACTION_SEEK_FORWARD, Bundle.EMPTY))
++          .setSessionCommand(SessionCommand(ACTION_NEXT, Bundle.EMPTY))
+           .setSlots(CommandButton.SLOT_FORWARD)
+           .build()
+       )
+@@ -321,7 +328,7 @@ class AudioControlsService : MediaSessionService() {
+   }
+ 
+   private fun resolveSessionPlayer(player: AudioPlayer, options: AudioLockScreenOptions?): Player {
+-    val isLive = options?.isLiveStream ?: player.isLive
++    val isLive = options?.isLiveStream ?: if ((currentMetadata?.duration ?: 0.0) > 0.0) false else player.isLive
+     if (!isLive) {
+       return player.ref
+     }
+@@ -381,6 +388,7 @@ class AudioControlsService : MediaSessionService() {
+         addSession(session)
+         mediaSession = session
+         sessionMetadataPlayer = sessionPlayer
++        session.isActive = true
+ 
+         updateSessionCustomLayout(player.ref.isPlaying)
+ 
+@@ -461,9 +469,13 @@ class AudioControlsService : MediaSessionService() {
+         addSession(session)
+         mediaSession = session
+         sessionMetadataPlayer = sessionPlayer
++        session.isActive = true
+ 
+         updateSessionCustomLayout(player.ref.isPlaying)
+         postOrStartForegroundNotification(startInForeground = false)
++        if (playbackListener == null) {
++          addPlayerListener(player)
++        }
+       }
+ 
+       // Reload artwork if metadata has changed
+@@ -524,6 +536,9 @@ class AudioControlsService : MediaSessionService() {
+     currentOptions = null
+     currentArtwork = null
+     currentArtworkUrl = null
++    if (activeService === this) {
++      activeService = null
++    }
+     removePlayerListener()
+   }
+ 
+@@ -537,6 +552,18 @@ class AudioControlsService : MediaSessionService() {
+       override fun onPlaybackStateChanged(playbackState: Int) {
+         postOrStartForegroundNotification(startInForeground = false)
+       }
++
++      override fun onPositionDiscontinuity(
++        oldPosition: Player.PositionInfo,
++        newPosition: Player.PositionInfo,
++        reason: Int
++      ) {
++        postOrStartForegroundNotification(startInForeground = false)
++      }
++
++      override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
++        postOrStartForegroundNotification(startInForeground = false)
++      }
+     }
+     playbackListener = listener
+     player.ref.addListener(listener)
+@@ -550,15 +577,30 @@ class AudioControlsService : MediaSessionService() {
+     }
+   }
+ 
++  fun dispatchMediaAction(action: String) {
++    val player = currentPlayer ?: return
++    player.emitPlaybackMediaAction(action)
++  }
++
+   companion object {
+     private const val CHANNEL_ID = "expo_audio_channel"
+     private const val ACTION_PLAY = "expo.modules.audio.action.PLAY"
+     private const val ACTION_PAUSE = "expo.modules.audio.action.PAUSE"
+     private const val ACTION_TOGGLE = "expo.modules.audio.action.TOGGLE"
+ 
++    const val ACTION_NEXT = "expo.modules.audio.action.NEXT"
++    const val ACTION_PREV = "expo.modules.audio.action.PREV"
+     const val ACTION_SEEK_FORWARD = "expo.modules.audio.action.SEEK_FORWARD"
+     const val ACTION_SEEK_BACKWARD = "expo.modules.audio.action.SEEK_BACKWARD"
+ 
+     const val SEEK_INTERVAL_MS = 10000L
++
++    @Volatile
++    var activeService: AudioControlsService? = null
++
++    @JvmStatic
++    fun handleMediaAction(action: String) {
++      activeService?.dispatchMediaAction(action)
++    }
+   }
+ }
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
+index 839aaef..d388742 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
+@@ -24,15 +24,12 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+             .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
+             .add(Player.COMMAND_SEEK_FORWARD)
+             .add(Player.COMMAND_SEEK_BACK)
+-            // Remove track navigation commands
+-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+-            .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+-            .remove(Player.COMMAND_SEEK_TO_NEXT)
+             .build()
+         )
+         .setAvailableSessionCommands(
+           MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
++            .add(SessionCommand(AudioControlsService.ACTION_PREV, Bundle.EMPTY))
++            .add(SessionCommand(AudioControlsService.ACTION_NEXT, Bundle.EMPTY))
+             .add(SessionCommand(AudioControlsService.ACTION_SEEK_BACKWARD, Bundle.EMPTY))
+             .add(SessionCommand(AudioControlsService.ACTION_SEEK_FORWARD, Bundle.EMPTY))
+             .build()
+@@ -43,6 +40,14 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+     }
+   }
+ 
++  override fun onPlayerCommandRequest(
++    session: MediaSession,
++    controller: MediaSession.ControllerInfo,
++    playerCommand: Int
++  ): Int {
++    return super.onPlayerCommandRequest(session, controller, playerCommand)
++  }
++
+   override fun onCustomCommand(
+     session: MediaSession,
+     controller: MediaSession.ControllerInfo,
+@@ -50,11 +55,13 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+     args: Bundle
+   ): ListenableFuture<SessionResult> {
+     when (command.customAction) {
+-      AudioControlsService.ACTION_SEEK_FORWARD -> {
+-        session.player.seekTo(session.player.currentPosition + AudioControlsService.SEEK_INTERVAL_MS)
++      AudioControlsService.ACTION_NEXT, AudioControlsService.ACTION_SEEK_FORWARD -> {
++        AudioControlsService.handleMediaAction("next")
++        return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+       }
+-      AudioControlsService.ACTION_SEEK_BACKWARD -> {
+-        session.player.seekTo(session.player.currentPosition - AudioControlsService.SEEK_INTERVAL_MS)
++      AudioControlsService.ACTION_PREV, AudioControlsService.ACTION_SEEK_BACKWARD -> {
++        AudioControlsService.handleMediaAction("prev")
++        return com.google.common.util.concurrent.Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+       }
+     }
+     return super.onCustomCommand(session, controller, command, args)
+diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/MetadataInjectingPlayer.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/MetadataInjectingPlayer.kt
+index 18203a3..91a2357 100644
+--- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/MetadataInjectingPlayer.kt
++++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/MetadataInjectingPlayer.kt
+@@ -3,6 +3,7 @@ package expo.modules.audio.service
+ import android.os.Handler
+ import android.os.Looper
+ import androidx.core.net.toUri
++import androidx.media3.common.C
+ import androidx.media3.common.FlagSet
+ import androidx.media3.common.ForwardingPlayer
+ import androidx.media3.common.MediaMetadata
+@@ -22,6 +23,100 @@ internal class MetadataInjectingPlayer(
+   private val listeners = IdentityHashMap<Player.Listener, Player.Listener>()
+   private var injectedMetadata: Metadata? = null
+ 
++  private val injectedDurationMs: Long
++    get() {
++      val dur = injectedMetadata?.duration
++      return if (dur != null && dur > 0.0) (dur * 1000.0).toLong() else 0L
++    }
++
++  override fun getDuration(): Long {
++    val injected = injectedDurationMs
++    if (injected > 0L) {
++      return injected
++    }
++    val realDuration = super.getDuration()
++    if (realDuration > 0L && realDuration != C.TIME_UNSET) {
++      return realDuration
++    }
++    return C.TIME_UNSET
++  }
++
++  override fun isCurrentMediaItemLive(): Boolean {
++    if (injectedDurationMs > 0L || (super.getDuration() > 0L && super.getDuration() != C.TIME_UNSET)) {
++      return false
++    }
++    return super.isCurrentMediaItemLive()
++  }
++
++  override fun isCurrentMediaItemSeekable(): Boolean {
++    if (injectedDurationMs > 0L || (super.getDuration() > 0L && super.getDuration() != C.TIME_UNSET)) {
++      return true
++    }
++    return super.isCurrentMediaItemSeekable()
++  }
++
++  override fun isCurrentMediaItemDynamic(): Boolean {
++    if (injectedDurationMs > 0L || (super.getDuration() > 0L && super.getDuration() != C.TIME_UNSET)) {
++      return false
++    }
++    return super.isCurrentMediaItemDynamic()
++  }
++
++  override fun isCommandAvailable(command: Int): Boolean {
++    return when (command) {
++      Player.COMMAND_SEEK_TO_NEXT,
++      Player.COMMAND_SEEK_TO_PREVIOUS,
++      Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
++      Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
++      Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
++      Player.COMMAND_GET_TIMELINE -> true
++      Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM -> injectedDurationMs > 0L || super.isCommandAvailable(command)
++      else -> super.isCommandAvailable(command)
++    }
++  }
++
++  override fun getAvailableCommands(): Player.Commands {
++    val commands = super.getAvailableCommands()
++    val builder = commands.buildUpon()
++      .add(Player.COMMAND_SEEK_TO_NEXT)
++      .add(Player.COMMAND_SEEK_TO_PREVIOUS)
++      .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++      .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
++      .add(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)
++      .add(Player.COMMAND_GET_TIMELINE)
++
++    if (injectedDurationMs > 0L) {
++      builder.add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
++    }
++    return builder.build()
++  }
++
++  override fun getCurrentTimeline(): androidx.media3.common.Timeline {
++    val realTimeline = super.getCurrentTimeline()
++    if (realTimeline.isEmpty) {
++      return realTimeline
++    }
++    return object : androidx.media3.common.Timeline() {
++      override fun getWindowCount(): Int = realTimeline.windowCount
++      override fun getPeriodCount(): Int = realTimeline.periodCount
++      override fun getIndexOfPeriod(uid: Any): Int = realTimeline.getIndexOfPeriod(uid)
++      override fun getUidOfPeriod(periodIndex: Int): Any = realTimeline.getUidOfPeriod(periodIndex)
++      override fun getPeriod(periodIndex: Int, period: Period, setIds: Boolean): Period =
++        realTimeline.getPeriod(periodIndex, period, setIds)
++
++      override fun getWindow(windowIndex: Int, window: Window, defaultPositionProjectionUs: Long): Window {
++        val w = realTimeline.getWindow(windowIndex, window, defaultPositionProjectionUs)
++        if (injectedDurationMs > 0L) {
++          w.durationUs = injectedDurationMs * 1000L
++          w.isSeekable = true
++          w.isDynamic = false
++        }
++        return w
++      }
++
++    }
++  }
++
+   override fun addListener(listener: Player.Listener) {
+     val forwardingListener = synchronized(listeners) {
+       listeners.getOrPut(listener) { MetadataForwardingListener(listener) }
+@@ -58,13 +153,11 @@ internal class MetadataInjectingPlayer(
+     injectedMetadata = metadata
+     val newMetadata = mediaMetadata
+ 
+-    if (previousMetadata == newMetadata) {
+-      return
+-    }
+-
+     val events = Player.Events(
+       FlagSet.Builder()
+         .add(Player.EVENT_MEDIA_METADATA_CHANGED)
++        .add(Player.EVENT_TIMELINE_CHANGED)
++        .add(Player.EVENT_AVAILABLE_COMMANDS_CHANGED)
+         .build()
+     )
+     val currentListeners = synchronized(listeners) {
+@@ -73,6 +166,8 @@ internal class MetadataInjectingPlayer(
+ 
+     currentListeners.forEach {
+       it.onMediaMetadataChanged(newMetadata)
++      it.onTimelineChanged(currentTimeline, Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE)
++      it.onAvailableCommandsChanged(availableCommands)
+     }
+     currentListeners.forEach {
+       it.onEvents(this, events)
+@@ -86,6 +181,10 @@ internal class MetadataInjectingPlayer(
+       listener.onMediaMetadataChanged(this@MetadataInjectingPlayer.mediaMetadata)
+     }
+ 
++    override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
++      listener.onAvailableCommandsChanged(this@MetadataInjectingPlayer.availableCommands)
++    }
++
+     override fun onEvents(player: Player, events: Player.Events) {
+       listener.onEvents(this@MetadataInjectingPlayer, events)
+     }
+diff --git a/node_modules/expo-audio/build/Audio.types.d.ts b/node_modules/expo-audio/build/Audio.types.d.ts
+index 2560478..210f75a 100644
+--- a/node_modules/expo-audio/build/Audio.types.d.ts
++++ b/node_modules/expo-audio/build/Audio.types.d.ts
+@@ -241,6 +241,10 @@ export type AudioStatus = {
+      * Cleared when a new source is loaded or playback resumes successfully.
+      */
+     error: string | null;
++    /**
++     * Lockscreen or notification media action trigger (next or previous track).
++     */
++    mediaAction?: 'next' | 'prev';
+ };
+ /**
+  * Status information for recording operations from the event system.
+@@ -618,6 +622,7 @@ export type AudioMetadata = {
+     artist?: string;
+     albumTitle?: string;
+     artworkUrl?: string;
++    duration?: number;
+ };
+ /**
+  * Loop mode for audio playlist playback.
+diff --git a/node_modules/expo-audio/build/AudioConstants.d.ts b/node_modules/expo-audio/build/AudioConstants.d.ts
+index cfd92ad..926c2ed 100644
+--- a/node_modules/expo-audio/build/AudioConstants.d.ts
++++ b/node_modules/expo-audio/build/AudioConstants.d.ts
+@@ -10,6 +10,14 @@ export type AudioLockScreenOptions = {
+      * Whether the seek backward button should be displayed on the lock screen.
+      */
+     showSeekBackward?: boolean;
++    /**
++     * Whether the next track button should be displayed on the lock screen.
++     */
++    showNext?: boolean;
++    /**
++     * Whether the previous track button should be displayed on the lock screen.
++     */
++    showPrevious?: boolean;
+     /**
+      * Whether the audio is a live stream. When `true`, the lock screen will hide the duration
+      * and scrub bar, and disable seek controls.
+diff --git a/node_modules/expo-audio/build/AudioModule.types.d.ts b/node_modules/expo-audio/build/AudioModule.types.d.ts
+index f3ae4ee..807684a 100644
+--- a/node_modules/expo-audio/build/AudioModule.types.d.ts
++++ b/node_modules/expo-audio/build/AudioModule.types.d.ts
+@@ -16,6 +16,8 @@ export declare class NativeAudioModule extends NativeModule {
+     clearPreloadedSource(source: AudioSource): Promise<void>;
+     clearAllPreloadedSources(): Promise<void>;
+     getPreloadedSources(): Promise<string[]>;
++    openMediaOutputSwitcher(): Promise<boolean>;
++    getConnectedAudioDeviceName(): Promise<string>;
+     readonly AudioPlayer: typeof AudioPlayer;
+     readonly AudioRecorder: typeof AudioRecorder;
+     readonly AudioPlaylist: typeof AudioPlaylist;
+@@ -155,6 +157,11 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+      * @param pitchCorrectionQuality The quality of the pitch correction.
+      */
+     setPlaybackRate(rate: number, pitchCorrectionQuality?: PitchCorrectionQuality): void;
++    /**
++     * Sets the native hardware acoustic DSP profile (equalizer, bass boost, spatializer).
++     * @param profileId The identifier of the profile ('studio-master', 'bass-punch', 'vocal-clarity', 'cinema-spatial', 'lofi-warmth')
++     */
++    setAcousticProfile(profileId: string): void;
+     /**
+      *
+      * @hidden
+@@ -222,6 +229,8 @@ export type AudioEvents = {
+     playbackStatusUpdate(status: AudioStatus): void;
+     /** Fired when audio sampling is enabled and new sample data is available. */
+     audioSampleUpdate(data: AudioSample): void;
++    /** Fired when lock screen / notification media actions are triggered (next / previous). */
++    playbackMediaAction(data: { action: 'next' | 'prev' }): void;
+ };
+ export declare class AudioRecorder extends SharedObject<RecordingEvents> {
+     /**
+diff --git a/node_modules/expo-audio/build/ExpoAudio.d.ts b/node_modules/expo-audio/build/ExpoAudio.d.ts
+index 0e75373..e194068 100644
+--- a/node_modules/expo-audio/build/ExpoAudio.d.ts
++++ b/node_modules/expo-audio/build/ExpoAudio.d.ts
+@@ -400,6 +400,8 @@ export declare function clearAllPreloadedSources(): Promise<void>;
+  * @returns An array of URI strings for sources currently in the preload cache.
+  */
+ export declare function getPreloadedSources(): Promise<string[]>;
++export declare function openMediaOutputSwitcher(): Promise<boolean>;
++export declare function getConnectedAudioDeviceName(): Promise<string>;
+ export { useAudioStream } from './AudioStream';
+ export { AudioModule };
+ //# sourceMappingURL=ExpoAudio.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/expo-audio/build/ExpoAudio.js b/node_modules/expo-audio/build/ExpoAudio.js
+index 977ef78..2313bba 100644
+--- a/node_modules/expo-audio/build/ExpoAudio.js
++++ b/node_modules/expo-audio/build/ExpoAudio.js
+@@ -561,6 +561,18 @@ export async function clearAllPreloadedSources() {
+ export async function getPreloadedSources() {
+     return AudioModule.getPreloadedSources();
+ }
++export async function openMediaOutputSwitcher() {
++    if (Platform.OS === 'android' && AudioModule.openMediaOutputSwitcher) {
++        return AudioModule.openMediaOutputSwitcher();
++    }
++    return false;
++}
++export async function getConnectedAudioDeviceName() {
++    if (Platform.OS === 'android' && AudioModule.getConnectedAudioDeviceName) {
++        return AudioModule.getConnectedAudioDeviceName();
++    }
++    return 'This Device';
++}
+ export { useAudioStream } from './AudioStream';
+ export { AudioModule };
+ //# sourceMappingURL=ExpoAudio.js.map
+\ No newline at end of file
+diff --git a/node_modules/expo-audio/build/MediaSessionController.web.js b/node_modules/expo-audio/build/MediaSessionController.web.js
+index c541f15..42f44d4 100644
+--- a/node_modules/expo-audio/build/MediaSessionController.web.js
++++ b/node_modules/expo-audio/build/MediaSessionController.web.js
+@@ -134,21 +134,35 @@ class MediaSessionController {
+             player.seekTo(newTime);
+             this.updatePositionState(player);
+         };
++        this._setHandler('nexttrack', () => {
++            if (typeof globalThis.__spoti_nextTrack === 'function') {
++                globalThis.__spoti_nextTrack();
++            }
++        });
++        this._setHandler('previoustrack', () => {
++            if (typeof globalThis.__spoti_prevTrack === 'function') {
++                globalThis.__spoti_prevTrack();
++            }
++        });
+         if (this.options?.showSeekForward === true) {
+             this._setHandler('seekforward', seekForward);
+-            this._setHandler('nexttrack', seekForward);
+         }
+         else {
+-            this._setHandler('seekforward', null);
+-            this._setHandler('nexttrack', null);
++            this._setHandler('seekforward', () => {
++                if (typeof globalThis.__spoti_nextTrack === 'function') {
++                    globalThis.__spoti_nextTrack();
++                }
++            });
+         }
+         if (this.options?.showSeekBackward === true) {
+             this._setHandler('seekbackward', seekBackward);
+-            this._setHandler('previoustrack', seekBackward);
+         }
+         else {
+-            this._setHandler('seekbackward', null);
+-            this._setHandler('previoustrack', null);
++            this._setHandler('seekbackward', () => {
++                if (typeof globalThis.__spoti_prevTrack === 'function') {
++                    globalThis.__spoti_prevTrack();
++                }
++            });
+         }
+     }
+ }
+diff --git a/node_modules/expo-audio/plugin/tsconfig.json b/node_modules/expo-audio/plugin/tsconfig.json
+index 9d87417..578fe80 100644
+--- a/node_modules/expo-audio/plugin/tsconfig.json
++++ b/node_modules/expo-audio/plugin/tsconfig.json
+@@ -1,5 +1,5 @@
+ {
+-  "extends": "expo-module-scripts/tsconfig.plugin",
++  "extends": "expo/tsconfig.base",
+   "compilerOptions": {
+     "rootDir": "./src",
+     "outDir": "./build",
+diff --git a/node_modules/expo-audio/src/Audio.types.ts b/node_modules/expo-audio/src/Audio.types.ts
+index 906753f..d9113c6 100644
+--- a/node_modules/expo-audio/src/Audio.types.ts
++++ b/node_modules/expo-audio/src/Audio.types.ts
+@@ -254,6 +254,10 @@ export type AudioStatus = {
+    * Cleared when a new source is loaded or playback resumes successfully.
+    */
+   error: string | null;
++  /**
++   * Lockscreen or notification media action trigger (next or previous track).
++   */
++  mediaAction?: 'next' | 'prev';
+ };
+ 
+ /**
+@@ -664,6 +668,7 @@ export type AudioMetadata = {
+   artist?: string;
+   albumTitle?: string;
+   artworkUrl?: string;
++  duration?: number;
+ };
+ 
+ /**
+diff --git a/node_modules/expo-audio/src/AudioConstants.ts b/node_modules/expo-audio/src/AudioConstants.ts
+index dcc0452..87b256b 100644
+--- a/node_modules/expo-audio/src/AudioConstants.ts
++++ b/node_modules/expo-audio/src/AudioConstants.ts
+@@ -11,6 +11,14 @@ export type AudioLockScreenOptions = {
+    * Whether the seek backward button should be displayed on the lock screen.
+    */
+   showSeekBackward?: boolean;
++  /**
++   * Whether the next track button should be displayed on the lock screen.
++   */
++  showNext?: boolean;
++  /**
++   * Whether the previous track button should be displayed on the lock screen.
++   */
++  showPrevious?: boolean;
+   /**
+    * Whether the audio is a live stream. When `true`, the lock screen will hide the duration
+    * and scrub bar, and disable seek controls.
+diff --git a/node_modules/expo-audio/src/AudioModule.types.ts b/node_modules/expo-audio/src/AudioModule.types.ts
+index 7e75371..4cd4fe3 100644
+--- a/node_modules/expo-audio/src/AudioModule.types.ts
++++ b/node_modules/expo-audio/src/AudioModule.types.ts
+@@ -32,6 +32,8 @@ export declare class NativeAudioModule extends NativeModule {
+   clearPreloadedSource(source: AudioSource): Promise<void>;
+   clearAllPreloadedSources(): Promise<void>;
+   getPreloadedSources(): Promise<string[]>;
++  openMediaOutputSwitcher(): Promise<boolean>;
++  getConnectedAudioDeviceName(): Promise<string>;
+ 
+   readonly AudioPlayer: typeof AudioPlayer;
+   readonly AudioRecorder: typeof AudioRecorder;
+@@ -202,6 +204,12 @@ export declare class AudioPlayer extends SharedObject<AudioEvents> {
+    */
+   setPlaybackRate(rate: number, pitchCorrectionQuality?: PitchCorrectionQuality): void;
+ 
++  /**
++   * Sets the native hardware acoustic DSP profile (equalizer, bass boost, spatializer).
++   * @param profileId The identifier of the profile ('studio-master', 'bass-punch', 'vocal-clarity', 'cinema-spatial', 'lofi-warmth')
++   */
++  setAcousticProfile(profileId: string): void;
++
+   /**
+    *
+    * @hidden
+@@ -280,6 +288,8 @@ export type AudioEvents = {
+   playbackStatusUpdate(status: AudioStatus): void;
+   /** Fired when audio sampling is enabled and new sample data is available. */
+   audioSampleUpdate(data: AudioSample): void;
++  /** Fired when lock screen / notification media actions are triggered (next / previous). */
++  playbackMediaAction(data: { action: 'next' | 'prev' }): void;
+ };
+ 
+ export declare class AudioRecorder extends SharedObject<RecordingEvents> {
+diff --git a/node_modules/expo-audio/src/ExpoAudio.ts b/node_modules/expo-audio/src/ExpoAudio.ts
+index af5998e..2826a32 100644
+--- a/node_modules/expo-audio/src/ExpoAudio.ts
++++ b/node_modules/expo-audio/src/ExpoAudio.ts
+@@ -658,6 +658,27 @@ export async function getPreloadedSources(): Promise<string[]> {
+   return AudioModule.getPreloadedSources();
+ }
+ 
++/**
++ * Opens Android's native Media Output Switcher panel (or Bluetooth settings fallback)
++ * allowing the user to select audio output (Phone Speaker, Amazon Echo, Bluetooth speakers, etc.).
++ */
++export async function openMediaOutputSwitcher(): Promise<boolean> {
++  if (Platform.OS === 'android' && AudioModule.openMediaOutputSwitcher) {
++    return AudioModule.openMediaOutputSwitcher();
++  }
++  return false;
++}
++
++/**
++ * Returns the name of the currently connected audio output device (e.g. "Echo Dot", "Bluetooth Speaker", or "This Device").
++ */
++export async function getConnectedAudioDeviceName(): Promise<string> {
++  if (Platform.OS === 'android' && AudioModule.getConnectedAudioDeviceName) {
++    return AudioModule.getConnectedAudioDeviceName();
++  }
++  return 'This Device';
++}
++
+ export { useAudioStream } from './AudioStream';
+ 
+ export { AudioModule };
+diff --git a/node_modules/expo-audio/src/MediaSessionController.web.ts b/node_modules/expo-audio/src/MediaSessionController.web.ts
+index c17ae67..767258a 100644
+--- a/node_modules/expo-audio/src/MediaSessionController.web.ts
++++ b/node_modules/expo-audio/src/MediaSessionController.web.ts
+@@ -170,20 +170,35 @@ class MediaSessionController {
+       this.updatePositionState(player);
+     };
+ 
++    this._setHandler('nexttrack', () => {
++      if (typeof (globalThis as any).__spoti_nextTrack === 'function') {
++        (globalThis as any).__spoti_nextTrack();
++      }
++    });
++    this._setHandler('previoustrack', () => {
++      if (typeof (globalThis as any).__spoti_prevTrack === 'function') {
++        (globalThis as any).__spoti_prevTrack();
++      }
++    });
++
+     if (this.options?.showSeekForward === true) {
+       this._setHandler('seekforward', seekForward);
+-      this._setHandler('nexttrack', seekForward);
+     } else {
+-      this._setHandler('seekforward', null);
+-      this._setHandler('nexttrack', null);
++      this._setHandler('seekforward', () => {
++        if (typeof (globalThis as any).__spoti_nextTrack === 'function') {
++          (globalThis as any).__spoti_nextTrack();
++        }
++      });
+     }
+ 
+     if (this.options?.showSeekBackward === true) {
+       this._setHandler('seekbackward', seekBackward);
+-      this._setHandler('previoustrack', seekBackward);
+     } else {
+-      this._setHandler('seekbackward', null);
+-      this._setHandler('previoustrack', null);
++      this._setHandler('seekbackward', () => {
++        if (typeof (globalThis as any).__spoti_prevTrack === 'function') {
++          (globalThis as any).__spoti_prevTrack();
++        }
++      });
+     }
+   }
+ }
+diff --git a/node_modules/expo-audio/tsconfig.json b/node_modules/expo-audio/tsconfig.json
+index f068839..6565199 100644
+--- a/node_modules/expo-audio/tsconfig.json
++++ b/node_modules/expo-audio/tsconfig.json
+@@ -1,7 +1,7 @@
+-// @generated by expo-module-scripts
+ {
+-  "extends": "expo-module-scripts/tsconfig.base",
++  "extends": "expo/tsconfig.base",
+   "compilerOptions": {
++    "skipLibCheck": true,
+     "rootDir": "./src",
+     "outDir": "./build"
+   },
