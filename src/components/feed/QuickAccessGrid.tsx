@@ -14,6 +14,9 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { getListeningHistory, HistoryEntry } from '@/services/historyService';
 import { getUserPlaylists, UserPlaylist } from '@/services/userPlaylistService';
 import { INITIAL_SONGS } from '@/services/musicCatalog';
+import { LikedSongsModal } from '../profile/LikedSongsModal';
+import { UserPlaylistModal } from '../profile/UserPlaylistModal';
+import { TrackDetailModal } from './TrackDetailModal';
 
 interface QuickAccessGridProps {
   songs?: Song[];
@@ -27,8 +30,9 @@ interface QuickAccessTile {
   coverUri?: string;
   isLikedSongs?: boolean;
   song?: Song;
-  playlistSongs?: Song[];
-  onPress: () => void;
+  playlist?: UserPlaylist;
+  onCardPress: () => void;
+  onPlayPress: () => void;
   isCurrentlyPlaying: boolean;
 }
 
@@ -38,6 +42,11 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
 
   const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
   const [userPlaylists, setUserPlaylists] = useState<UserPlaylist[]>([]);
+
+  // Navigation Modals State
+  const [showLikedModal, setShowLikedModal] = useState<boolean>(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<UserPlaylist | null>(null);
+  const [selectedSong, setSelectedSong] = useState<Song | null>(null);
 
   // Load history and playlists for personalized morning/evening recommendations
   useEffect(() => {
@@ -70,7 +79,10 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
       title: 'Liked Songs',
       subtitle: `${likedSongsList.length} tracks`,
       isLikedSongs: true,
-      onPress: () => {
+      onCardPress: () => {
+        setShowLikedModal(true);
+      },
+      onPlayPress: () => {
         if (likedSongsList.length > 0) {
           if (isLikedPlaying) {
             togglePlay();
@@ -121,8 +133,11 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
           title: up.name,
           subtitle: `${up.songs.length} songs`,
           coverUri: up.coverUrl || up.songs[0]?.cover,
-          playlistSongs: up.songs,
-          onPress: () => {
+          playlist: up,
+          onCardPress: () => {
+            setSelectedPlaylist(up);
+          },
+          onPlayPress: () => {
             if (isThisPlaylistPlaying) {
               togglePlay();
             } else {
@@ -147,7 +162,10 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
         subtitle: song.artist,
         coverUri: song.cover,
         song,
-        onPress: () => {
+        onCardPress: () => {
+          setSelectedSong(song);
+        },
+        onPlayPress: () => {
           if (isCurrent) {
             togglePlay();
           } else {
@@ -172,7 +190,10 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
         subtitle: song.artist,
         coverUri: song.cover,
         song,
-        onPress: () => {
+        onCardPress: () => {
+          setSelectedSong(song);
+        },
+        onPlayPress: () => {
           if (isCurrent) {
             togglePlay();
           } else {
@@ -217,7 +238,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
               ],
             ]}
             activeOpacity={0.75}
-            onPress={tile.onPress}
+            onPress={tile.onCardPress}
           >
             {/* Left Cover Image or Liked Songs Gradient */}
             {tile.isLikedSongs ? (
@@ -257,7 +278,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
             {/* 1-Tap Circular Play/Pause Button */}
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={tile.onPress}
+              onPress={tile.onPlayPress}
               style={[
                 styles.playButton,
                 { backgroundColor: accent.hex },
@@ -275,6 +296,25 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
           </TouchableOpacity>
         );
       })}
+
+      {/* Sub-modals for 0-second deep access */}
+      <LikedSongsModal
+        visible={showLikedModal}
+        onClose={() => setShowLikedModal(false)}
+      />
+
+      <UserPlaylistModal
+        playlist={selectedPlaylist}
+        visible={Boolean(selectedPlaylist)}
+        onClose={() => setSelectedPlaylist(null)}
+      />
+
+      <TrackDetailModal
+        song={selectedSong}
+        visible={Boolean(selectedSong)}
+        onClose={() => setSelectedSong(null)}
+        fallbackContextSongs={songs || INITIAL_SONGS}
+      />
     </View>
   );
 };
