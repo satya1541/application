@@ -194,14 +194,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
         return (
           <TouchableOpacity
             key={tile.id}
-            style={[
-              styles.card,
-              { backgroundColor: surfaceHex },
-              isCurrent && [
-                styles.activeCard,
-                { borderColor: accent.hex, shadowColor: accent.hex },
-              ],
-            ]}
+            style={[styles.card, { backgroundColor: surfaceHex }]}
             activeOpacity={0.75}
             onPress={tile.onCardPress}
           >
@@ -229,13 +222,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
 
             {/* Title & Metadata */}
             <View style={styles.titleContainer}>
-              <Text
-                style={[
-                  styles.title,
-                  isCurrent && { color: accent.hex, fontWeight: '800' },
-                ]}
-                numberOfLines={2}
-              >
+              <Text style={styles.title} numberOfLines={2}>
                 {tile.title}
               </Text>
             </View>
@@ -293,14 +280,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-  },
-  activeCard: {
-    backgroundColor: '#282828',
-    borderWidth: 1.5,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 4,
   },
   likedGradientCover: {
     width: 58,
