@@ -13,6 +13,7 @@ import { MonthlyReplayController } from '@/components/profile/MonthlyReplayContr
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initCacheLifecycle } from '@/services/cacheManager';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { initOrientationManager } from '@/services/orientationManager';
 import '../global.css';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -24,8 +25,10 @@ export default function RootLayout() {
     }
     SplashScreen.hideAsync().catch(() => {});
     const cleanupCache = initCacheLifecycle();
+    const cleanupOrientation = initOrientationManager();
     return () => {
       cleanupCache();
+      cleanupOrientation();
     };
   }, []);
 

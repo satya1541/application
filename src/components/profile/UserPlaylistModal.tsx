@@ -28,6 +28,7 @@ import { autoFixImportedPlaylistCovers } from '@/services/playlistImportService'
 import { sharePlaylist } from '@/services/playlistShareService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface UserPlaylistModalProps {
   playlist: UserPlaylist | null;
@@ -46,6 +47,7 @@ export const UserPlaylistModal: React.FC<UserPlaylistModalProps> = ({
   const { playSong } = useAudio();
   const { user } = useAuth();
   const { bgHex, surfaceHex, accent } = useAppTheme();
+  const { isTablet, maxModalWidth } = useResponsive();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
@@ -127,11 +129,35 @@ export const UserPlaylistModal: React.FC<UserPlaylistModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={false}
+      transparent={isTablet}
       onRequestClose={onClose}
     >
-      <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: bgHex }]}>
-        <StatusBar barStyle="light-content" backgroundColor={bgHex} />
+      <View style={[styles.rootContainer, isTablet && styles.tabletBackdrop]}>
+        {isTablet && (
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={onClose}
+          />
+        )}
+        <View
+          style={[
+            styles.screen,
+            { paddingTop: insets.top, paddingBottom: insets.bottom, backgroundColor: bgHex },
+            isTablet && {
+              maxWidth: maxModalWidth,
+              width: '92%',
+              alignSelf: 'center',
+              borderRadius: 24,
+              maxHeight: '90%',
+              marginVertical: '5%',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+            },
+          ]}
+        >
+          <StatusBar barStyle="light-content" backgroundColor={bgHex} />
 
         {/* Top Nav Bar */}
         <View style={styles.navBar}>
@@ -295,12 +321,22 @@ export const UserPlaylistModal: React.FC<UserPlaylistModalProps> = ({
             </View>
           )}
         </ScrollView>
+        </View>
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+    backgroundColor: '#0D0D0D',
+  },
+  tabletBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   screen: {
     flex: 1,
     backgroundColor: '#0D0D0D',

@@ -1,4 +1,7 @@
 import { useNetwork } from '@/contexts/NetworkContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useResponsive } from '@/hooks/useResponsive';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -27,6 +30,9 @@ type TabKey = 'home' | 'search' | 'playlists' | 'my_lib';
 
 export const MobileMainNavigator: React.FC = () => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { isTablet, navRailWidth } = useResponsive();
+  const { user, profile, openProfileModal } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [visitedTabs, setVisitedTabs] = useState<Record<TabKey, boolean>>({
     home: true,
@@ -131,178 +137,354 @@ export const MobileMainNavigator: React.FC = () => {
   }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: bgHex }]}>
-      {/* 4 Cross-Fading Persistent Screen Layers */}
-      <View style={styles.screenContainer}>
-        {/* Layer 1: Home */}
-        <Animated.View
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: bgHex },
+        isTablet && styles.tabletContainer,
+      ]}
+    >
+      {/* Tablet Left Navigation Rail */}
+      {isTablet && (
+        <View
           style={[
-            styles.tabPane,
+            styles.tabletRail,
             {
-              opacity: homeOpacity,
-              transform: [{ translateY: homeTranslateY }],
-              zIndex: activeTab === 'home' ? 10 : 1,
+              width: navRailWidth,
+              backgroundColor: themeMode === 'oled' ? '#000000' : surfaceHex,
+              borderRightColor: themeMode === 'oled' ? '#141414' : '#282828',
+              paddingTop: Math.max(insets.top, 14),
+              paddingBottom: Math.max(insets.bottom, 14),
             },
           ]}
-          pointerEvents={activeTab === 'home' ? 'auto' : 'none'}
         >
-          <MobileHomeScreen onOpenSettings={handleOpenSettings} />
-        </Animated.View>
+          {/* Top Logo / App Title */}
+          <View style={styles.railLogoContainer}>
+            <View style={[styles.railLogoBadge, { backgroundColor: accent.hex }]}>
+              <Ionicons name="musical-notes" size={17} color="#000000" />
+            </View>
+            <Text style={styles.railLogoText}>Shorty</Text>
+          </View>
 
-        {/* Layer 2: Search */}
-        <Animated.View
-          style={[
-            styles.tabPane,
-            {
-              opacity: searchOpacity,
-              transform: [{ translateY: searchTranslateY }],
-              zIndex: activeTab === 'search' ? 10 : 1,
-            },
-          ]}
-          pointerEvents={activeTab === 'search' ? 'auto' : 'none'}
-        >
-          {visitedTabs.search && (
-            <MobileSearchScreen onNavigateHome={() => handleSelectTab('home')} />
-          )}
-        </Animated.View>
+          {/* Central Nav Buttons */}
+          <View style={styles.railNavGroup}>
+            {/* 1. Home */}
+            <TouchableOpacity
+              style={[
+                styles.railButton,
+                activeTab === 'home' && [
+                  styles.railButtonActive,
+                  { backgroundColor: `${accent.hex}18` },
+                ],
+              ]}
+              onPress={() => handleSelectTab('home')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'home' ? 'home' : 'home-outline'}
+                size={23}
+                color={activeTab === 'home' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.railLabel,
+                  activeTab === 'home' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Home
+              </Text>
+            </TouchableOpacity>
 
-        {/* Layer 3: Playlists (Curated catalog) */}
-        <Animated.View
-          style={[
-            styles.tabPane,
-            {
-              opacity: playlistsOpacity,
-              transform: [{ translateY: playlistsTranslateY }],
-              zIndex: activeTab === 'playlists' ? 10 : 1,
-            },
-          ]}
-          pointerEvents={activeTab === 'playlists' ? 'auto' : 'none'}
-        >
-          {visitedTabs.playlists && (
-            <MobileLibraryScreen onNavigateHome={() => handleSelectTab('home')} />
-          )}
-        </Animated.View>
+            {/* 2. Search */}
+            <TouchableOpacity
+              style={[
+                styles.railButton,
+                activeTab === 'search' && [
+                  styles.railButtonActive,
+                  { backgroundColor: `${accent.hex}18` },
+                ],
+              ]}
+              onPress={() => handleSelectTab('search')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'search' ? 'search' : 'search-outline'}
+                size={23}
+                color={activeTab === 'search' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.railLabel,
+                  activeTab === 'search' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Search
+              </Text>
+            </TouchableOpacity>
 
-        {/* Layer 4: My Lib (User created playlists + history) */}
-        <Animated.View
-          style={[
-            styles.tabPane,
-            {
-              opacity: myLibOpacity,
-              transform: [{ translateY: myLibTranslateY }],
-              zIndex: activeTab === 'my_lib' ? 10 : 1,
-            },
-          ]}
-          pointerEvents={activeTab === 'my_lib' ? 'auto' : 'none'}
-        >
-          {visitedTabs.my_lib && (
-            <MyLibScreen
-              isActive={activeTab === 'my_lib'}
-              refreshTrigger={myLibRefreshTrigger}
-            />
-          )}
-        </Animated.View>
-      </View>
+            {/* 3. Playlists */}
+            <TouchableOpacity
+              style={[
+                styles.railButton,
+                activeTab === 'playlists' && [
+                  styles.railButtonActive,
+                  { backgroundColor: `${accent.hex}18` },
+                ],
+              ]}
+              onPress={() => handleSelectTab('playlists')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'playlists' ? 'albums' : 'albums-outline'}
+                size={23}
+                color={activeTab === 'playlists' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.railLabel,
+                  activeTab === 'playlists' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Playlists
+              </Text>
+            </TouchableOpacity>
 
-      {/* Floating MiniPlayer sitting right above tab bar */}
-      <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
+            {/* 4. My Lib */}
+            <TouchableOpacity
+              style={[
+                styles.railButton,
+                activeTab === 'my_lib' && [
+                  styles.railButtonActive,
+                  { backgroundColor: `${accent.hex}18` },
+                ],
+              ]}
+              onPress={() => handleSelectTab('my_lib')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'my_lib' ? 'library' : 'library-outline'}
+                size={23}
+                color={activeTab === 'my_lib' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.railLabel,
+                  activeTab === 'my_lib' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                My Lib
+              </Text>
+            </TouchableOpacity>
+          </View>
 
-      {/* Persistent Spotify Offline Banner sitting right above tab bar */}
-      <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
+          {/* Bottom Settings & Profile Actions */}
+          <View style={styles.railBottomGroup}>
+            <TouchableOpacity
+              style={styles.railBottomButton}
+              onPress={handleOpenSettings}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={21} color="#aaaaaa" />
+              <Text style={styles.railBottomLabel}>Settings</Text>
+            </TouchableOpacity>
 
-      {/* Spotify Bottom Tab Navigation Bar (4 Distinct Tabs) */}
-      <View
-        style={[
-          styles.tabBar,
-          {
-            backgroundColor: themeMode === 'oled' ? '#000000' : surfaceHex,
-            borderTopColor: themeMode === 'oled' ? '#141414' : '#282828',
-          },
-        ]}
-      >
-        {/* 1. Home */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => handleSelectTab('home')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'home' ? 'home' : 'home-outline'}
-            size={23}
-            color={activeTab === 'home' ? accent.hex : '#999999'}
-          />
-          <Text
+            <TouchableOpacity
+              style={styles.railBottomButton}
+              onPress={openProfileModal}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.railAvatarCircle, { borderColor: accent.hex }]}>
+                <Ionicons name="person" size={13} color={accent.hex} />
+              </View>
+              <Text style={styles.railBottomLabel} numberOfLines={1}>
+                {profile?.display_name || user?.email?.split('@')[0] || 'Profile'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Main Content Column */}
+      <View style={styles.mainContentArea}>
+        {/* 4 Cross-Fading Persistent Screen Layers */}
+        <View style={styles.screenContainer}>
+          {/* Layer 1: Home */}
+          <Animated.View
             style={[
-              styles.tabLabel,
-              activeTab === 'home' && { color: accent.hex, fontWeight: '800' },
+              styles.tabPane,
+              {
+                opacity: homeOpacity,
+                transform: [{ translateY: homeTranslateY }],
+                zIndex: activeTab === 'home' ? 10 : 1,
+              },
+            ]}
+            pointerEvents={activeTab === 'home' ? 'auto' : 'none'}
+          >
+            <MobileHomeScreen onOpenSettings={handleOpenSettings} />
+          </Animated.View>
+
+          {/* Layer 2: Search */}
+          <Animated.View
+            style={[
+              styles.tabPane,
+              {
+                opacity: searchOpacity,
+                transform: [{ translateY: searchTranslateY }],
+                zIndex: activeTab === 'search' ? 10 : 1,
+              },
+            ]}
+            pointerEvents={activeTab === 'search' ? 'auto' : 'none'}
+          >
+            {visitedTabs.search && (
+              <MobileSearchScreen onNavigateHome={() => handleSelectTab('home')} />
+            )}
+          </Animated.View>
+
+          {/* Layer 3: Playlists (Curated catalog) */}
+          <Animated.View
+            style={[
+              styles.tabPane,
+              {
+                opacity: playlistsOpacity,
+                transform: [{ translateY: playlistsTranslateY }],
+                zIndex: activeTab === 'playlists' ? 10 : 1,
+              },
+            ]}
+            pointerEvents={activeTab === 'playlists' ? 'auto' : 'none'}
+          >
+            {visitedTabs.playlists && (
+              <MobileLibraryScreen onNavigateHome={() => handleSelectTab('home')} />
+            )}
+          </Animated.View>
+
+          {/* Layer 4: My Lib (User created playlists + history) */}
+          <Animated.View
+            style={[
+              styles.tabPane,
+              {
+                opacity: myLibOpacity,
+                transform: [{ translateY: myLibTranslateY }],
+                zIndex: activeTab === 'my_lib' ? 10 : 1,
+              },
+            ]}
+            pointerEvents={activeTab === 'my_lib' ? 'auto' : 'none'}
+          >
+            {visitedTabs.my_lib && (
+              <MyLibScreen
+                isActive={activeTab === 'my_lib'}
+                refreshTrigger={myLibRefreshTrigger}
+              />
+            )}
+          </Animated.View>
+        </View>
+
+        {/* MiniPlayer: On tablet docked at bottom (0 offset); on phone sits above bottom tab bar */}
+        <MiniPlayer
+          bottomOffset={isTablet ? 0 : Platform.OS === 'ios' ? 84 : 64}
+        />
+
+        {/* Persistent Spotify Offline Banner sitting right above tab bar / miniplayer */}
+        <OfflineBanner
+          positionAbsolute={true}
+          bottomOffset={isTablet ? 60 : Platform.OS === 'ios' ? 84 : 64}
+        />
+
+        {/* Spotify Bottom Tab Navigation Bar (Phone Only) */}
+        {!isTablet && (
+          <View
+            style={[
+              styles.tabBar,
+              {
+                backgroundColor: themeMode === 'oled' ? '#000000' : surfaceHex,
+                borderTopColor: themeMode === 'oled' ? '#141414' : '#282828',
+              },
             ]}
           >
-            Home
-          </Text>
-        </TouchableOpacity>
+            {/* 1. Home */}
+            <TouchableOpacity
+              style={styles.tabButton}
+              onPress={() => handleSelectTab('home')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'home' ? 'home' : 'home-outline'}
+                size={23}
+                color={activeTab === 'home' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  activeTab === 'home' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Home
+              </Text>
+            </TouchableOpacity>
 
-        {/* 2. Search */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => handleSelectTab('search')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'search' ? 'search' : 'search-outline'}
-            size={23}
-            color={activeTab === 'search' ? accent.hex : '#999999'}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'search' && { color: accent.hex, fontWeight: '800' },
-            ]}
-          >
-            Search
-          </Text>
-        </TouchableOpacity>
+            {/* 2. Search */}
+            <TouchableOpacity
+              style={styles.tabButton}
+              onPress={() => handleSelectTab('search')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'search' ? 'search' : 'search-outline'}
+                size={23}
+                color={activeTab === 'search' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  activeTab === 'search' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Search
+              </Text>
+            </TouchableOpacity>
 
-        {/* 3. Playlists (Curated catalog) */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => handleSelectTab('playlists')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'playlists' ? 'albums' : 'albums-outline'}
-            size={23}
-            color={activeTab === 'playlists' ? accent.hex : '#999999'}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'playlists' && { color: accent.hex, fontWeight: '800' },
-            ]}
-          >
-            Playlists
-          </Text>
-        </TouchableOpacity>
+            {/* 3. Playlists (Curated catalog) */}
+            <TouchableOpacity
+              style={styles.tabButton}
+              onPress={() => handleSelectTab('playlists')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'playlists' ? 'albums' : 'albums-outline'}
+                size={23}
+                color={activeTab === 'playlists' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  activeTab === 'playlists' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                Playlists
+              </Text>
+            </TouchableOpacity>
 
-        {/* 4. My Lib (Personal library) */}
-        <TouchableOpacity
-          style={styles.tabButton}
-          onPress={() => handleSelectTab('my_lib')}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={activeTab === 'my_lib' ? 'library' : 'library-outline'}
-            size={23}
-            color={activeTab === 'my_lib' ? accent.hex : '#999999'}
-          />
-          <Text
-            style={[
-              styles.tabLabel,
-              activeTab === 'my_lib' && { color: accent.hex, fontWeight: '800' },
-            ]}
-          >
-            My Lib
-          </Text>
-        </TouchableOpacity>
+            {/* 4. My Lib (Personal library) */}
+            <TouchableOpacity
+              style={styles.tabButton}
+              onPress={() => handleSelectTab('my_lib')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={activeTab === 'my_lib' ? 'library' : 'library-outline'}
+                size={23}
+                color={activeTab === 'my_lib' ? accent.hex : '#999999'}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  activeTab === 'my_lib' && { color: accent.hex, fontWeight: '800' },
+                ]}
+              >
+                My Lib
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Settings Screen Full Overlay (Preserves tab hierarchy & state underneath) */}
@@ -324,6 +506,85 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#121212',
+  },
+  tabletContainer: {
+    flexDirection: 'row',
+  },
+  mainContentArea: {
+    flex: 1,
+    height: '100%',
+    position: 'relative',
+  },
+  tabletRail: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRightWidth: 1,
+    zIndex: 900,
+  },
+  railLogoContainer: {
+    alignItems: 'center',
+    gap: 5,
+    paddingTop: 6,
+  },
+  railLogoBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  railLogoText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  railNavGroup: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 14,
+  },
+  railButton: {
+    width: 60,
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  railButtonActive: {
+    borderRadius: 10,
+  },
+  railLabel: {
+    color: '#999999',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  railBottomGroup: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 12,
+    paddingBottom: 4,
+  },
+  railBottomButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  railBottomLabel: {
+    color: '#888888',
+    fontSize: 9,
+    fontWeight: '600',
+    maxWidth: 58,
+  },
+  railAvatarCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
   },
   screenContainer: {
     flex: 1,
@@ -365,3 +626,4 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+

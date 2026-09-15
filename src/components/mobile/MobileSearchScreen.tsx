@@ -29,6 +29,7 @@ import { NoInternetView } from '../common/NoInternetView';
 import { useNetwork } from '@/contexts/NetworkContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface BrowseCategory {
   id: string;
@@ -147,6 +148,8 @@ interface MobileSearchScreenProps {
 
 export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNavigateHome }) => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
+  const { isTablet, isLandscape, contentPadding } = useResponsive();
+  const browseCardWidth = isTablet ? (isLandscape ? '23.8%' : '31.8%') : '48.5%';
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [searchResult, setSearchResult] = useState<ExploreSearchResult | null>(null);
@@ -408,7 +411,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
         const isAlbum = topResult.type === 'album';
 
         return (
-          <View key="sec-top-result" style={styles.topResultSection}>
+          <View key="sec-top-result" style={[styles.topResultSection, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
             <Text style={styles.sectionTitle}>Top result</Text>
             <TouchableOpacity
               style={styles.topResultCard}
@@ -479,7 +482,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
       case 'Artists':
         if (!searchResult?.artists || searchResult.artists.length === 0) return null;
         return (
-          <View key="sec-artists" style={styles.sectionBlock}>
+          <View key="sec-artists" style={[styles.sectionBlock, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
             <Text style={styles.sectionTitle}>Artists</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.artistList}>
               {searchResult.artists.map((artist) => (
@@ -503,7 +506,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
       case 'Albums':
         if (!searchResult?.albums || searchResult.albums.length === 0) return null;
         return (
-          <View key="sec-albums" style={styles.sectionBlock}>
+          <View key="sec-albums" style={[styles.sectionBlock, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
             <Text style={styles.sectionTitle}>Albums & Singles</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.albumList}>
               {searchResult.albums.map((album) => (
@@ -529,7 +532,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
       case 'Songs':
         if (displayedSongs.length === 0) return null;
         return (
-          <View key="sec-songs" style={styles.sectionBlock}>
+          <View key="sec-songs" style={[styles.sectionBlock, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
             <Text style={styles.sectionTitle}>Songs</Text>
             {displayedSongs.map((song, idx) => (
               <SongItemRow
@@ -549,9 +552,9 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingHorizontal: contentPadding }]}>
         {/* Top Header Row */}
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
           <Text style={styles.header}>Search</Text>
         </View>
 
@@ -564,6 +567,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
               borderColor: isInputFocused ? accent.hex : 'rgba(255,255,255,0.08)',
               borderWidth: 1,
             },
+            isTablet && { maxWidth: 680, alignSelf: 'center', width: '100%' },
           ]}
         >
           <Ionicons
@@ -625,7 +629,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
             suggestions.songs.length > 0 ||
             suggestions.albums.length > 0 ||
             suggestions.queries.length > 0) && (
-            <View style={styles.suggestionsContainer}>
+            <View style={[styles.suggestionsContainer, isTablet && { maxWidth: 680, alignSelf: 'center', left: contentPadding, right: contentPadding }]}>
               <ScrollView keyboardShouldPersistTaps="handled">
                 {/* Artists Suggestions */}
                 {suggestions.artists.map((item) => (
@@ -744,7 +748,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
             <View>
               {/* Back to Browse All Button */}
               <TouchableOpacity
-                style={styles.backButton}
+                style={[styles.backButton, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}
                 onPress={() => setSelectedCategory(null)}
                 activeOpacity={0.7}
               >
@@ -757,6 +761,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
                 style={[
                   styles.chartHeaderBanner,
                   { backgroundColor: selectedCategory.color },
+                  isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' },
                 ]}
               >
                 <View style={styles.chartHeaderTop}>
@@ -790,7 +795,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
               ) : isOffline && categorySongs.length === 0 ? (
                 <NoInternetView onRetry={refreshNetwork} style={styles.offlineView} />
               ) : (
-                <View style={styles.sectionBlock}>
+                <View style={[styles.sectionBlock, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
                   {categorySongs.map((song, idx) => (
                     <SongItemRow
                       key={`${song.id}-${idx}`}
@@ -810,14 +815,14 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
             /* MODE 2: Spotify Browse All UI (Reference Design) */
             <View>
               {/* Browse All Header & Grid */}
-              <View style={styles.browseSection}>
+              <View style={[styles.browseSection, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
                 <Text style={styles.browseTitle}>Browse all</Text>
 
                 <View style={styles.browseGrid}>
                   {BROWSE_CATEGORIES.map((cat) => (
                     <TouchableOpacity
                       key={cat.id}
-                      style={[styles.browseCard, { backgroundColor: cat.color }]}
+                      style={[styles.browseCard, { width: browseCardWidth, backgroundColor: cat.color }]}
                       activeOpacity={0.88}
                       onPress={() => handleSelectCategory(cat)}
                     >

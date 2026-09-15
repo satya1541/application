@@ -30,9 +30,7 @@ import {
 import { YouTubePlaylistModal } from '../explore/YouTubePlaylistModal';
 import { fetchYouTubePlaylist, searchLiveYouTubePlaylists } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
-
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 44) / 2;
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface MobileLibraryScreenProps {
   onNavigateHome?: () => void;
@@ -78,6 +76,12 @@ function matchPlaylistItem(p: YouTubePlaylistItem, query: string): boolean {
 export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavigateHome }) => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
+  const { isTablet, contentPadding, columns, width: screenWidth } = useResponsive();
+  const numColumns = columns.playlists;
+  const cardGap = 14;
+  const cardWidth = Math.floor(
+    (screenWidth - contentPadding * 2 - (numColumns - 1) * cardGap) / numColumns
+  );
 
   const [playlists, setPlaylists] = useState<YouTubePlaylistItem[]>(() => getCachedDynamicPlaylists());
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState<boolean>(() => getCachedDynamicPlaylists().length === 0);
@@ -396,20 +400,21 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
       <PlaylistGridCard
         item={item}
         index={index}
+        cardWidth={cardWidth}
         isItemLoading={loadingPlayId === item.id}
         isCurrentPlaying={currentSong?.album === item.title && isPlaying}
         onOpen={handleOpenPlaylist}
         onPlay={handleDirectPlay}
       />
     ),
-    [loadingPlayId, currentSong?.album, isPlaying, handleOpenPlaylist, handleDirectPlay]
+    [cardWidth, loadingPlayId, currentSong?.album, isPlaying, handleOpenPlaylist, handleDirectPlay]
   );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
       <View style={styles.container}>
         {/* Top Header */}
-        <View style={styles.topRow}>
+        <View style={[styles.topRow, { paddingHorizontal: contentPadding }]}>
           <View>
             <Text style={styles.headerTitle}>Playlist</Text>
             <Text style={styles.headerSubtitle}>Official Live YouTube Playlists</Text>
@@ -425,7 +430,8 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
         <View
           style={[
             styles.searchBar,
-            { backgroundColor: surfaceHex },
+            { backgroundColor: surfaceHex, marginHorizontal: contentPadding },
+            isTablet && { maxWidth: 680, alignSelf: 'center', width: '100%' },
             isSearchFocused && [styles.searchBarFocused, { borderColor: accent.hex }],
           ]}
         >
@@ -468,7 +474,7 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
             horizontal
             showsHorizontalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.filterScroll}
+            contentContainerStyle={[styles.filterScroll, { paddingHorizontal: contentPadding }]}
           >
             {dynamicCategories.map((cat) => {
               const isActive = activeCategory === cat.name;
@@ -496,18 +502,19 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
           </ScrollView>
         </View>
 
-        {/* Virtualized 2-Column Playlists Grid with Top-to-Bottom Priority */}
+        {/* Virtualized Responsive Playlists Grid */}
         <FlatList
+          key={`grid-${numColumns}`}
           data={filteredPlaylists}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.gridRow}
+          numColumns={numColumns}
+          columnWrapperStyle={[styles.gridRow, { gap: cardGap, justifyContent: 'flex-start' }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.scrollContent}
-          initialNumToRender={8}
-          maxToRenderPerBatch={6}
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: contentPadding }]}
+          initialNumToRender={numColumns * 4}
+          maxToRenderPerBatch={numColumns * 3}
           windowSize={5}
           removeClippedSubviews={Platform.OS === 'android'}
           refreshControl={
@@ -543,6 +550,7 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
 interface PlaylistGridCardProps {
   item: YouTubePlaylistItem;
   index?: number;
+  cardWidth?: number;
   isItemLoading: boolean;
   isCurrentPlaying: boolean;
   onOpen: (item: YouTubePlaylistItem) => void;
@@ -550,7 +558,7 @@ interface PlaylistGridCardProps {
 }
 
 const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
-  ({ item, index, isItemLoading, isCurrentPlaying, onOpen, onPlay }) => {
+  ({ item, index, cardWidth, isItemLoading, isCurrentPlaying, onOpen, onPlay }) => {
     const fallbackCover = useMemo(
       () => getCategoryFallbackCover(item.category),
       [item.category]
@@ -594,11 +602,11 @@ const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, cardWidth ? { width: cardWidth } : null]}
         activeOpacity={0.82}
         onPress={() => onOpen(item)}
       >
-        <View style={styles.thumbnailWrapper}>
+        <View style={[styles.thumbnailWrapper, cardWidth ? { height: cardWidth } : null]}>
           <ExpoImage
             source={{ uri: imageSource }}
             style={styles.thumbnail}
@@ -839,7 +847,6 @@ const styles = StyleSheet.create({
     rowGap: 16,
   },
   card: {
-    width: CARD_WIDTH,
     backgroundColor: '#181818',
     borderRadius: 10,
     overflow: 'hidden',
@@ -848,7 +855,6 @@ const styles = StyleSheet.create({
   },
   thumbnailWrapper: {
     width: '100%',
-    height: CARD_WIDTH,
     position: 'relative',
     backgroundColor: '#282828',
   },

@@ -2,13 +2,14 @@
   "expo": {
     "name": "Shorty",
     "slug": "satya",
-    "version": "2.1",
-    "orientation": "portrait",
+    "version": "3.0",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shorty",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
+      "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -74,7 +75,8 @@
       "./plugins/withFilteredFonts.js",
       "expo-web-browser",
       "expo-image",
-      "expo-video"
+      "expo-video",
+      "expo-screen-orientation"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -28,8 +28,7 @@ import {
 } from '@/services/saavnStream';
 import { Song } from '@/types/music';
 import { SafeStorage } from '@/services/storage';
-
-const { width } = Dimensions.get('window');
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface ArtistProfileModalProps {
   visible: boolean;
@@ -50,6 +49,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 }) => {
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
+  const { isTablet, maxModalWidth } = useResponsive();
   const [details, setDetails] = useState<SaavnArtistFullDetails | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFollowing, setIsFollowing] = useState<boolean>(false);
@@ -120,16 +120,40 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle={isTablet ? 'overFullScreen' : 'fullScreen'}
+      transparent={isTablet}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        {/* Floating Top Back Button */}
-        <SafeAreaView style={styles.floatingHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
-            <Ionicons name="chevron-down" size={26} color="#ffffff" />
-          </TouchableOpacity>
-        </SafeAreaView>
+      <View style={[styles.rootContainer, isTablet && styles.tabletBackdrop]}>
+        {isTablet && (
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={onClose}
+          />
+        )}
+        <View
+          style={[
+            styles.container,
+            isTablet && {
+              maxWidth: maxModalWidth,
+              width: '92%',
+              alignSelf: 'center',
+              borderRadius: 24,
+              maxHeight: '90%',
+              marginVertical: '5%',
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.1)',
+            },
+          ]}
+        >
+          {/* Floating Top Back Button */}
+          <SafeAreaView style={styles.floatingHeader}>
+            <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
+              <Ionicons name="chevron-down" size={26} color="#ffffff" />
+            </TouchableOpacity>
+          </SafeAreaView>
 
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -328,6 +352,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 
         {/* Persistent Offline Banner */}
         <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 24 : 0} />
+        </View>
       </View>
     </Modal>
 
@@ -335,6 +360,15 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 };
 
 const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+    backgroundColor: '#121212',
+  },
+  tabletBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   container: {
     flex: 1,
     backgroundColor: '#121212',
@@ -357,7 +391,7 @@ const styles = StyleSheet.create({
     paddingBottom: 120,
   },
   heroContainer: {
-    width: width,
+    width: '100%',
     height: 320,
     position: 'relative',
   },

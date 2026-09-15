@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme, ACCENT_COLORS, THEME_MODES, ThemeMode, AccentColorId } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -31,6 +32,7 @@ const EMPTY_STATS: CacheStats = {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const { themeMode, accentId, accent, bgHex, surfaceHex, setThemeMode, setAccentColor } = useAppTheme();
   const { crossfadeDuration, gaplessEnabled, setCrossfadeDuration, setGaplessEnabled } = useAudio();
+  const { isTablet } = useResponsive();
   const [stats, setStats] = useState<CacheStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
@@ -69,20 +71,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   return (
     <SafeAreaView style={[styles.screen, { backgroundColor: bgHex }]} edges={['top', 'bottom']}>
       <View style={[styles.header, { backgroundColor: surfaceHex }]}>
-        <Pressable
-          accessibilityLabel="Back"
-          accessibilityRole="button"
-          hitSlop={12}
-          onPress={onBack}
-          style={styles.backButton}
-        >
-          <Ionicons name="chevron-back" size={28} color="#ffffff" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.headerSpacer} />
+        <View style={[styles.headerInner, isTablet && { maxWidth: 760, alignSelf: 'center', width: '100%' }]}>
+          <Pressable
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={onBack}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={28} color="#ffffff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Settings</Text>
+          <View style={styles.headerSpacer} />
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, isTablet && { maxWidth: 760, alignSelf: 'center', width: '100%' }]}
+        showsVerticalScrollIndicator={false}
+      >
         {/* APPEARANCE & THEME */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>APPEARANCE & THEME</Text>
@@ -271,10 +278,14 @@ const styles = StyleSheet.create({
   header: {
     height: 72,
     backgroundColor: '#181818',
+    paddingHorizontal: 20,
+    justifyContent: 'center',
+  },
+  headerInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    width: '100%',
   },
   backButton: {
     width: 44,
