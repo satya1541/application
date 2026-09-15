@@ -32,12 +32,11 @@ interface QuickAccessTile {
   song?: Song;
   playlist?: UserPlaylist;
   onCardPress: () => void;
-  onPlayPress: () => void;
   isCurrentlyPlaying: boolean;
 }
 
 export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlists }) => {
-  const { currentSong, isPlaying, playSong, togglePlay, likedSongsList, likedSongIds } = useAudio();
+  const { currentSong, isPlaying, likedSongsList, likedSongIds } = useAudio();
   const { accent, surfaceHex } = useAppTheme();
 
   const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
@@ -81,17 +80,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
       isLikedSongs: true,
       onCardPress: () => {
         setShowLikedModal(true);
-      },
-      onPlayPress: () => {
-        if (likedSongsList.length > 0) {
-          if (isLikedPlaying) {
-            togglePlay();
-          } else {
-            playSong(likedSongsList[0], likedSongsList, false);
-          }
-        } else if (songs && songs.length > 0) {
-          playSong(songs[0], songs, false);
-        }
       },
       isCurrentlyPlaying: isLikedPlaying,
     });
@@ -137,13 +125,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
           onCardPress: () => {
             setSelectedPlaylist(up);
           },
-          onPlayPress: () => {
-            if (isThisPlaylistPlaying) {
-              togglePlay();
-            } else {
-              playSong(up.songs[0], up.songs, false);
-            }
-          },
           isCurrentlyPlaying: isThisPlaylistPlaying,
         });
       }
@@ -164,13 +145,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
         song,
         onCardPress: () => {
           setSelectedSong(song);
-        },
-        onPlayPress: () => {
-          if (isCurrent) {
-            togglePlay();
-          } else {
-            playSong(song, [song], false);
-          }
         },
         isCurrentlyPlaying: isCurrent && isPlaying,
       });
@@ -193,13 +167,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
         onCardPress: () => {
           setSelectedSong(song);
         },
-        onPlayPress: () => {
-          if (isCurrent) {
-            togglePlay();
-          } else {
-            playSong(song, pool, false);
-          }
-        },
         isCurrentlyPlaying: isCurrent && isPlaying,
       });
     }
@@ -213,8 +180,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
     currentSong?.id,
     isPlaying,
     songs,
-    playSong,
-    togglePlay,
   ]);
 
   if (tiles.length === 0) {
@@ -275,29 +240,17 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
               </Text>
             </View>
 
-            {/* 1-Tap Circular Play/Pause Button */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={tile.onPlayPress}
-              style={[
-                styles.playButton,
-                { backgroundColor: accent.hex },
-                isCurrent && styles.playButtonActive,
-              ]}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <Ionicons
-                name={isCurrent ? 'pause' : 'play'}
-                size={14}
-                color="#000000"
-                style={!isCurrent ? { marginLeft: 1 } : undefined}
-              />
-            </TouchableOpacity>
+            {/* Subtle Now Playing Equalizer Indicator */}
+            {isCurrent && (
+              <View style={styles.playingIndicator}>
+                <Ionicons name="stats-chart" size={15} color={accent.hex} />
+              </View>
+            )}
           </TouchableOpacity>
         );
       })}
 
-      {/* Sub-modals for 0-second deep access */}
+      {/* Sub-modals for deep screen access */}
       <LikedSongsModal
         visible={showLikedModal}
         onClose={() => setShowLikedModal(false)}
@@ -366,7 +319,7 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     justifyContent: 'center',
   },
   title: {
@@ -375,20 +328,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 17,
   },
-  playButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  playingIndicator: {
+    marginRight: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  playButtonActive: {
-    transform: [{ scale: 1.05 }],
   },
 });
