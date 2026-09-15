@@ -35,30 +35,88 @@ interface QuickAccessTile {
   isCurrentlyPlaying: boolean;
 }
 
-export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlists }) => {
+// Persistent in-memory cache to guarantee zero layout shift / 0ms flash on remounts
+let _cachedHistory: HistoryEntry[] = [];
+let _cachedPlaylists: UserPlaylist[] = [];
+let _hasLoadedFromStorage = false;
+
+// Eagerly prefetch at bundle load time so cache is already primed on initial paint
+getListeningHistory()
+  .then((items) => {
+    if (items && items.length > 0) {
+      _cachedHistory = items;
+      _hasLoadedFromStorage = true;
+    }
+  })
+  .catch(() => {});
+
+getUserPlaylists()
+  .then((lists) => {
+    if (lists && lists.length > 0) {
+      _cachedPlaylists = lists;
+      _hasLoadedFromStorage = true;
+    }
+  })
+  .catch(() => {});
+
+export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ songs, playlists }) => {
   const { currentSong, isPlaying, likedSongsList, likedSongIds } = useAudio();
   const { accent, surfaceHex } = useAppTheme();
 
-  const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
-  const [userPlaylists, setUserPlaylists] = useState<UserPlaylist[]>([]);
+  // Initialize directly from in-memory cache so frame 1 has real data with zero flicker
+  const [historyItems, setHistoryItems] = useState<HistoryEntry[]>(_cachedHistory);
+  const [userPlaylists, setUserPlaylists] = useState<UserPlaylist[]>(_cachedPlaylists);
 
   // Navigation Modals State
   const [showLikedModal, setShowLikedModal] = useState<boolean>(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<UserPlaylist | null>(null);
   const [selectedSong, setSelectedSong] = useState<Song | null>(null);
 
-  // Load history and playlists for personalized morning/evening recommendations
+  // Load history and playlists seamlessly
   useEffect(() => {
     let isMounted = true;
-    Promise.all([
-      getListeningHistory().catch(() => []),
-      getUserPlaylists().catch(() => []),
-    ]).then(([hist, plist]) => {
-      if (isMounted) {
-        setHistoryItems(hist);
-        setUserPlaylists(plist);
+
+    const loadData = async () => {
+      try {
+        const [hist, plist] = await Promise.all([
+          getListeningHistory().catch(() => []),
+          getUserPlaylists().catch(() => []),
+        ]);
+
+        if (!isMounted) return;
+
+        _cachedHistory = hist;
+        _cachedPlaylists = plist;
+        _hasLoadedFromStorage = true;
+
+        // Equality checks to prevent unnecessary re-renders and eliminate glitching
+        setHistoryItems((prev) => {
+          if (
+            prev.length === hist.length &&
+            (prev.length === 0 ||
+              (prev[0]?.song?.id === hist[0]?.song?.id && prev[0]?.playedAt === hist[0]?.playedAt))
+          ) {
+            return prev;
+          }
+          return hist;
+        });
+
+        setUserPlaylists((prev) => {
+          if (
+            prev.length === plist.length &&
+            (prev.length === 0 ||
+              (prev[0]?.id === plist[0]?.id && prev[0]?.updatedAt === plist[0]?.updatedAt))
+          ) {
+            return prev;
+          }
+          return plist;
+        });
+      } catch {
+        // silent
       }
-    });
+    };
+
+    loadData();
 
     return () => {
       isMounted = false;
@@ -175,7 +233,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
   }, [
     historyItems,
     userPlaylists,
-    likedSongsList,
+    likedSongsList.length,
     likedSongIds,
     currentSong?.id,
     isPlaying,
@@ -257,7 +315,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlis
       />
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   gridContainer: {

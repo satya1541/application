@@ -17,6 +17,7 @@ import {
     Platform,
     RefreshControl,
     StyleSheet,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoInternetView } from '../common/NoInternetView';
@@ -121,7 +122,24 @@ const ChartSectionItem = React.memo<ChartSectionItemProps>(
   }
 );
 
-export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = ({ onOpenSettings }) => {
+// Memoized header component to prevent FlatList unmounting / remounting glitches
+interface HomeHeaderProps {
+  onOpenSettings?: () => void;
+  fallbackSongs?: Song[];
+}
+
+const HomeHeader = React.memo<HomeHeaderProps>(
+  ({ onOpenSettings, fallbackSongs }) => {
+    return (
+      <View>
+        <GreetingHeader onPressSettings={onOpenSettings} />
+        <QuickAccessGrid songs={fallbackSongs} />
+      </View>
+    );
+  }
+);
+
+export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ onOpenSettings }) => {
   const { bgHex, accent } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
   const { profile } = useAuth();
@@ -291,21 +309,22 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = ({ onOpenSettin
 
   const keyExtractor = useCallback((item: ChartSectionConfig) => item.id, []);
 
-  const renderHeader = useCallback(
-    () => (
-      <>
-        <GreetingHeader onPressSettings={onOpenSettings} />
-        <QuickAccessGrid
-          songs={
-            sectionSongs['hindi_lossless'] ||
-            sectionSongs['punjabi_lossless'] ||
-            sectionSongs['english_lossless'] ||
-            []
-          }
-        />
-      </>
-    ),
-    [onOpenSettings, sectionSongs]
+  const fallbackSongs = useMemo(() => {
+    return (
+      sectionSongs['hindi_lossless'] ||
+      sectionSongs['punjabi_lossless'] ||
+      sectionSongs['english_lossless'] ||
+      undefined
+    );
+  }, [
+    sectionSongs['hindi_lossless']?.length,
+    sectionSongs['punjabi_lossless']?.length,
+    sectionSongs['english_lossless']?.length,
+  ]);
+
+  const listHeader = useMemo(
+    () => <HomeHeader onOpenSettings={onOpenSettings} fallbackSongs={fallbackSongs} />,
+    [onOpenSettings, fallbackSongs]
   );
 
   return (
@@ -317,7 +336,7 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = ({ onOpenSettin
           data={dynamicSections}
           renderItem={renderSectionItem}
           keyExtractor={keyExtractor}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={listHeader}
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           decelerationRate="normal"
@@ -340,7 +359,7 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = ({ onOpenSettin
       )}
     </SafeAreaView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   screenWrapper: {

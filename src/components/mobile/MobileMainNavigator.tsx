@@ -1,6 +1,6 @@
 import { useNetwork } from '@/contexts/NetworkContext';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     Animated,
     BackHandler,
@@ -122,13 +122,13 @@ export const MobileMainNavigator: React.FC = () => {
     return () => subscription.remove();
   }, [activeTab, settingsVisible, visitedTabs]);
 
-  if (settingsVisible) {
-    return (
-      <SettingsScreen
-        onBack={() => setSettingsVisible(false)}
-      />
-    );
-  }
+  const handleOpenSettings = useCallback(() => {
+    setSettingsVisible(true);
+  }, []);
+
+  const handleCloseSettings = useCallback(() => {
+    setSettingsVisible(false);
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: bgHex }]}>
@@ -146,7 +146,7 @@ export const MobileMainNavigator: React.FC = () => {
           ]}
           pointerEvents={activeTab === 'home' ? 'auto' : 'none'}
         >
-          <MobileHomeScreen onOpenSettings={() => setSettingsVisible(true)} />
+          <MobileHomeScreen onOpenSettings={handleOpenSettings} />
         </Animated.View>
 
         {/* Layer 2: Search */}
@@ -304,6 +304,13 @@ export const MobileMainNavigator: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Settings Screen Full Overlay (Preserves tab hierarchy & state underneath) */}
+      {settingsVisible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 100, backgroundColor: bgHex }]}>
+          <SettingsScreen onBack={handleCloseSettings} />
+        </View>
+      )}
 
       {/* Global Modals Mounted at Root */}
       <FullPlayerModal />
