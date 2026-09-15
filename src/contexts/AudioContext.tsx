@@ -11,7 +11,7 @@ import {
 import { SafeStorage } from '@/services/storage';
 import { Song, RepeatMode, AudioAcousticProfile } from '@/types/music';
 import { INITIAL_SONGS, ACOUSTIC_PROFILES } from '@/services/musicCatalog';
-import { resolveStreamUrl, prewarmUpcomingQueue, prefetchStreamUrl } from '@/services/audioStreamResolver';
+import { resolveStreamUrl, prewarmUpcomingQueue } from '@/services/audioStreamResolver';
 import {
   triggerOpenFullPlayer,
   triggerCloseFullPlayer,
@@ -347,6 +347,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hasPreloadedNextTrackRef = useRef<boolean>(false);
   const hasTriggeredTransitionRef = useRef<boolean>(false);
 
+  // Dual-player architecture for true overlapping crossfade & 0ms gapless
+  const preloadedPlayerRef = useRef<AudioPlayer | null>(null);
+  const preloadedSongRef = useRef<Song | null>(null);
+  const preloadingInProgressRef = useRef<boolean>(false);
+  const crossfadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isTransitioningRef = useRef<boolean>(false);
+
   const setCrossfadeDuration = useCallback(async (seconds: number) => {
     setCrossfadeDurationState(seconds);
     crossfadeDurationRef.current = seconds;
@@ -357,6 +364,24 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setGaplessEnabledState(enabled);
     gaplessEnabledRef.current = enabled;
     await SafeStorage.setItem(STORAGE_KEY_GAPLESS, enabled ? 'true' : 'false');
+  }, []);
+
+  // Cleanup helper for dual-player resources
+  const cleanupPreloadedPlayer = useCallback(() => {
+    if (crossfadeIntervalRef.current) {
+      clearInterval(crossfadeIntervalRef.current);
+      crossfadeIntervalRef.current = null;
+    }
+    if (preloadedPlayerRef.current) {
+      try {
+        preloadedPlayerRef.current.pause();
+        preloadedPlayerRef.current.remove();
+      } catch {}
+      preloadedPlayerRef.current = null;
+    }
+    preloadedSongRef.current = null;
+    preloadingInProgressRef.current = false;
+    isTransitioningRef.current = false;
   }, []);
 
   // App state ref to pause rapid UI state renders when screen is off / in background
@@ -584,6 +609,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .catch(() => { });
 
     return () => {
+      if (crossfadeIntervalRef.current) {
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+      }
+      if (preloadedPlayerRef.current) {
+        try { preloadedPlayerRef.current.pause(); preloadedPlayerRef.current.remove(); } catch {}
+        preloadedPlayerRef.current = null;
+      }
       if (statusSubscriptionRef.current) {
         statusSubscriptionRef.current.remove();
       }
@@ -724,23 +757,364 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return null;
   }, []);
 
+  // Apply full volume immediately — no more muffled 35% on crossfade-enabled manual taps
   const rampVolumeIn = useCallback((targetPlayer: AudioPlayer) => {
-    const currentVol = volumeRef.current;
-    const activeProfileId = currentProfileRef.current.id;
-    if (crossfadeDurationRef.current > 0) {
-      applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol * 0.35);
-      const steps = [0.65, 0.85, 1.0];
-      steps.forEach((step, idx) => {
-        setTimeout(() => {
-          if (playerRef.current === targetPlayer && isPlayingRef.current) {
-            applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol * step);
-          }
-        }, (idx + 1) * 300);
-      });
-    } else {
-      applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol);
-    }
+    applyPlayerAcoustics(targetPlayer, currentProfileRef.current.id, volumeRef.current);
   }, []);
+
+  // ─── Shared Status Listener (reused by loadAndPlayTrack AND post-transition handover) ───
+  const attachPlayerStatusListener = (player: AudioPlayer) => {
+    if (statusSubscriptionRef.current) {
+      statusSubscriptionRef.current.remove();
+      statusSubscriptionRef.current = null;
+    }
+
+    const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.mediaAction === 'next') { nextSongRef.current?.(); return; }
+      if (status.mediaAction === 'prev') { prevSongRef.current?.(); return; }
+
+      updateIsPlaying(status.playing);
+      updateIsLoading(status.isBuffering);
+      _latestIsPlaying = status.playing;
+
+      const currentPos = status.currentTime || 0;
+      lastReportedPositionRef.current = currentPos;
+      positionRef.current = currentPos;
+
+      // Auto-record track into listening history at 5s
+      if (
+        currentSongRef.current &&
+        status.playing &&
+        recordedHistoryTrackIdRef.current !== currentSongRef.current.id &&
+        currentPos >= 5
+      ) {
+        recordedHistoryTrackIdRef.current = currentSongRef.current.id;
+        recordHistoryEntry(
+          currentSongRef.current,
+          currentPos,
+          durationRef.current || currentSongRef.current.duration || 0,
+          userIdRef.current
+        ).catch(() => {});
+      }
+
+      if (status.duration && status.duration > 0) {
+        const prevDuration = durationRef.current;
+        durationRef.current = status.duration;
+        if (!prevDuration || Math.abs(prevDuration - status.duration) > 1.5) {
+          if (!isExpoGo && currentSongRef.current && playerRef.current) {
+            try {
+              playerRef.current.updateLockScreenMetadata({
+                title: currentSongRef.current.name || 'Unknown Track',
+                artist: currentSongRef.current.artist || 'Unknown Artist',
+                albumTitle: currentSongRef.current.album || 'Shorty',
+                artworkUrl: currentSongRef.current.cover || undefined,
+                duration: status.duration,
+              });
+            } catch { }
+          }
+        }
+      }
+
+      if (appStateRef.current === 'active') {
+        notifyProgressListeners(positionRef.current, durationRef.current);
+      }
+
+      if (status.playing) {
+        persistPlaybackState(false);
+      }
+
+      const songDuration = status.duration || durationRef.current || 0;
+      const timeLeft = songDuration > 0 ? songDuration - currentPos : 999;
+
+      // ── DUAL-PLAYER PRELOAD: Pre-buffer next track's AudioPlayer ──
+      const preloadLeadTime = crossfadeDurationRef.current > 0
+        ? crossfadeDurationRef.current + 6
+        : 8;
+      if (
+        status.playing &&
+        !isTransitioningRef.current &&
+        timeLeft <= preloadLeadTime &&
+        timeLeft > 0 &&
+        !hasPreloadedNextTrackRef.current
+      ) {
+        hasPreloadedNextTrackRef.current = true;
+        preloadUpcomingPlayer();
+      }
+
+      // ── CROSSFADE TRIGGER ──
+      const crossfadeSec = crossfadeDurationRef.current;
+      if (
+        crossfadeSec > 0 &&
+        status.playing &&
+        songDuration > crossfadeSec + 2 &&
+        timeLeft <= crossfadeSec &&
+        timeLeft > 0 &&
+        !isTransitioningRef.current &&
+        preloadedPlayerRef.current &&
+        preloadedSongRef.current
+      ) {
+        performCrossfadeTransition();
+        return;
+      }
+
+      // ── GAPLESS / TRACK-END TRIGGER ──
+      if (status.didJustFinish && !status.loop && !hasTriggeredTransitionRef.current) {
+        hasTriggeredTransitionRef.current = true;
+        SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
+        if (
+          gaplessEnabledRef.current &&
+          preloadedPlayerRef.current &&
+          preloadedSongRef.current &&
+          !isTransitioningRef.current
+        ) {
+          performGaplessTransition();
+        } else {
+          handleTrackEnd();
+        }
+        return;
+      }
+
+      // VBR fallback: near-end trigger for streams where didJustFinish may not fire
+      if (
+        timeLeft <= 0.3 &&
+        timeLeft >= 0 &&
+        status.playing &&
+        !hasTriggeredTransitionRef.current &&
+        !isTransitioningRef.current
+      ) {
+        hasTriggeredTransitionRef.current = true;
+        SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
+        if (preloadedPlayerRef.current && preloadedSongRef.current) {
+          if (crossfadeSec > 0) {
+            performCrossfadeTransition();
+          } else if (gaplessEnabledRef.current) {
+            performGaplessTransition();
+          } else {
+            handleTrackEnd();
+          }
+        } else {
+          handleTrackEnd();
+        }
+      }
+    });
+
+    const mediaActionSub = (player as any).addListener('playbackMediaAction', (data: { action: string }) => {
+      if (data?.action === 'next') { nextSongRef.current?.(); }
+      else if (data?.action === 'prev') { prevSongRef.current?.(); }
+    });
+
+    statusSubscriptionRef.current = {
+      remove: () => {
+        sub.remove();
+        mediaActionSub?.remove?.();
+      },
+    };
+  };
+
+  // ─── Pre-buffer next track's native AudioPlayer in background ───
+  const preloadUpcomingPlayer = async () => {
+    if (preloadingInProgressRef.current || preloadedPlayerRef.current || isTransitioningRef.current) return;
+
+    let candidate = getUpcomingTrackCandidate();
+
+    // If queue has no next track, backfill from recommendation engine
+    if (!candidate && currentSongRef.current && autoplayEnabledRef.current) {
+      try {
+        const recs = await ClientRecommendationEngine.getNextRecommendations(
+          currentSongRef.current,
+          queueRef.current,
+          Math.max(0, queueRef.current.length - 1),
+          historyRef.current
+        );
+        if (recs.length > queueRef.current.length) {
+          setQueue(recs);
+          queueRef.current = recs;
+          const idx = recs.findIndex(s => s.id === currentSongRef.current?.id);
+          if (idx !== -1 && idx < recs.length - 1) {
+            candidate = recs[idx + 1];
+          }
+        }
+      } catch {}
+    }
+
+    if (!candidate) return;
+
+    preloadingInProgressRef.current = true;
+
+    try {
+      const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
+      const url = await resolveStreamUrl(candidate, targetQuality);
+
+      // Abort if state changed while we were resolving
+      if (preloadedPlayerRef.current || isTransitioningRef.current) {
+        preloadingInProgressRef.current = false;
+        return;
+      }
+
+      const incomingPlayer = createAudioPlayer(url, {
+        updateInterval: 500,
+        keepAudioSessionActive: true,
+      });
+      incomingPlayer.volume = 0;
+
+      preloadedPlayerRef.current = incomingPlayer;
+      preloadedSongRef.current = candidate;
+      preloadingInProgressRef.current = false;
+    } catch {
+      preloadingInProgressRef.current = false;
+    }
+  };
+
+  // ─── Finalize handover: swap outgoing→incoming, update all state ───
+  const finalizeTransitionHandover = (outgoing: AudioPlayer, incoming: AudioPlayer, incomingSong: Song) => {
+    // Remove outgoing status listener
+    if (statusSubscriptionRef.current) {
+      statusSubscriptionRef.current.remove();
+      statusSubscriptionRef.current = null;
+    }
+
+    // Remove outgoing player
+    try {
+      outgoing.pause();
+      if (!isExpoGo) { try { outgoing.clearLockScreenControls(); } catch {} }
+      outgoing.remove();
+    } catch {}
+
+    // Promote incoming as main player
+    playerRef.current = incoming;
+    _activeAudioPlayer = incoming;
+    applyPlayerAcoustics(incoming, currentProfileRef.current.id, volumeRef.current);
+
+    // Push outgoing song to history
+    if (currentSongRef.current) {
+      setHistory(prev => [...prev, currentSongRef.current!]);
+    }
+
+    // Update song state
+    setCurrentSong(incomingSong);
+    currentSongRef.current = incomingSong;
+    positionRef.current = 0;
+    durationRef.current = incomingSong.duration || 0;
+    recordedHistoryTrackIdRef.current = null;
+    updateIsPlaying(true);
+    updateIsLoading(false);
+
+    syncLockScreenControls(incoming, incomingSong);
+    ClientRecommendationEngine.recordAction(incomingSong, 'play', 0, 0);
+    notifyProgressListeners(0, incomingSong.duration || 0);
+
+    // Consume from user queue if applicable
+    if (userQueueRef.current.length > 0 && userQueueRef.current[0].id === incomingSong.id) {
+      setUserQueue(prev => prev.slice(1));
+    }
+
+    // Attach new status listener on promoted player
+    attachPlayerStatusListener(incoming);
+
+    // Reset all transition state
+    preloadedPlayerRef.current = null;
+    preloadedSongRef.current = null;
+    preloadingInProgressRef.current = false;
+    isTransitioningRef.current = false;
+    hasPreloadedNextTrackRef.current = false;
+    hasTriggeredTransitionRef.current = false;
+
+    persistPlaybackState(true);
+  };
+
+  // ─── True overlapping crossfade between two concurrent AudioPlayers ───
+  const performCrossfadeTransition = () => {
+    if (isTransitioningRef.current) return;
+    const outgoing = playerRef.current;
+    const incoming = preloadedPlayerRef.current;
+    const incomingSong = preloadedSongRef.current;
+    if (!outgoing || !incoming || !incomingSong) return;
+
+    // Record outgoing track completion
+    if (currentSongRef.current) {
+      ClientRecommendationEngine.recordAction(currentSongRef.current, 'complete', 1.0, durationRef.current);
+      recordListeningHistory(userIdRef.current, currentSongRef.current, Math.round(durationRef.current || 180)).catch(() => {});
+      recordHistoryEntry(currentSongRef.current, durationRef.current, durationRef.current, userIdRef.current).catch(() => {});
+    }
+
+    // Repeat-one: restart outgoing, discard incoming
+    if (repeatModeRef.current === 'one') {
+      try { outgoing.seekTo(0); outgoing.play(); applyPlayerAcoustics(outgoing, currentProfileRef.current.id, volumeRef.current); } catch {}
+      try { incoming.pause(); incoming.remove(); } catch {}
+      preloadedPlayerRef.current = null;
+      preloadedSongRef.current = null;
+      hasPreloadedNextTrackRef.current = false;
+      hasTriggeredTransitionRef.current = false;
+      return;
+    }
+
+    isTransitioningRef.current = true;
+    hasTriggeredTransitionRef.current = true;
+
+    // Start incoming player at volume 0
+    incoming.volume = 0;
+    incoming.play();
+
+    const crossfadeSec = crossfadeDurationRef.current;
+    const stepMs = 50;
+    const totalSteps = Math.max(1, Math.floor((crossfadeSec * 1000) / stepMs));
+    let step = 0;
+
+    crossfadeIntervalRef.current = setInterval(() => {
+      step++;
+      const progress = Math.min(1.0, step / totalSteps);
+
+      // Linear volume crossfade
+      try { outgoing.volume = Math.max(0, (1 - progress) * volumeRef.current); } catch {}
+      try { incoming.volume = Math.max(0, Math.min(1, progress * volumeRef.current)); } catch {}
+
+      if (step >= totalSteps) {
+        if (crossfadeIntervalRef.current) {
+          clearInterval(crossfadeIntervalRef.current);
+          crossfadeIntervalRef.current = null;
+        }
+        finalizeTransitionHandover(outgoing, incoming, incomingSong);
+      }
+    }, stepMs);
+  };
+
+  // ─── Instant 0ms gapless transition to pre-buffered player ───
+  const performGaplessTransition = () => {
+    if (isTransitioningRef.current) return;
+    const outgoing = playerRef.current;
+    const incoming = preloadedPlayerRef.current;
+    const incomingSong = preloadedSongRef.current;
+    if (!outgoing || !incoming || !incomingSong) {
+      handleTrackEnd();
+      return;
+    }
+
+    // Record outgoing track completion
+    if (currentSongRef.current) {
+      ClientRecommendationEngine.recordAction(currentSongRef.current, 'complete', 1.0, durationRef.current);
+      recordListeningHistory(userIdRef.current, currentSongRef.current, Math.round(durationRef.current || 180)).catch(() => {});
+      recordHistoryEntry(currentSongRef.current, durationRef.current, durationRef.current, userIdRef.current).catch(() => {});
+    }
+
+    // Repeat-one
+    if (repeatModeRef.current === 'one') {
+      try { outgoing.seekTo(0); outgoing.play(); } catch {}
+      try { incoming.pause(); incoming.remove(); } catch {}
+      preloadedPlayerRef.current = null;
+      preloadedSongRef.current = null;
+      hasPreloadedNextTrackRef.current = false;
+      hasTriggeredTransitionRef.current = false;
+      return;
+    }
+
+    isTransitioningRef.current = true;
+    hasTriggeredTransitionRef.current = true;
+
+    // Instant handover: full volume and play immediately
+    applyPlayerAcoustics(incoming, currentProfileRef.current.id, volumeRef.current);
+    incoming.play();
+    finalizeTransitionHandover(outgoing, incoming, incomingSong);
+  };
 
   const loadAndPlayTrack = async (
     song: Song,
@@ -787,6 +1161,59 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // Stop current playback immediately to prevent overlap during URL resolution
       if (playerRef.current) {
         try { playerRef.current.pause(); } catch { }
+      }
+
+      // Cancel any in-progress crossfade interval
+      if (crossfadeIntervalRef.current) {
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+      }
+      isTransitioningRef.current = false;
+
+      // INSTANT PROMOTION: If the requested song is already pre-buffered, skip network (0ms)
+      if (preloadedPlayerRef.current && preloadedSongRef.current?.id === song.id) {
+        const promotedPlayer = preloadedPlayerRef.current;
+        preloadedPlayerRef.current = null;
+        preloadedSongRef.current = null;
+        preloadingInProgressRef.current = false;
+
+        // Remove old player
+        if (statusSubscriptionRef.current) {
+          statusSubscriptionRef.current.remove();
+          statusSubscriptionRef.current = null;
+        }
+        if (playerRef.current) {
+          try {
+            if (!isExpoGo) { try { playerRef.current.clearLockScreenControls(); } catch {} }
+            playerRef.current.remove();
+          } catch {}
+        }
+
+        // Promote pre-buffered player
+        playerRef.current = promotedPlayer;
+        _activeAudioPlayer = promotedPlayer;
+        rampVolumeIn(promotedPlayer);
+        syncLockScreenControls(promotedPlayer, song);
+        attachPlayerStatusListener(promotedPlayer);
+
+        if (initialPositionSeconds > 0) {
+          try { await promotedPlayer.seekTo(initialPositionSeconds); } catch {}
+        }
+        if (shouldPlayImmediately) {
+          promotedPlayer.play();
+          updateIsPlaying(true);
+        }
+        updateIsLoading(false);
+        persistPlaybackState(true);
+        return;
+      }
+
+      // Clean up any stale preloaded player for a different song
+      if (preloadedPlayerRef.current) {
+        try { preloadedPlayerRef.current.pause(); preloadedPlayerRef.current.remove(); } catch {}
+        preloadedPlayerRef.current = null;
+        preloadedSongRef.current = null;
+        preloadingInProgressRef.current = false;
       }
 
       const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
@@ -855,126 +1282,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       syncLockScreenControls(player, song);
 
-      // Subscribe to playback status updates
-      const sub = player.addListener('playbackStatusUpdate', (status) => {
-        if (status.mediaAction === 'next') {
-          nextSongRef.current?.();
-          return;
-        } else if (status.mediaAction === 'prev') {
-          prevSongRef.current?.();
-          return;
-        }
-
-        updateIsPlaying(status.playing);
-        updateIsLoading(status.isBuffering);
-        _latestIsPlaying = status.playing;
-
-        const currentPos = status.currentTime || 0;
-        lastReportedPositionRef.current = currentPos;
-        positionRef.current = currentPos;
-
-        // Auto-record track into listening history as soon as it reaches 5 seconds of active playback
-        if (
-          currentSongRef.current &&
-          status.playing &&
-          recordedHistoryTrackIdRef.current !== currentSongRef.current.id &&
-          currentPos >= 5
-        ) {
-          recordedHistoryTrackIdRef.current = currentSongRef.current.id;
-          recordHistoryEntry(
-            currentSongRef.current,
-            currentPos,
-            durationRef.current || currentSongRef.current.duration || 0,
-            userIdRef.current
-          ).catch(() => {});
-        }
-
-        if (status.duration && status.duration > 0) {
-          const prevDuration = durationRef.current;
-          durationRef.current = status.duration;
-          if (!prevDuration || Math.abs(prevDuration - status.duration) > 1.5) {
-            if (!isExpoGo && currentSongRef.current && playerRef.current) {
-              try {
-                playerRef.current.updateLockScreenMetadata({
-                  title: currentSongRef.current.name || 'Unknown Track',
-                  artist: currentSongRef.current.artist || 'Unknown Artist',
-                  albumTitle: currentSongRef.current.album || 'Shorty',
-                  artworkUrl: currentSongRef.current.cover || undefined,
-                  duration: status.duration,
-                });
-              } catch { }
-            }
-          }
-        }
-
-        // THERMAL OPTIMIZATION: Only push progress to the lightweight
-        // AudioProgressContext when the app is foregrounded.
-        // This never touches AudioContext state → zero re-renders on the main tree.
-        if (appStateRef.current === 'active') {
-          notifyProgressListeners(positionRef.current, durationRef.current);
-        }
-
-        if (status.playing) {
-          persistPlaybackState(false);
-        }
-
-        const songDuration = status.duration || durationRef.current || 0;
-        const timeLeft = songDuration > 0 ? songDuration - currentPos : 999;
-
-        // 1. SMART GAPLESS PRE-BUFFER (5-6s early before track end)
-        if (gaplessEnabledRef.current && status.playing && timeLeft <= 6 && timeLeft > 0) {
-          if (!hasPreloadedNextTrackRef.current) {
-            hasPreloadedNextTrackRef.current = true;
-            const candidate = getUpcomingTrackCandidate();
-            if (candidate) {
-              prefetchStreamUrl(candidate);
-            }
-          }
-        }
-
-        // 2. SMART CROSSFADE VOLUME SHAPING & HANDOVER
-        const crossfadeSec = crossfadeDurationRef.current;
-        if (crossfadeSec > 0 && status.playing && songDuration > crossfadeSec + 2) {
-          if (timeLeft <= crossfadeSec && timeLeft > 0.4) {
-            // Smoothly ramp down outgoing player volume
-            const fadeRatio = Math.max(0.05, Math.min(1.0, timeLeft / crossfadeSec));
-            applyPlayerAcoustics(player, currentProfileRef.current.id, volumeRef.current * fadeRatio);
-          } else if (timeLeft > crossfadeSec + 1 && player.volume < volumeRef.current * 0.95) {
-            // Restore full volume if user scrubbed backwards
-            applyPlayerAcoustics(player, currentProfileRef.current.id, volumeRef.current);
-            hasTriggeredTransitionRef.current = false;
-          }
-
-          if (timeLeft <= 0.4 && !hasTriggeredTransitionRef.current) {
-            hasTriggeredTransitionRef.current = true;
-            SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
-            handleTrackEnd();
-          }
-        }
-
-        if (status.didJustFinish && !status.loop) {
-          if (!hasTriggeredTransitionRef.current) {
-            hasTriggeredTransitionRef.current = true;
-            SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
-            handleTrackEnd();
-          }
-        }
-      });
-
-      const mediaActionSub = (player as any).addListener('playbackMediaAction', (data: { action: string }) => {
-        if (data?.action === 'next') {
-          nextSongRef.current?.();
-        } else if (data?.action === 'prev') {
-          prevSongRef.current?.();
-        }
-      });
-
-      statusSubscriptionRef.current = {
-        remove: () => {
-          sub.remove();
-          mediaActionSub?.remove?.();
-        },
-      };
+      // Subscribe to playback status updates (shared listener function)
+      attachPlayerStatusListener(player);
 
       if (initialPositionSeconds > 0) {
         try {
@@ -1372,6 +1681,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const dismissPlayer = async () => {
     // Invalidate any in-flight track loads so an in-progress async stream resolution doesn't start playing
     ++playbackGenRef.current;
+    cleanupPreloadedPlayer();
     updateIsPlaying(false);
     setCurrentSong(null);
     currentSongRef.current = null;
