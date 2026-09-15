@@ -1,100 +1,277 @@
-import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Song, Playlist } from '@/types/music';
 import { useAudio } from '@/contexts/AudioContext';
+import { useAppTheme } from '@/contexts/ThemeContext';
+import { getListeningHistory, HistoryEntry } from '@/services/historyService';
+import { getUserPlaylists, UserPlaylist } from '@/services/userPlaylistService';
+import { INITIAL_SONGS } from '@/services/musicCatalog';
 
 interface QuickAccessGridProps {
   songs?: Song[];
   playlists?: Playlist[];
 }
 
+interface QuickAccessTile {
+  id: string;
+  title: string;
+  subtitle?: string;
+  coverUri?: string;
+  isLikedSongs?: boolean;
+  song?: Song;
+  playlistSongs?: Song[];
+  onPress: () => void;
+  isCurrentlyPlaying: boolean;
+}
+
 export const QuickAccessGrid: React.FC<QuickAccessGridProps> = ({ songs, playlists }) => {
-  const { currentSong, isPlaying, playSong, togglePlay } = useAudio();
+  const { currentSong, isPlaying, playSong, togglePlay, likedSongsList, likedSongIds } = useAudio();
+  const { accent, surfaceHex } = useAppTheme();
 
-  // If songs are provided, render top 6 songs for 1-tap playback
-  if (songs && songs.length > 0) {
-    const displaySongs = songs.slice(0, 6);
+  const [historyItems, setHistoryItems] = useState<HistoryEntry[]>([]);
+  const [userPlaylists, setUserPlaylists] = useState<UserPlaylist[]>([]);
 
-    return (
-      <View style={styles.gridContainer}>
-        {displaySongs.map((song) => {
-          const isCurrent = currentSong?.id === song.id;
+  // Load history and playlists for personalized morning/evening recommendations
+  useEffect(() => {
+    let isMounted = true;
+    Promise.all([
+      getListeningHistory().catch(() => []),
+      getUserPlaylists().catch(() => []),
+    ]).then(([hist, plist]) => {
+      if (isMounted) {
+        setHistoryItems(hist);
+        setUserPlaylists(plist);
+      }
+    });
 
-          const handleSongPress = () => {
-            if (isCurrent) {
-              togglePlay();
-            } else {
-              playSong(song);
-            }
-          };
+    return () => {
+      isMounted = false;
+    };
+  }, [currentSong?.id]);
 
-          return (
-            <TouchableOpacity
-              key={song.id}
-              style={[styles.card, isCurrent && styles.activeCard]}
-              activeOpacity={0.75}
-              onPress={handleSongPress}
-            >
-              <Image source={{ uri: song.cover }} style={styles.image} />
-              <Text style={[styles.title, isCurrent && styles.activeTitle]} numberOfLines={2}>
-                {song.name}
-              </Text>
-              {isCurrent && (
-                <View style={styles.playIndicator}>
-                  <Ionicons
-                    name={isPlaying ? 'pause' : 'play'}
-                    size={14}
-                    color="#000000"
-                  />
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    );
-  }
+  // Compute 6 contextual items based on time of day & listening frequency
+  const tiles: QuickAccessTile[] = useMemo(() => {
+    const result: QuickAccessTile[] = [];
 
-  // Fallback to playlists if songs are not yet loaded
-  const displayPlaylists = (playlists || []).slice(0, 6);
+    // ── Tile 1: Liked Songs (Always #1 Top-Left) ──
+    const isLikedPlaying =
+      isPlaying && !!currentSong && likedSongIds.includes(currentSong.id);
 
-  const handlePlaylistPress = (playlist: Playlist) => {
-    if (playlist.songs.length > 0) {
-      if (currentSong?.id === playlist.songs[0].id) {
-        togglePlay();
+    result.push({
+      id: 'tile_liked_songs',
+      title: 'Liked Songs',
+      subtitle: `${likedSongsList.length} tracks`,
+      isLikedSongs: true,
+      onPress: () => {
+        if (likedSongsList.length > 0) {
+          if (isLikedPlaying) {
+            togglePlay();
+          } else {
+            playSong(likedSongsList[0], likedSongsList, false);
+          }
+        } else if (songs && songs.length > 0) {
+          playSong(songs[0], songs, false);
+        }
+      },
+      isCurrentlyPlaying: isLikedPlaying,
+    });
+
+    // ── Compute Looped Songs from History ──
+    const songPlayCountMap = new Map<string, { song: Song; count: number; lastPlayed: number }>();
+    for (const entry of historyItems) {
+      if (!entry.song?.id) continue;
+      const existing = songPlayCountMap.get(entry.song.id);
+      if (existing) {
+        existing.count += 1;
+        existing.lastPlayed = Math.max(existing.lastPlayed, entry.playedAt);
       } else {
-        playSong(playlist.songs[0], playlist.songs);
+        songPlayCountMap.set(entry.song.id, {
+          song: entry.song,
+          count: 1,
+          lastPlayed: entry.playedAt,
+        });
       }
     }
-  };
+
+    // Sort songs by play count descending, then last played descending
+    const sortedLoopedSongs = Array.from(songPlayCountMap.values())
+      .sort((a, b) => b.count - a.count || b.lastPlayed - a.lastPlayed)
+      .map((item) => item.song);
+
+    // ── Contextual Slot Fillers ──
+    const seenSongIds = new Set<string>();
+
+    // Add user custom playlists first if any exist
+    for (const up of userPlaylists) {
+      if (result.length >= 6) break;
+      if (up.songs && up.songs.length > 0) {
+        const isThisPlaylistPlaying =
+          isPlaying && !!currentSong && up.songs.some((s) => s.id === currentSong.id);
+
+        result.push({
+          id: `plist_${up.id}`,
+          title: up.name,
+          subtitle: `${up.songs.length} songs`,
+          coverUri: up.coverUrl || up.songs[0]?.cover,
+          playlistSongs: up.songs,
+          onPress: () => {
+            if (isThisPlaylistPlaying) {
+              togglePlay();
+            } else {
+              playSong(up.songs[0], up.songs, false);
+            }
+          },
+          isCurrentlyPlaying: isThisPlaylistPlaying,
+        });
+      }
+    }
+
+    // Add most looped songs from history
+    for (const song of sortedLoopedSongs) {
+      if (result.length >= 6) break;
+      if (seenSongIds.has(song.id)) continue;
+      seenSongIds.add(song.id);
+
+      const isCurrent = currentSong?.id === song.id;
+      result.push({
+        id: `song_${song.id}`,
+        title: song.name,
+        subtitle: song.artist,
+        coverUri: song.cover,
+        song,
+        onPress: () => {
+          if (isCurrent) {
+            togglePlay();
+          } else {
+            playSong(song, [song], false);
+          }
+        },
+        isCurrentlyPlaying: isCurrent && isPlaying,
+      });
+    }
+
+    // Fallback backfill from props or catalog if fewer than 6 items
+    const pool = (songs && songs.length > 0 ? songs : INITIAL_SONGS) || [];
+    for (const song of pool) {
+      if (result.length >= 6) break;
+      if (seenSongIds.has(song.id)) continue;
+      seenSongIds.add(song.id);
+
+      const isCurrent = currentSong?.id === song.id;
+      result.push({
+        id: `fallback_${song.id}`,
+        title: song.name,
+        subtitle: song.artist,
+        coverUri: song.cover,
+        song,
+        onPress: () => {
+          if (isCurrent) {
+            togglePlay();
+          } else {
+            playSong(song, pool, false);
+          }
+        },
+        isCurrentlyPlaying: isCurrent && isPlaying,
+      });
+    }
+
+    return result.slice(0, 6);
+  }, [
+    historyItems,
+    userPlaylists,
+    likedSongsList,
+    likedSongIds,
+    currentSong?.id,
+    isPlaying,
+    songs,
+    playSong,
+    togglePlay,
+  ]);
+
+  if (tiles.length === 0) {
+    return null;
+  }
 
   return (
     <View style={styles.gridContainer}>
-      {displayPlaylists.map((item) => {
-        const isCurrentPlaylist =
-          currentSong && item.songs.some((s) => s.id === currentSong.id);
+      {tiles.map((tile) => {
+        const isCurrent = tile.isCurrentlyPlaying;
 
         return (
           <TouchableOpacity
-            key={item.id}
-            style={[styles.card, isCurrentPlaylist && styles.activeCard]}
+            key={tile.id}
+            style={[
+              styles.card,
+              { backgroundColor: surfaceHex },
+              isCurrent && [
+                styles.activeCard,
+                { borderColor: accent.hex, shadowColor: accent.hex },
+              ],
+            ]}
             activeOpacity={0.75}
-            onPress={() => handlePlaylistPress(item)}
+            onPress={tile.onPress}
           >
-            <Image source={{ uri: item.cover }} style={styles.image} />
-            <Text style={[styles.title, isCurrentPlaylist && styles.activeTitle]} numberOfLines={2}>
-              {item.title}
-            </Text>
-            {isCurrentPlaylist && (
-              <View style={styles.playIndicator}>
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={14}
-                  color="#000000"
-                />
+            {/* Left Cover Image or Liked Songs Gradient */}
+            {tile.isLikedSongs ? (
+              <LinearGradient
+                colors={['#450af5', '#8e8ee5']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.likedGradientCover}
+              >
+                <Ionicons name="heart" size={24} color="#ffffff" />
+              </LinearGradient>
+            ) : tile.coverUri ? (
+              <Image
+                source={{ uri: tile.coverUri }}
+                style={styles.image}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[styles.image, styles.fallbackImage]}>
+                <Ionicons name="musical-notes" size={22} color="rgba(255,255,255,0.4)" />
               </View>
             )}
+
+            {/* Title & Metadata */}
+            <View style={styles.titleContainer}>
+              <Text
+                style={[
+                  styles.title,
+                  isCurrent && { color: accent.hex, fontWeight: '800' },
+                ]}
+                numberOfLines={2}
+              >
+                {tile.title}
+              </Text>
+            </View>
+
+            {/* 1-Tap Circular Play/Pause Button */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={tile.onPress}
+              style={[
+                styles.playButton,
+                { backgroundColor: accent.hex },
+                isCurrent && styles.playButtonActive,
+              ]}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Ionicons
+                name={isCurrent ? 'pause' : 'play'}
+                size={14}
+                color="#000000"
+                style={!isCurrent ? { marginLeft: 1 } : undefined}
+              />
+            </TouchableOpacity>
           </TouchableOpacity>
         );
       })}
@@ -108,53 +285,70 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginVertical: 10,
-    gap: 8,
+    rowGap: 8,
+    columnGap: 8,
+    marginTop: 6,
+    marginBottom: 16,
   },
   card: {
-    width: '48.5%',
-    height: 56,
+    width: '48.7%',
+    height: 58,
     backgroundColor: '#242424',
     borderRadius: 6,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
-    position: 'relative',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   activeCard: {
-    backgroundColor: '#2a2a2a',
-    borderColor: 'rgba(29, 185, 84, 0.4)',
+    backgroundColor: '#282828',
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  likedGradientCover: {
+    width: 58,
+    height: 58,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   image: {
-    width: 56,
-    height: 56,
-    backgroundColor: '#333333',
+    width: 58,
+    height: 58,
+    backgroundColor: '#2b2b2b',
+  },
+  fallbackImage: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  titleContainer: {
+    flex: 1,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
   },
   title: {
-    flex: 1,
     color: '#ffffff',
     fontSize: 13,
     fontWeight: '700',
-    paddingHorizontal: 8,
+    lineHeight: 17,
   },
-  activeTitle: {
-    color: '#1DB954',
-  },
-  playIndicator: {
-    position: 'absolute',
-    right: 8,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1DB954',
+  playButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
-    elevation: 4,
+    elevation: 3,
+  },
+  playButtonActive: {
+    transform: [{ scale: 1.05 }],
   },
 });

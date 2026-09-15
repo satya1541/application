@@ -11,7 +11,7 @@ import {
 import { SafeStorage } from '@/services/storage';
 import { Song, RepeatMode, AudioAcousticProfile } from '@/types/music';
 import { INITIAL_SONGS, ACOUSTIC_PROFILES } from '@/services/musicCatalog';
-import { resolveStreamUrl, prewarmUpcomingQueue } from '@/services/audioStreamResolver';
+import { resolveStreamUrl, prewarmUpcomingQueue, prefetchStreamUrl } from '@/services/audioStreamResolver';
 import {
   triggerOpenFullPlayer,
   triggerCloseFullPlayer,
@@ -138,6 +138,8 @@ interface AudioContextType {
   isLyricsOpen: boolean;
   isQueueModalOpen: boolean;
   autoplayEnabled: boolean;
+  crossfadeDuration: number;
+  gaplessEnabled: boolean;
 
   playSong: (song: Song, newQueue?: Song[], autoOpenFullPlayer?: boolean) => Promise<void>;
   togglePlay: () => Promise<void>;
@@ -152,6 +154,8 @@ interface AudioContextType {
   isLiked: (songId: string) => boolean;
   setAcousticProfile: (profile: AudioAcousticProfile) => void;
   setVolume: (vol: number) => Promise<void>;
+  setCrossfadeDuration: (seconds: number) => Promise<void>;
+  setGaplessEnabled: (enabled: boolean) => Promise<void>;
   openFullPlayer: () => void;
   closeFullPlayer: () => void;
   dismissPlayer: () => Promise<void>;
@@ -176,6 +180,8 @@ const STORAGE_KEY_LIKES = 'deluxe_liked_songs_v1';
 const STORAGE_KEY_PROFILE = 'deluxe_acoustic_profile_v1';
 const STORAGE_KEY_VOLUME = 'deluxe_audio_volume_v1';
 const STORAGE_KEY_LAST_PLAYBACK = 'shorty_last_playback_state_v1';
+const STORAGE_KEY_CROSSFADE = 'shorty_crossfade_duration_v1';
+const STORAGE_KEY_GAPLESS = 'shorty_gapless_enabled_v1';
 
 /**
  * Converts a linear volume input [0, 1] to a psychoacoustic perceptual volume curve.
@@ -333,6 +339,26 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const volumeRef = useRef<number>(volume);
   const currentProfileRef = useRef<AudioAcousticProfile>(currentProfile);
 
+  // Crossfade & Gapless Transition settings
+  const [crossfadeDuration, setCrossfadeDurationState] = useState<number>(5); // 0 (off), 3, 5, 8, 12 seconds
+  const [gaplessEnabled, setGaplessEnabledState] = useState<boolean>(true);
+  const crossfadeDurationRef = useRef<number>(5);
+  const gaplessEnabledRef = useRef<boolean>(true);
+  const hasPreloadedNextTrackRef = useRef<boolean>(false);
+  const hasTriggeredTransitionRef = useRef<boolean>(false);
+
+  const setCrossfadeDuration = useCallback(async (seconds: number) => {
+    setCrossfadeDurationState(seconds);
+    crossfadeDurationRef.current = seconds;
+    await SafeStorage.setItem(STORAGE_KEY_CROSSFADE, seconds.toString());
+  }, []);
+
+  const setGaplessEnabled = useCallback(async (enabled: boolean) => {
+    setGaplessEnabledState(enabled);
+    gaplessEnabledRef.current = enabled;
+    await SafeStorage.setItem(STORAGE_KEY_GAPLESS, enabled ? 'true' : 'false');
+  }, []);
+
   // App state ref to pause rapid UI state renders when screen is off / in background
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -488,6 +514,29 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               applyPlayerAcoustics(playerRef.current, currentProfileRef.current.id, effective);
             }
           }
+        }
+      })
+      .catch(() => { });
+
+    // Hydrate crossfade & gapless settings
+    SafeStorage.getItem(STORAGE_KEY_CROSSFADE)
+      .then((val) => {
+        if (val !== null) {
+          const parsed = parseInt(val, 10);
+          if (!isNaN(parsed) && [0, 3, 5, 8, 12].includes(parsed)) {
+            setCrossfadeDurationState(parsed);
+            crossfadeDurationRef.current = parsed;
+          }
+        }
+      })
+      .catch(() => { });
+
+    SafeStorage.getItem(STORAGE_KEY_GAPLESS)
+      .then((val) => {
+        if (val !== null) {
+          const enabled = val === 'true';
+          setGaplessEnabledState(enabled);
+          gaplessEnabledRef.current = enabled;
         }
       })
       .catch(() => { });
@@ -650,7 +699,47 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return;
     }
-    nextSong();
+    nextSongRef.current?.();
+  }, []);
+
+  const getUpcomingTrackCandidate = useCallback((): Song | null => {
+    const activeUserQueue = userQueueRef.current;
+    if (activeUserQueue.length > 0) return activeUserQueue[0];
+
+    const activeQueue = queueRef.current;
+    const currentActiveSong = currentSongRef.current;
+    if (!currentActiveSong || activeQueue.length === 0) return null;
+
+    if (shuffleRef.current && activeQueue.length > 1) {
+      const remaining = activeQueue.filter((s) => s.id !== currentActiveSong.id);
+      return remaining.length > 0 ? remaining[0] : null;
+    }
+
+    const currentIndex = activeQueue.findIndex((s) => s.id === currentActiveSong.id);
+    if (currentIndex !== -1 && currentIndex < activeQueue.length - 1) {
+      return activeQueue[currentIndex + 1];
+    } else if (repeatModeRef.current === 'all' && activeQueue.length > 0) {
+      return activeQueue[0];
+    }
+    return null;
+  }, []);
+
+  const rampVolumeIn = useCallback((targetPlayer: AudioPlayer) => {
+    const currentVol = volumeRef.current;
+    const activeProfileId = currentProfileRef.current.id;
+    if (crossfadeDurationRef.current > 0) {
+      applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol * 0.35);
+      const steps = [0.65, 0.85, 1.0];
+      steps.forEach((step, idx) => {
+        setTimeout(() => {
+          if (playerRef.current === targetPlayer && isPlayingRef.current) {
+            applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol * step);
+          }
+        }, (idx + 1) * 300);
+      });
+    } else {
+      applyPlayerAcoustics(targetPlayer, activeProfileId, currentVol);
+    }
   }, []);
 
   const loadAndPlayTrack = async (
@@ -661,6 +750,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Increment generation counter — any in-flight async from a previous call
     // will see a stale generation and abort before touching the player.
     const gen = ++playbackGenRef.current;
+
+    // Reset crossfade and preload transition flags for this new track
+    hasPreloadedNextTrackRef.current = false;
+    hasTriggeredTransitionRef.current = false;
 
     // Record previously playing track into history before switching if it had playback
     const outgoingSong = currentSongRef.current;
@@ -710,7 +803,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           lastReportedPositionRef.current = initialPositionSeconds;
           playerRef.current.replace({ uri: playableUrl });
           _activeAudioPlayer = playerRef.current;
-          applyPlayerAcoustics(playerRef.current, currentProfileRef.current.id, volumeRef.current);
+          rampVolumeIn(playerRef.current);
 
           syncLockScreenControls(playerRef.current, song);
 
@@ -758,7 +851,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       playerRef.current = player;
       _activeAudioPlayer = player;
-      applyPlayerAcoustics(player, currentProfileRef.current.id, volumeRef.current);
+      rampVolumeIn(player);
 
       syncLockScreenControls(player, song);
 
@@ -825,9 +918,46 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           persistPlaybackState(false);
         }
 
+        const songDuration = status.duration || durationRef.current || 0;
+        const timeLeft = songDuration > 0 ? songDuration - currentPos : 999;
+
+        // 1. SMART GAPLESS PRE-BUFFER (5-6s early before track end)
+        if (gaplessEnabledRef.current && status.playing && timeLeft <= 6 && timeLeft > 0) {
+          if (!hasPreloadedNextTrackRef.current) {
+            hasPreloadedNextTrackRef.current = true;
+            const candidate = getUpcomingTrackCandidate();
+            if (candidate) {
+              prefetchStreamUrl(candidate);
+            }
+          }
+        }
+
+        // 2. SMART CROSSFADE VOLUME SHAPING & HANDOVER
+        const crossfadeSec = crossfadeDurationRef.current;
+        if (crossfadeSec > 0 && status.playing && songDuration > crossfadeSec + 2) {
+          if (timeLeft <= crossfadeSec && timeLeft > 0.4) {
+            // Smoothly ramp down outgoing player volume
+            const fadeRatio = Math.max(0.05, Math.min(1.0, timeLeft / crossfadeSec));
+            applyPlayerAcoustics(player, currentProfileRef.current.id, volumeRef.current * fadeRatio);
+          } else if (timeLeft > crossfadeSec + 1 && player.volume < volumeRef.current * 0.95) {
+            // Restore full volume if user scrubbed backwards
+            applyPlayerAcoustics(player, currentProfileRef.current.id, volumeRef.current);
+            hasTriggeredTransitionRef.current = false;
+          }
+
+          if (timeLeft <= 0.4 && !hasTriggeredTransitionRef.current) {
+            hasTriggeredTransitionRef.current = true;
+            SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
+            handleTrackEnd();
+          }
+        }
+
         if (status.didJustFinish && !status.loop) {
-          SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
-          handleTrackEnd();
+          if (!hasTriggeredTransitionRef.current) {
+            hasTriggeredTransitionRef.current = true;
+            SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
+            handleTrackEnd();
+          }
         }
       });
 
@@ -1308,6 +1438,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isLyricsOpen,
     isQueueModalOpen,
     autoplayEnabled,
+    crossfadeDuration,
+    gaplessEnabled,
     playSong,
     togglePlay,
     pause,
@@ -1321,6 +1453,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isLiked,
     setAcousticProfile,
     setVolume,
+    setCrossfadeDuration,
+    setGaplessEnabled,
     openFullPlayer,
     closeFullPlayer,
     dismissPlayer,
@@ -1338,7 +1472,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }), [
     currentSong, isPlaying, isLoading, queue, userQueue, history, shuffle,
     repeatMode, currentProfile, volume, likedSongIds, likedSongsList, isLyricsOpen,
-    isQueueModalOpen, autoplayEnabled, addToUserQueue, playNext, removeFromUserQueue,
+    isQueueModalOpen, autoplayEnabled, crossfadeDuration, gaplessEnabled,
+    setCrossfadeDuration, setGaplessEnabled,
+    addToUserQueue, playNext, removeFromUserQueue,
     moveInUserQueue, clearUserQueue, openQueueModal, closeQueueModal, toggleAutoplay,
   ]);
 

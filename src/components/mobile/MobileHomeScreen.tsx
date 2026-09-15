@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoInternetView } from '../common/NoInternetView';
 import { GreetingHeader } from '../feed/GreetingHeader';
+import { QuickAccessGrid } from '../feed/QuickAccessGrid';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
 
@@ -291,8 +292,20 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = ({ onOpenSettin
   const keyExtractor = useCallback((item: ChartSectionConfig) => item.id, []);
 
   const renderHeader = useCallback(
-    () => <GreetingHeader onPressSettings={onOpenSettings} />,
-    [onOpenSettings]
+    () => (
+      <>
+        <GreetingHeader onPressSettings={onOpenSettings} />
+        <QuickAccessGrid
+          songs={
+            sectionSongs['hindi_lossless'] ||
+            sectionSongs['punjabi_lossless'] ||
+            sectionSongs['english_lossless'] ||
+            []
+          }
+        />
+      </>
+    ),
+    [onOpenSettings, sectionSongs]
   );
 
   return (

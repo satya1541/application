@@ -72,7 +72,9 @@
         }
       ],
       "./plugins/withFilteredFonts.js",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-image",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

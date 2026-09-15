@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppTheme, ACCENT_COLORS, THEME_MODES, ThemeMode, AccentColorId } from '@/contexts/ThemeContext';
+import { useAudio } from '@/contexts/AudioContext';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -29,6 +30,7 @@ const EMPTY_STATS: CacheStats = {
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const { themeMode, accentId, accent, bgHex, surfaceHex, setThemeMode, setAccentColor } = useAppTheme();
+  const { crossfadeDuration, gaplessEnabled, setCrossfadeDuration, setGaplessEnabled } = useAudio();
   const [stats, setStats] = useState<CacheStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
@@ -144,6 +146,80 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
               );
             })}
           </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* AUDIO PLAYBACK & TRANSITIONS */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>PLAYBACK & TRANSITIONS</Text>
+          <Text style={styles.sectionSubtitle}>
+            Seamlessly blend tracks and preload upcoming streams for an uninterrupted live DJ suite.
+          </Text>
+
+          {/* Crossfade Duration */}
+          <Text style={styles.subSectionTitle}>Smart Crossfade</Text>
+          <View style={styles.crossfadeContainer}>
+            {[0, 3, 5, 8, 12].map((seconds) => {
+              const isSelected = crossfadeDuration === seconds;
+              return (
+                <TouchableOpacity
+                  key={seconds}
+                  activeOpacity={0.7}
+                  onPress={() => setCrossfadeDuration(seconds)}
+                  style={[
+                    styles.crossfadeChip,
+                    {
+                      backgroundColor: isSelected ? accent.hex : surfaceHex,
+                      borderColor: isSelected ? accent.hex : 'rgba(255,255,255,0.12)',
+                    },
+                    isSelected && { borderWidth: 2, shadowColor: accent.hex, shadowOpacity: 0.35, shadowRadius: 6 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.crossfadeChipText,
+                      isSelected ? { color: '#000000', fontWeight: '800' } : { color: '#ffffff' },
+                    ]}
+                  >
+                    {seconds === 0 ? 'Off' : `${seconds}s`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.crossfadeDesc}>
+            {crossfadeDuration === 0
+              ? 'Standard playback with 0s audio overlap.'
+              : `Smoothly blends music with a ${crossfadeDuration}-second crossfade curve between songs.`}
+          </Text>
+
+          {/* Gapless Preload Toggle */}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => setGaplessEnabled(!gaplessEnabled)}
+            style={[styles.toggleCard, { backgroundColor: surfaceHex }]}
+          >
+            <View style={styles.toggleCardContent}>
+              <Text style={styles.toggleCardTitle}>Gapless Stream Preload</Text>
+              <Text style={styles.toggleCardDesc}>
+                Preloads upcoming stream 5s before current track ends to eliminate silence and buffer spin.
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.switchPill,
+                { backgroundColor: gaplessEnabled ? accent.hex : 'rgba(255,255,255,0.2)' },
+              ]}
+            >
+              <View
+                style={[
+                  styles.switchKnob,
+                  gaplessEnabled ? styles.switchKnobActive : styles.switchKnobInactive,
+                ]}
+              />
+            </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.divider} />
@@ -359,5 +435,77 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.08)',
     marginVertical: 28,
+  },
+  crossfadeContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  crossfadeChip: {
+    flex: 1,
+    height: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  crossfadeChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  crossfadeDesc: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  toggleCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  toggleCardContent: {
+    flex: 1,
+    paddingRight: 14,
+  },
+  toggleCardTitle: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  toggleCardDesc: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  switchPill: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    padding: 3,
+    justifyContent: 'center',
+  },
+  switchKnob: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  switchKnobActive: {
+    alignSelf: 'flex-end',
+  },
+  switchKnobInactive: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.7)',
   },
 });
