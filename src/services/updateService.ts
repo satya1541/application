@@ -1,14 +1,18 @@
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus } from 'react-native';
+import { APP_CONFIG } from '@/config/version';
 
 const LAST_SEEN_UPDATE_KEY = '@shorty_last_seen_update_id';
+const LAST_SEEN_VERSION_KEY = '@shorty_last_seen_version';
 
 export interface AppUpdateStatus {
   isChecking: boolean;
   isDownloading: boolean;
   isUpdateAvailable: boolean;
   isUpdatePending: boolean; // Downloaded and ready to apply
+  displayVersion: string;
+  releaseName: string;
   currentUpdateId: string | null;
   shortUpdateId: string;
   isEmbedded: boolean;
@@ -26,11 +30,13 @@ let currentStatus: AppUpdateStatus = {
   isDownloading: false,
   isUpdateAvailable: false,
   isUpdatePending: false,
+  displayVersion: APP_CONFIG.otaVersion,
+  releaseName: APP_CONFIG.releaseName,
   currentUpdateId: Updates.updateId || null,
   shortUpdateId: Updates.updateId ? Updates.updateId.substring(0, 8) : 'Embedded',
   isEmbedded: Updates.isEmbeddedLaunch ?? true,
-  channel: Updates.channel || 'preview',
-  runtimeVersion: Updates.runtimeVersion || '4.0',
+  channel: Updates.channel || APP_CONFIG.channel,
+  runtimeVersion: Updates.runtimeVersion || APP_CONFIG.baseVersion,
   lastCheckedAt: null,
   recentlyUpdated: false,
 };
@@ -58,22 +64,28 @@ export function getUpdateStatus(): AppUpdateStatus {
  * 3. Listens for app coming to foreground
  */
 export async function initUpdateManager(): Promise<void> {
-  // 1. Detect if this is a newly applied update
+  // 1. Detect if this is a newly applied update (version bump or update ID change)
   try {
     const lastSeenId = await AsyncStorage.getItem(LAST_SEEN_UPDATE_KEY);
+    const lastSeenVersion = await AsyncStorage.getItem(LAST_SEEN_VERSION_KEY);
     const activeId = Updates.updateId;
+    const currentVersion = APP_CONFIG.otaVersion;
 
-    if (activeId && lastSeenId && activeId !== lastSeenId) {
-      // Just applied a new update!
+    const isNewUpdate =
+      (activeId && lastSeenId && activeId !== lastSeenId) ||
+      (lastSeenVersion && lastSeenVersion !== currentVersion);
+
+    if (isNewUpdate) {
       currentStatus = {
         ...currentStatus,
         recentlyUpdated: true,
-        currentUpdateId: activeId,
-        shortUpdateId: activeId.substring(0, 8),
+        displayVersion: currentVersion,
+        currentUpdateId: activeId || currentStatus.currentUpdateId,
+        shortUpdateId: activeId ? activeId.substring(0, 8) : currentVersion,
       };
       notifyListeners();
 
-      // Clear recentlyUpdated status after 7 seconds
+      // Clear recentlyUpdated celebration toast after 7 seconds
       setTimeout(() => {
         currentStatus.recentlyUpdated = false;
         notifyListeners();
@@ -83,6 +95,7 @@ export async function initUpdateManager(): Promise<void> {
     if (activeId) {
       await AsyncStorage.setItem(LAST_SEEN_UPDATE_KEY, activeId);
     }
+    await AsyncStorage.setItem(LAST_SEEN_VERSION_KEY, currentVersion);
   } catch (err) {
     console.warn('[UpdateManager] Error checking last update id:', err);
   }

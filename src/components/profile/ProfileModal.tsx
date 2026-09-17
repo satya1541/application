@@ -880,18 +880,16 @@ export const ProfileModal: React.FC = () => {
                 <Text style={styles.sectionTitle}>App Version & Updates</Text>
               </View>
               <View style={styles.activeChannelPill}>
-                <Text style={styles.activeChannelText}>v{updateStatus?.runtimeVersion || '4.0'}</Text>
+                <Text style={styles.activeChannelText}>v{updateStatus?.displayVersion || '4.0.1'}</Text>
               </View>
             </View>
 
             <View style={styles.updateCard}>
               <View style={styles.updateRow}>
                 <View style={styles.updateInfoCol}>
-                  <Text style={styles.updateInfoLabel}>Current Build</Text>
+                  <Text style={styles.updateInfoLabel}>Current Version</Text>
                   <Text style={styles.updateInfoValue}>
-                    {updateStatus?.isEmbedded
-                      ? 'Embedded (Original Build)'
-                      : `OTA: ${updateStatus?.shortUpdateId}`}
+                    v{updateStatus?.displayVersion || '4.0.1'} ({updateStatus?.releaseName || '2K/4K & Vivid'})
                   </Text>
                 </View>
 
