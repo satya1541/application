@@ -14,7 +14,6 @@ import { Song, Playlist, Artist } from '@/types/music';
 import { CanonicalAlbum, CanonicalArtist, AudioSourcePlatform } from '@/types/explore';
 import { SourceBadge } from '../common/SourceBadge';
 import { SongActionController } from '@/services/songActionController';
-import { useResponsive } from '@/hooks/useResponsive';
 
 const LOSSLESS_LOGO_WHITE = require('@/assets/images/lossless_white.png');
 const LOSSLESS_LOGO_BLACK = require('@/assets/images/lossless_black.png');
@@ -43,13 +42,12 @@ interface CarouselCardProps {
   showRank: boolean;
   isCurrentSong: boolean;
   isPlaying: boolean;
-  isTablet?: boolean;
   onPress: (item: any) => void;
 }
 
 // Highly optimized memoized card: skips re-rendering untouched cards when playback changes
 const CarouselCard = memo<CarouselCardProps>(
-  ({ item, index, type, showRank, isCurrentSong, isPlaying, isTablet, onPress }) => {
+  ({ item, index, type, showRank, isCurrentSong, isPlaying, onPress }) => {
     const isArtist = type === 'artist' || item.type === 'artist' || 'monthlyListeners' in item;
     const isAlbum = type === 'album' || item.type === 'album';
     const isSong = !isArtist && !isAlbum && (type === 'song' || 'streamUrl' in item || 'artist' in item);
@@ -86,11 +84,7 @@ const CarouselCard = memo<CarouselCardProps>(
 
     return (
       <TouchableOpacity
-        style={[
-          styles.card,
-          isArtist && styles.artistCard,
-          isTablet && (isArtist ? styles.tabletArtistCard : styles.tabletCard),
-        ]}
+        style={[styles.card, isArtist && styles.artistCard]}
         onPress={() => onPress(item)}
         onLongPress={() => {
           if (isSong) {
@@ -102,11 +96,7 @@ const CarouselCard = memo<CarouselCardProps>(
         <View style={styles.imageWrapper}>
           <ExpoImage
             source={{ uri: imageUri }}
-            style={[
-              styles.image,
-              isArtist && styles.artistImage,
-              isTablet && (isArtist ? styles.tabletArtistImage : styles.tabletImage),
-            ]}
+            style={[styles.image, isArtist && styles.artistImage]}
             contentFit="cover"
             transition={80}
             cachePolicy="memory-disk"
@@ -209,7 +199,6 @@ const CarouselCard = memo<CarouselCardProps>(
     if (next.isCurrentSong && prev.isPlaying !== next.isPlaying) return false;
     if (prev.showRank !== next.showRank) return false;
     if (prev.type !== next.type) return false;
-    if (prev.isTablet !== next.isTablet) return false;
     return true;
   }
 );
@@ -229,8 +218,6 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
   currentSongId,
   isPlaying = false,
 }) => {
-  const { isTablet, contentPadding } = useResponsive();
-
   const handleItemPress = useCallback(
     (item: any) => {
       if (type === 'artist' || item.type === 'artist' || 'monthlyListeners' in item) {
@@ -262,7 +249,7 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
     [type, items, onPressArtist, onPressAlbum, onPlaySong]
   );
 
-  const cardWidth = type === 'artist' ? (isTablet ? 140 : 126) + 14 : (isTablet ? 164 : 144) + 14;
+  const cardWidth = type === 'artist' ? 126 + 14 : 144 + 14;
   const getItemLayout = useCallback(
     (_: any, index: number) => ({
       length: cardWidth,
@@ -286,18 +273,17 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
         showRank={showRank}
         isCurrentSong={'streamUrl' in item && !!currentSongId && currentSongId === item.id}
         isPlaying={isPlaying}
-        isTablet={isTablet}
         onPress={handleItemPress}
       />
     ),
-    [type, showRank, currentSongId, isPlaying, isTablet, handleItemPress]
+    [type, showRank, currentSongId, isPlaying, handleItemPress]
   );
 
   // If loading with no items yet, render skeleton placeholder
   if (loading && (!items || items.length === 0)) {
     return (
       <View style={styles.section}>
-        <View style={[styles.header, { paddingHorizontal: contentPadding }]}>
+        <View style={styles.header}>
           <View style={styles.titleCol}>
             <Text style={styles.title}>{title}</Text>
             {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
@@ -327,10 +313,10 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
           )}
         </View>
 
-        <View style={[styles.skeletonContainer, { paddingHorizontal: contentPadding }]}>
+        <View style={styles.skeletonContainer}>
           {[0, 1, 2, 3].map((i) => (
-            <View key={`skel-${i}`} style={[styles.card, isTablet && styles.tabletCard]}>
-              <View style={[styles.image, isTablet && styles.tabletImage, styles.skeletonImage]}>
+            <View key={`skel-${i}`} style={styles.card}>
+              <View style={[styles.image, styles.skeletonImage]}>
                 <ActivityIndicator size="small" color="#444444" />
               </View>
               <View style={styles.skeletonTextLine} />
@@ -347,7 +333,7 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
   return (
     <View style={styles.section}>
       {/* Section Header with Independent [Lossless] [Opus] Toggle */}
-      <View style={[styles.header, { paddingHorizontal: contentPadding }]}>
+      <View style={styles.header}>
         <View style={styles.titleCol}>
           <Text style={styles.title}>{title}</Text>
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
@@ -411,7 +397,7 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
         data={items}
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.carouselContainer, { paddingHorizontal: contentPadding }]}
+        contentContainerStyle={styles.carouselContainer}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         getItemLayout={getItemLayout}
@@ -536,21 +522,6 @@ const styles = StyleSheet.create({
     height: 126,
     borderRadius: 63,
     backgroundColor: '#242424',
-  },
-  tabletCard: {
-    width: 164,
-  },
-  tabletArtistCard: {
-    width: 140,
-  },
-  tabletImage: {
-    width: 164,
-    height: 164,
-  },
-  tabletArtistImage: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
   },
   // Glowing Rank Badges
   rankBadge: {

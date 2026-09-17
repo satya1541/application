@@ -12,8 +12,8 @@ import { ProfileModal } from '@/components/profile/ProfileModal';
 import { MonthlyReplayController } from '@/components/profile/MonthlyReplayController';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initCacheLifecycle } from '@/services/cacheManager';
+import { lockPortraitAsync } from '@/services/orientationManager';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { initOrientationManager } from '@/services/orientationManager';
 import '../global.css';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -24,11 +24,10 @@ export default function RootLayout() {
       document.title = 'Shorty';
     }
     SplashScreen.hideAsync().catch(() => {});
+    lockPortraitAsync();
     const cleanupCache = initCacheLifecycle();
-    const cleanupOrientation = initOrientationManager();
     return () => {
       cleanupCache();
-      cleanupOrientation();
     };
   }, []);
 

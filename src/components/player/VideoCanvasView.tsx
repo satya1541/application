@@ -1,11 +1,18 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, StyleSheet, Dimensions, ActivityIndicator, Text } from 'react-native';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
+import { View, StyleSheet, Dimensions, ActivityIndicator, Text, TouchableOpacity, Platform } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { MaterialIcons } from '@expo/vector-icons';
 import {
   useAudioProgress,
   getExactAudioCurrentTime,
   registerAudioSeekListener,
 } from '@/contexts/AudioContext';
+import {
+  lockLandscapeAsync,
+  lockPortraitAsync,
+  addOrientationListener,
+} from '@/services/orientationManager';
+import { FullscreenVideoOverlay } from './FullscreenVideoOverlay';
 
 interface VideoCanvasViewProps {
   videoUrl: string;
@@ -40,6 +47,41 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
   const isSeekingRef = useRef<boolean>(false);
   const lastSeekTimeRef = useRef<number>(0);
   const seekSafetyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [cardRemountKey, setCardRemountKey] = useState<number>(0);
+
+  const handleEnterFullscreen = useCallback(async () => {
+    await lockLandscapeAsync();
+    setIsFullscreen(true);
+  }, []);
+
+  const handleExitFullscreen = useCallback(async () => {
+    await lockPortraitAsync();
+    setIsFullscreen(false);
+    setCardRemountKey((prev) => prev + 1);
+  }, []);
+
+  // Listen for device physical rotation while video tab is visible
+  useEffect(() => {
+    if (!isVisible) {
+      if (isFullscreen) {
+        setIsFullscreen(false);
+        lockPortraitAsync();
+      }
+      return;
+    }
+
+    const unsubscribe = addOrientationListener((isLand) => {
+      if (isLand && !isFullscreen) {
+        setIsFullscreen(true);
+      } else if (!isLand && isFullscreen) {
+        handleExitFullscreen();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [isVisible, isFullscreen, handleExitFullscreen]);
 
   // Configure high-performance source with browser-matching headers and caching
   const videoSource = useMemo(() => {
@@ -83,6 +125,24 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
       p.play();
     }
   });
+
+  // When returning from fullscreen to normal card player, re-sync time and ensure playback resumes
+  useEffect(() => {
+    if (cardRemountKey === 0 || !player || !isVisible) return;
+    const timer = setTimeout(() => {
+      try {
+        const audioTime = getExactAudioCurrentTime();
+        if (audioTime > 0) {
+          player.currentTime = audioTime;
+        }
+        if (isPlayingRef.current) {
+          player.play();
+        }
+      } catch {}
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [cardRemountKey, player, isVisible]);
 
   // 1. Direct Parallel Seek Listener:
   // When user drags scrubber, taps a timestamp, or skips, seekTo() fires this immediately (0ms).
@@ -269,21 +329,46 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
       ]}
       pointerEvents={isVisible ? 'auto' : 'none'}
     >
-      <VideoView
-        style={StyleSheet.absoluteFill}
-        player={player}
-        contentFit="cover"
-        nativeControls={false}
-      />
+      {/* Card VideoView: unmounted while in fullscreen so it cleanly remounts & re-attaches surface on return */}
+      {!isFullscreen && (
+        <VideoView
+          key={`card-video-${cardRemountKey}`}
+          style={StyleSheet.absoluteFill}
+          player={player}
+          contentFit="cover"
+          nativeControls={false}
+          surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+        />
+      )}
       {/* Only show initial loading spinner before first frame renders */}
       {!hasLoadedOnce && isVisible && (
         <View style={styles.bufferingOverlay}>
           <ActivityIndicator size="small" color="#ffffff" />
         </View>
       )}
-      <View style={styles.canvasBadge}>
-        <Text style={styles.canvasBadgeText}>VIDEO</Text>
+      {/* Bottom info & actions row */}
+      <View style={styles.bottomRow}>
+        <View style={styles.canvasBadge}>
+          <Text style={styles.canvasBadgeText}>VIDEO</Text>
+        </View>
+
+        {/* Fullscreen Expand Button (Four-corner expand bracket icon matching user image) */}
+        <TouchableOpacity
+          style={styles.fullscreenBtn}
+          onPress={handleEnterFullscreen}
+          activeOpacity={0.75}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialIcons name="fullscreen" size={22} color="#ffffff" />
+        </TouchableOpacity>
       </View>
+
+      {/* Fullscreen Video Overlay (YouTube-style landscape player) */}
+      <FullscreenVideoOverlay
+        player={player}
+        isVisible={isFullscreen}
+        onExitFullscreen={handleExitFullscreen}
+      />
     </View>
   );
 });
@@ -305,10 +390,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  canvasBadge: {
+  bottomRow: {
     position: 'absolute',
     bottom: 12,
+    left: 12,
     right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  canvasBadge: {
     backgroundColor: 'rgba(0,0,0,0.65)',
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -321,5 +412,15 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 1.2,
+  },
+  fullscreenBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
 });

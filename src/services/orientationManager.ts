@@ -2,92 +2,91 @@ import { Platform, Dimensions } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 /**
- * Checks whether the current runtime device qualifies as a tablet.
- * Uses Platform.isPad on iOS and shortest window dimension threshold (>= 600dp) on Android.
+ * Checks whether the current window dimensions indicate landscape mode.
  */
-export function isTabletDevice(): boolean {
-  if (Platform.OS === 'ios') {
-    return !!Platform.isPad;
-  }
+export function isLandscape(): boolean {
   const { width, height } = Dimensions.get('window');
-  const shortest = Math.min(width, height);
-  return shortest >= 600;
+  return width > height;
 }
 
 /**
- * Configures orientation based on device form-factor:
- * - Tablets: Auto-rotate unlocked (portrait, landscape-left, landscape-right, portrait-down)
- * - Phones: Locked to standard portrait for comfortable one-handed media browsing
- */
-export async function applyDeviceOrientationPolicy(): Promise<void> {
-  if (Platform.OS === 'web') return;
-
-  try {
-    if (isTabletDevice()) {
-      // Tablets auto-rotate freely with device posture and sensors
-      await ScreenOrientation.unlockAsync();
-    } else {
-      // Handheld phones remain locked to portrait
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-    }
-  } catch (err) {
-    // Non-fatal: some devices/emulators or split-screen modes may restrict orientation changes
-    console.warn('[OrientationManager] Could not update orientation lock:', err);
-  }
-}
-
-/**
- * Unlocks orientation dynamically (e.g. for fullscreen video or tablet mode).
+ * Unlocks orientation dynamically.
  */
 export async function unlockOrientationAsync(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
-    await ScreenOrientation.unlockAsync();
+    if (ScreenOrientation && typeof ScreenOrientation.unlockAsync === 'function') {
+      await ScreenOrientation.unlockAsync();
+    }
   } catch (err) {
     console.warn('[OrientationManager] unlockAsync failed:', err);
   }
 }
 
 /**
- * Locks orientation to portrait.
+ * Locks orientation to portrait (top-up).
  */
 export async function lockPortraitAsync(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
-    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    if (ScreenOrientation && typeof ScreenOrientation.lockAsync === 'function') {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    }
   } catch (err) {
     console.warn('[OrientationManager] lockPortraitAsync failed:', err);
   }
 }
 
 /**
- * Locks orientation to landscape.
+ * Locks orientation to landscape (allows rotating between left and right landscape).
  */
 export async function lockLandscapeAsync(): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
-    await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    if (ScreenOrientation && typeof ScreenOrientation.lockAsync === 'function') {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    }
   } catch (err) {
     console.warn('[OrientationManager] lockLandscapeAsync failed:', err);
   }
 }
 
 /**
- * Initializes orientation management with support for foldable devices:
- * When foldables expand/contract, re-evaluates the tablet threshold and applies policy.
+ * Subscribes to orientation changes, supporting both expo-screen-orientation native listener
+ * and React Native Dimensions fallback.
+ *
+ * @param callback Called with `true` when entering landscape, `false` when in portrait.
+ * @returns Unsubscribe cleanup function.
  */
-export function initOrientationManager(): () => void {
-  if (Platform.OS === 'web') return () => {};
+export function addOrientationListener(callback: (isLandscapeMode: boolean) => void): () => void {
+  let isCleanedUp = false;
+  let nativeSub: { remove: () => void } | null = null;
 
-  // Apply initial policy
-  applyDeviceOrientationPolicy();
+  // 1. Try native ScreenOrientation listener for immediate sensor response
+  if (Platform.OS !== 'web' && ScreenOrientation && typeof ScreenOrientation.addOrientationChangeListener === 'function') {
+    try {
+      nativeSub = ScreenOrientation.addOrientationChangeListener((event) => {
+        if (isCleanedUp) return;
+        const orient = event.orientationInfo.orientation;
+        const isLand =
+          orient === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||
+          orient === ScreenOrientation.Orientation.LANDSCAPE_RIGHT;
+        callback(isLand);
+      });
+    } catch (err) {
+      console.warn('[OrientationManager] Failed to attach native listener:', err);
+    }
+  }
 
-  // Listen to dimension changes (e.g. foldables unfolding into tablet mode or window resizing)
-  const subscription = Dimensions.addEventListener('change', () => {
-    applyDeviceOrientationPolicy();
+  // 2. Also listen to Dimensions change as universal fallback
+  const dimSub = Dimensions.addEventListener('change', ({ window }) => {
+    if (isCleanedUp) return;
+    callback(window.width > window.height);
   });
 
   return () => {
-    subscription?.remove();
+    isCleanedUp = true;
+    nativeSub?.remove?.();
+    dimSub?.remove?.();
   };
 }

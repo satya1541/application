@@ -15,7 +15,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Song } from '@/types/music';
 import { useAudio } from '@/contexts/AudioContext';
 import { SongItemRow } from '../common/SongItemRow';
-import { useResponsive } from '@/hooks/useResponsive';
 
 interface LikedSongsModalProps {
   visible: boolean;
@@ -25,7 +24,6 @@ interface LikedSongsModalProps {
 export const LikedSongsModal: React.FC<LikedSongsModalProps> = ({ visible, onClose }) => {
   const insets = useSafeAreaInsets();
   const { likedSongsList, playSong } = useAudio();
-  const { isTablet, maxModalWidth } = useResponsive();
   const [searchQuery, setSearchQuery] = useState('');
 
   const filteredSongs = useMemo(() => {
@@ -54,35 +52,11 @@ export const LikedSongsModal: React.FC<LikedSongsModalProps> = ({ visible, onClo
     <Modal
       visible={visible}
       animationType="slide"
-      transparent={isTablet}
+      transparent={false}
       onRequestClose={onClose}
     >
-      <View style={[styles.rootContainer, isTablet && styles.tabletBackdrop]}>
-        {isTablet && (
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={onClose}
-          />
-        )}
-        <View
-          style={[
-            styles.screen,
-            { paddingTop: insets.top, paddingBottom: insets.bottom },
-            isTablet && {
-              maxWidth: maxModalWidth,
-              width: '92%',
-              alignSelf: 'center',
-              borderRadius: 24,
-              maxHeight: '90%',
-              marginVertical: '5%',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: 'rgba(255, 255, 255, 0.1)',
-            },
-          ]}
-        >
-          <StatusBar barStyle="light-content" backgroundColor="#0D0D0D" />
+      <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#0D0D0D" />
 
         {/* Top Nav */}
         <View style={styles.navBar}>
@@ -192,22 +166,12 @@ export const LikedSongsModal: React.FC<LikedSongsModalProps> = ({ visible, onClo
             </View>
           )}
         </ScrollView>
-        </View>
       </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  rootContainer: {
-    flex: 1,
-    backgroundColor: '#0D0D0D',
-  },
-  tabletBackdrop: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   screen: {
     flex: 1,
     backgroundColor: '#0D0D0D',

@@ -7,14 +7,16 @@ import {
   Platform,
   Animated,
   PanResponder,
+  Dimensions,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio, useAudioProgress } from '@/contexts/AudioContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { triggerOpenFullPlayer } from '@/services/playerSheetController';
+
+const { width } = Dimensions.get('window');
 
 /** Isolated progress bar that subscribes to useAudioProgress().
  *  Only this tiny 2px strip re-renders every 500ms — not the full MiniPlayer. */
@@ -55,7 +57,6 @@ interface MiniPlayerProps {
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
   const { surfaceHex, accent, themeMode } = useAppTheme();
-  const { isTablet, isLandscape, width: screenWidth } = useResponsive();
   const {
     currentSong,
     isPlaying,
@@ -66,12 +67,6 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
     openFullPlayer,
     dismissPlayer,
     openQueueModal,
-    isLiked,
-    toggleLike,
-    shuffle,
-    toggleShuffle,
-    repeatMode,
-    toggleRepeat,
   } = useAudio();
 
   const translateX = useRef(new Animated.Value(0)).current;
@@ -123,7 +118,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
           isDismissing.current = true;
           Animated.parallel([
             Animated.timing(translateX, {
-              toValue: screenWidth,
+              toValue: width,
               duration: 160,
               useNativeDriver: true,
             }),
@@ -141,7 +136,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
           isDismissing.current = true;
           Animated.parallel([
             Animated.timing(translateX, {
-              toValue: -screenWidth,
+              toValue: -width,
               duration: 160,
               useNativeDriver: true,
             }),
@@ -182,7 +177,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
         useNativeDriver: true,
       }),
       Animated.timing(translateX, {
-        toValue: screenWidth * 0.35,
+        toValue: width * 0.35,
         duration: 140,
         useNativeDriver: true,
       }),
@@ -191,15 +186,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
     });
   };
 
-  const isCurrentSongLiked = currentSong ? isLiked(currentSong.id) : false;
-
   // Directly flush with the bottom navigation bar (iOS: 84, Android: 64) with ZERO gap
   const computedBottom =
     bottomOffset !== undefined ? bottomOffset : Platform.OS === 'ios' ? 84 : 64;
 
   // Fade out slightly as user drags left or right, multiplied by fadeAnim
   const swipeOpacity = translateX.interpolate({
-    inputRange: [-screenWidth * 0.7, 0, screenWidth * 0.7],
+    inputRange: [-width * 0.7, 0, width * 0.7],
     outputRange: [0.15, 1, 0.15],
     extrapolate: 'clamp',
   });
@@ -224,13 +217,12 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
             backgroundColor: themeMode === 'oled' ? '#080808' : surfaceHex,
             borderTopColor: themeMode === 'oled' ? '#181818' : 'rgba(255, 255, 255, 0.12)',
           },
-          isTablet && styles.tabletContainer,
         ]}
       >
         {/* Top 2px Progress bar - isolated to prevent 500ms re-renders */}
         <MiniPlayerProgressBar />
 
-        <View style={[styles.contentRow, isTablet && styles.tabletContentRow]}>
+        <View style={styles.contentRow}>
           {/* Main Tappable Area: Left Thumbnail + Center Info */}
           <TouchableOpacity
             style={styles.mainTouchArea}
@@ -239,7 +231,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
             onPress={handlePressMiniPlayer}
           >
             {/* Left Thumbnail */}
-            <View style={[styles.coverWrapper, isTablet && styles.tabletCoverWrapper]}>
+            <View style={styles.coverWrapper}>
               <ExpoImage
                 source={{ uri: getSafeCoverArt(currentSong.cover, currentSong.id) }}
                 style={[
@@ -254,54 +246,17 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
 
             {/* Center Info */}
             <View style={styles.infoContainer}>
-              <Text style={[styles.title, isTablet && styles.tabletTitle]} numberOfLines={1}>
+              <Text style={styles.title} numberOfLines={1}>
                 {currentSong.name}
               </Text>
-              <Text style={[styles.artist, isTablet && styles.tabletArtist]} numberOfLines={1}>
+              <Text style={styles.artist} numberOfLines={1}>
                 {currentSong.artist}
               </Text>
             </View>
           </TouchableOpacity>
 
-          {/* Right Action Buttons */}
+          {/* Right Action Buttons (Previous, Play/Pause, Next, Like) */}
           <View style={styles.actions}>
-            {/* Tablet-Only: Like Button */}
-            {isTablet && (
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  if (currentSong) toggleLike(currentSong.id);
-                }}
-                activeOpacity={0.7}
-                hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-              >
-                <Ionicons
-                  name={isCurrentSongLiked ? 'heart' : 'heart-outline'}
-                  size={20}
-                  color={isCurrentSongLiked ? '#FF3366' : '#cccccc'}
-                />
-              </TouchableOpacity>
-            )}
-
-            {/* Tablet-Only: Shuffle Button */}
-            {isTablet && (
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  toggleShuffle();
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name="shuffle"
-                  size={19}
-                  color={shuffle ? accent.hex : '#888888'}
-                />
-              </TouchableOpacity>
-            )}
-
             {/* Previous Track */}
             <TouchableOpacity
               style={styles.actionBtn}
@@ -345,24 +300,6 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
             >
               <Ionicons name="play-skip-forward" size={20} color="#ffffff" />
             </TouchableOpacity>
-
-            {/* Tablet Landscape-Only: Repeat Button */}
-            {isTablet && isLandscape && (
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={(e) => {
-                  e.stopPropagation?.();
-                  toggleRepeat();
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons
-                  name={repeatMode === 'one' ? 'repeat-outline' : 'repeat'}
-                  size={19}
-                  color={repeatMode !== 'off' ? accent.hex : '#888888'}
-                />
-              </TouchableOpacity>
-            )}
 
             {/* Queue Button */}
             <TouchableOpacity
@@ -476,25 +413,5 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     padding: 6,
-  },
-  tabletContainer: {
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    borderTopWidth: 1,
-  },
-  tabletContentRow: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  tabletCoverWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 7,
-  },
-  tabletTitle: {
-    fontSize: 14,
-  },
-  tabletArtist: {
-    fontSize: 12.5,
   },
 });

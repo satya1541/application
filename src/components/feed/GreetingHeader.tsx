@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
 
 interface GreetingHeaderProps {
   userName?: string;
@@ -20,7 +19,6 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
 }) => {
   const { accent, bgHex } = useAppTheme();
   const { profile, isGuest, openProfileModal, openAuthModal } = useAuth();
-  const { isTablet, contentPadding } = useResponsive();
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -40,14 +38,14 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
     .join('') || 'U';
 
   return (
-    <View style={[styles.container, { paddingHorizontal: contentPadding }]}>
+    <View style={styles.container}>
       <View style={styles.topRow}>
         <TouchableOpacity
           style={styles.greetingContainer}
           onPress={handleProfilePress}
           activeOpacity={0.8}
         >
-          <Text style={[styles.greeting, isTablet && styles.tabletGreeting]}>
+          <Text style={styles.greeting}>
             {getGreeting()}
             {effectiveName ? <Text style={styles.userName}>, {effectiveName}</Text> : null}
           </Text>
@@ -125,9 +123,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#ffffff',
     letterSpacing: -0.4,
-  },
-  tabletGreeting: {
-    fontSize: 28,
   },
   userName: {
     color: '#ffffff',

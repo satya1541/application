@@ -284,7 +284,53 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
       return null;
     }
 
-    // 1. Primary: 720p 60fps MP4 (itag 298, H.264 / avc1 hardware accelerated, ultra smooth 60fps)
+    // 1. Primary: 1080p 60fps MP4 (itag 299, H.264 / avc1 hardware accelerated, ultra smooth 60fps)
+    const p1080p60H264 = videoMp4Formats.find(
+      (f: any) =>
+        f.itag === 299 ||
+        ((f.fps === 60 || f?.qualityLabel?.includes('60')) &&
+          f?.qualityLabel?.includes('1080') &&
+          f?.mimeType?.includes('avc1'))
+    );
+    if (p1080p60H264?.url) {
+      setCachedVideoUrl(cleanId, p1080p60H264.url);
+      return p1080p60H264.url;
+    }
+
+    // 2. Any 1080p 60fps format (e.g. itag 399 or qualityLabel 1080p60)
+    const p1080p60Any = videoMp4Formats.find(
+      (f: any) =>
+        f.itag === 299 ||
+        f.itag === 399 ||
+        (f.fps === 60 && f?.qualityLabel?.includes('1080')) ||
+        f?.qualityLabel?.includes('1080p60')
+    );
+    if (p1080p60Any?.url) {
+      setCachedVideoUrl(cleanId, p1080p60Any.url);
+      return p1080p60Any.url;
+    }
+
+    // 3. Standard 1080p (30fps) MP4 H.264 (itag 137 or qualityLabel 1080)
+    const p1080H264 = videoMp4Formats.find(
+      (f: any) =>
+        (f.itag === 137 || f?.qualityLabel?.includes('1080')) &&
+        f?.mimeType?.includes('avc1')
+    );
+    if (p1080H264?.url) {
+      setCachedVideoUrl(cleanId, p1080H264.url);
+      return p1080H264.url;
+    }
+
+    // 4. Any 1080p format
+    const p1080Any = videoMp4Formats.find(
+      (f: any) => f?.qualityLabel?.includes('1080')
+    );
+    if (p1080Any?.url) {
+      setCachedVideoUrl(cleanId, p1080Any.url);
+      return p1080Any.url;
+    }
+
+    // 5. Fallback: 720p 60fps MP4 (itag 298, H.264 / avc1 hardware accelerated, ultra smooth 60fps)
     const p720p60H264 = videoMp4Formats.find(
       (f: any) =>
         f.itag === 298 ||
@@ -297,7 +343,7 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
       return p720p60H264.url;
     }
 
-    // 2. Fallback: Any 720p 60fps format (e.g. itag 398 or qualityLabel 720p60)
+    // 6. Fallback: Any 720p 60fps format (e.g. itag 398 or qualityLabel 720p60)
     const p720p60Any = videoMp4Formats.find(
       (f: any) =>
         f.itag === 298 ||
@@ -310,7 +356,7 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
       return p720p60Any.url;
     }
 
-    // 3. Fallback: Standard 720p (30fps) MP4 H.264 (itag 136 or qualityLabel 720)
+    // 7. Fallback: Standard 720p (30fps) MP4 H.264 (itag 136 or qualityLabel 720)
     const p720H264 = videoMp4Formats.find(
       (f: any) =>
         (f.itag === 136 || f?.qualityLabel?.includes('720')) &&
@@ -321,7 +367,7 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
       return p720H264.url;
     }
 
-    // 4. Fallback: Any 720p format
+    // 8. Fallback: Any 720p format
     const p720Any = videoMp4Formats.find(
       (f: any) => f?.qualityLabel?.includes('720')
     );
@@ -330,16 +376,7 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
       return p720Any.url;
     }
 
-    // 5. Fallback: 1080p if available
-    const p1080 = videoMp4Formats.find(
-      (f: any) => f?.qualityLabel?.includes('1080')
-    );
-    if (p1080?.url) {
-      setCachedVideoUrl(cleanId, p1080.url);
-      return p1080.url;
-    }
-
-    // 6. Fallback: 480p / 360p
+    // 9. Fallback: 480p / 360p
     const p480 = videoMp4Formats.find(
       (f: any) => f.itag === 135 || f?.qualityLabel?.includes('480')
     );

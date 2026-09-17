@@ -29,7 +29,9 @@ import { AmbientPlayerBackground, getPaletteForSong } from './AmbientPlayerBackg
 import { getHighResCoverArt } from '@/services/imageUtils';
 import { registerPlayerSheetListeners } from '@/services/playerSheetController';
 import { resolveDirectYouTubeVideoStream } from '@/services/youtubeStreamResolver';
-import { useResponsive } from '@/hooks/useResponsive';
+import { lockPortraitAsync } from '@/services/orientationManager';
+
+const { width, height } = Dimensions.get('window');
 
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
@@ -156,9 +158,8 @@ export const FullPlayerModal: React.FC = () => {
   const isLossless = currentSong?.quality === 'Lossless' || currentSong?.source === 'jiosaavn';
   const hasVideoAvailable = Boolean(canvasVideoUrl);
 
-  const { isTablet, isLandscape, height: windowHeight } = useResponsive();
-  const screenHeight = windowHeight || 800;
-  const isTabletLandscape = isTablet && isLandscape;
+  const { height: windowHeight } = useWindowDimensions();
+  const screenHeight = windowHeight || height || 800;
 
   // Vertical drag & glide animation for instant modal opening & swipe-down collapse
   const translateY = useRef(new Animated.Value(screenHeight)).current;
@@ -204,6 +205,7 @@ export const FullPlayerModal: React.FC = () => {
       velocity: initialVelocity,
       useNativeDriver: true,
     }).start(() => {
+      lockPortraitAsync();
       closeFullPlayer();
       setVisible(false);
       isClosingRef.current = false;
@@ -355,14 +357,6 @@ export const FullPlayerModal: React.FC = () => {
       <Animated.View
         style={[
           styles.modalWrapper,
-          isTablet && {
-            maxWidth: isLandscape ? 1080 : 620,
-            width: '94%',
-            alignSelf: 'center',
-            borderRadius: 28,
-            maxHeight: isLandscape ? '94%' : '95%',
-            marginBottom: '2%',
-          },
           {
             transform: [
               { translateY },
@@ -456,381 +450,189 @@ export const FullPlayerModal: React.FC = () => {
               </View>
             </View>
 
-            {/* Center Main Content Area: Responsive Split-Pane in Landscape vs Single Column in Portrait */}
-            {isTabletLandscape ? (
-              <View style={styles.landscapeContainer}>
-                {/* Left Pane: 3D Deck Carousel OR Video Canvas */}
-                <View style={styles.landscapeLeftPane}>
-                  <View style={styles.deckOrCanvasContainer}>
-                    {currentSong && (
-                      <View
-                        style={[
-                          styles.deckCarouselWrapper,
-                          showCanvas && styles.deckCarouselHidden,
-                        ]}
-                        pointerEvents={showCanvas ? 'none' : 'auto'}
-                      >
-                        <Deck3DCarousel
-                          currentSong={currentSong}
-                          upcomingQueue={upcomingQueue}
-                          historyStack={history}
-                          onSelectSong={(song) => playSong(song)}
-                        />
-                      </View>
-                    )}
-
-                    {!!canvasVideoUrl && (
-                      <View
-                        style={[
-                          styles.canvasWrapper,
-                          !showCanvas && styles.canvasHidden,
-                        ]}
-                        pointerEvents={showCanvas ? 'auto' : 'none'}
-                      >
-                        <VideoCanvasView
-                          videoUrl={canvasVideoUrl}
-                          isPlaying={isPlaying}
-                          isVisible={showCanvas}
-                        />
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {/* Right Pane: Lyrics OR (Metadata + Scrubber + Controls) */}
-                <View style={styles.landscapeRightPane}>
-                  {showLyrics ? (
-                    <View style={styles.landscapeLyricsBox}>
-                      <LyricsView />
-                    </View>
-                  ) : (
-                    <View style={styles.metaRow}>
-                      <View style={styles.titleWrapper}>
-                        <Text style={styles.songTitle} numberOfLines={1}>
-                          {currentSong?.name || ''}
-                        </Text>
-                        <View style={styles.artistSourceRow}>
-                          <Text style={styles.artistName} numberOfLines={1}>
-                            {currentSong?.artist || ''}
-                          </Text>
-                          {currentSong?.source && (
-                            <SourceBadge
-                              source={currentSong.source}
-                              quality={currentSong.quality}
-                              size="medium"
-                            />
-                          )}
-                        </View>
-                      </View>
-
-                      <TouchableOpacity
-                        onPress={() => currentSong && toggleLike(currentSong.id)}
-                        style={styles.likeBtn}
-                      >
-                        <Ionicons
-                          name={liked ? 'heart' : 'heart-outline'}
-                          size={26}
-                          color={liked ? '#FF3366' : '#ffffff'}
-                        />
-                      </TouchableOpacity>
+            {/* Center Main: 3D Deck Carousel OR Synced Lyrics View OR Video Canvas */}
+            <View style={styles.centerContainer}>
+              {showLyrics ? (
+                <LyricsView />
+              ) : (
+                <View style={styles.deckOrCanvasContainer}>
+                  {currentSong && (
+                    <View
+                      style={[
+                        styles.deckCarouselWrapper,
+                        showCanvas && styles.deckCarouselHidden,
+                      ]}
+                      pointerEvents={showCanvas ? 'none' : 'auto'}
+                    >
+                      <Deck3DCarousel
+                        currentSong={currentSong}
+                        upcomingQueue={upcomingQueue}
+                        historyStack={history}
+                        onSelectSong={(song) => playSong(song)}
+                      />
                     </View>
                   )}
 
-                  {/* Scrubber Progress Slider */}
-                  <PlayerScrubber primaryColor={palette.primary} seekTo={seekTo} />
-
-                  {/* Primary Transport Controls */}
-                  <View style={styles.controlsRow}>
-                    <TouchableOpacity
-                      onPress={toggleShuffle}
-                      style={styles.auxBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name="shuffle"
-                        size={22}
-                        color={shuffle ? palette.primary : 'rgba(255,255,255,0.4)'}
-                      />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={prevSong}
-                      style={styles.skipBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="play-skip-back" size={30} color="#ffffff" />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={togglePlay}
+                  {/* Keep Canvas mounted to preserve player state and instant time sync */}
+                  {!!canvasVideoUrl && (
+                    <View
                       style={[
-                        styles.playPauseFab,
-                        {
-                          backgroundColor: palette.primary,
-                          shadowColor: palette.primary,
-                        },
+                        styles.canvasWrapper,
+                        !showCanvas && styles.canvasHidden,
                       ]}
-                      activeOpacity={0.8}
+                      pointerEvents={showCanvas ? 'auto' : 'none'}
                     >
-                      {isLoading ? (
-                        <Ionicons name="sync" size={32} color="#000000" />
-                      ) : (
-                        <Ionicons
-                          name={isPlaying ? 'pause' : 'play'}
-                          size={36}
-                          color="#000000"
-                        />
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={nextSong}
-                      style={styles.skipBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="play-skip-forward" size={30} color="#ffffff" />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={toggleRepeat}
-                      style={styles.auxBtn}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={repeatMode === 'one' ? 'repeat-outline' : 'repeat'}
-                        size={22}
-                        color={
-                          repeatMode !== 'off' ? palette.primary : 'rgba(255,255,255,0.4)'
-                        }
+                      <VideoCanvasView
+                        videoUrl={canvasVideoUrl}
+                        isPlaying={isPlaying}
+                        isVisible={showCanvas}
                       />
-                    </TouchableOpacity>
-                  </View>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
 
-                  {/* Bottom Utilities */}
-                  <View style={styles.bottomUtilitiesRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.utilityPill,
-                        showLyrics && { backgroundColor: palette.primary, borderColor: palette.primary },
-                      ]}
-                      onPress={() => {
-                        setShowLyrics((prev) => !prev);
-                        if (showCanvas) setShowCanvas(false);
-                      }}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name="mic-outline"
-                        size={16}
-                        color={showLyrics ? '#000000' : '#ffffff'}
-                      />
-                      <Text
-                        style={[
-                          styles.utilityText,
-                          showLyrics && styles.utilityTextActive,
-                        ]}
-                      >
-                        Lyrics
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.utilityPill}
-                      onPress={() => setShowQueue(true)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="list-outline" size={16} color="#ffffff" />
-                      <Text style={styles.utilityText}>Queue ({upcomingQueue.length})</Text>
-                    </TouchableOpacity>
-                  </View>
+            {/* Song Metadata Row */}
+            <View style={styles.metaRow}>
+              <View style={styles.titleWrapper}>
+                <Text style={styles.songTitle} numberOfLines={1}>
+                  {currentSong?.name || ''}
+                </Text>
+                <View style={styles.artistSourceRow}>
+                  <Text style={styles.artistName} numberOfLines={1}>
+                    {currentSong?.artist || ''}
+                  </Text>
+                  {currentSong?.source && (
+                    <SourceBadge
+                      source={currentSong.source}
+                      quality={currentSong.quality}
+                      size="medium"
+                    />
+                  )}
                 </View>
               </View>
-            ) : (
-              <>
-                {/* Center Main: 3D Deck Carousel OR Synced Lyrics View OR Video Canvas */}
-                <View style={styles.centerContainer}>
-                  {showLyrics ? (
-                    <LyricsView />
-                  ) : (
-                    <View style={styles.deckOrCanvasContainer}>
-                      {currentSong && (
-                        <View
-                          style={[
-                            styles.deckCarouselWrapper,
-                            showCanvas && styles.deckCarouselHidden,
-                          ]}
-                          pointerEvents={showCanvas ? 'none' : 'auto'}
-                        >
-                          <Deck3DCarousel
-                            currentSong={currentSong}
-                            upcomingQueue={upcomingQueue}
-                            historyStack={history}
-                            onSelectSong={(song) => playSong(song)}
-                          />
-                        </View>
-                      )}
 
-                      {/* Keep Canvas mounted to preserve player state and instant time sync */}
-                      {!!canvasVideoUrl && (
-                        <View
-                          style={[
-                            styles.canvasWrapper,
-                            !showCanvas && styles.canvasHidden,
-                          ]}
-                          pointerEvents={showCanvas ? 'auto' : 'none'}
-                        >
-                          <VideoCanvasView
-                            videoUrl={canvasVideoUrl}
-                            isPlaying={isPlaying}
-                            isVisible={showCanvas}
-                          />
-                        </View>
-                      )}
-                    </View>
-                  )}
-                </View>
+              <TouchableOpacity
+                onPress={() => currentSong && toggleLike(currentSong.id)}
+                style={styles.likeBtn}
+              >
+                <Ionicons
+                  name={liked ? 'heart' : 'heart-outline'}
+                  size={26}
+                  color={liked ? '#FF3366' : '#ffffff'}
+                />
+              </TouchableOpacity>
+            </View>
 
-                {/* Song Metadata Row */}
-                <View style={styles.metaRow}>
-                  <View style={styles.titleWrapper}>
-                    <Text style={styles.songTitle} numberOfLines={1}>
-                      {currentSong?.name || ''}
-                    </Text>
-                    <View style={styles.artistSourceRow}>
-                      <Text style={styles.artistName} numberOfLines={1}>
-                        {currentSong?.artist || ''}
-                      </Text>
-                      {currentSong?.source && (
-                        <SourceBadge
-                          source={currentSong.source}
-                          quality={currentSong.quality}
-                          size="medium"
-                        />
-                      )}
-                    </View>
-                  </View>
+            {/* Scrubber Progress Slider */}
+            <PlayerScrubber primaryColor={palette.primary} seekTo={seekTo} />
 
-                  <TouchableOpacity
-                    onPress={() => currentSong && toggleLike(currentSong.id)}
-                    style={styles.likeBtn}
-                  >
-                    <Ionicons
-                      name={liked ? 'heart' : 'heart-outline'}
-                      size={26}
-                      color={liked ? '#FF3366' : '#ffffff'}
-                    />
-                  </TouchableOpacity>
-                </View>
+            {/* Primary Transport Controls */}
+            <View style={styles.controlsRow}>
+              <TouchableOpacity
+                onPress={toggleShuffle}
+                style={styles.auxBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="shuffle"
+                  size={22}
+                  color={shuffle ? palette.primary : 'rgba(255,255,255,0.4)'}
+                />
+              </TouchableOpacity>
 
-                {/* Scrubber Progress Slider */}
-                <PlayerScrubber primaryColor={palette.primary} seekTo={seekTo} />
+              <TouchableOpacity
+                onPress={prevSong}
+                style={styles.skipBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="play-skip-back" size={30} color="#ffffff" />
+              </TouchableOpacity>
 
-                {/* Primary Transport Controls */}
-                <View style={styles.controlsRow}>
-                  <TouchableOpacity
-                    onPress={toggleShuffle}
-                    style={styles.auxBtn}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name="shuffle"
-                      size={22}
-                      color={shuffle ? palette.primary : 'rgba(255,255,255,0.4)'}
-                    />
-                  </TouchableOpacity>
+              <TouchableOpacity
+                onPress={togglePlay}
+                style={[
+                  styles.playPauseFab,
+                  {
+                    backgroundColor: palette.primary,
+                    shadowColor: palette.primary,
+                  },
+                ]}
+                activeOpacity={0.8}
+              >
+                {isLoading ? (
+                  <Ionicons name="sync" size={32} color="#000000" />
+                ) : (
+                  <Ionicons
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={36}
+                    color="#000000"
+                  />
+                )}
+              </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={prevSong}
-                    style={styles.skipBtn}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="play-skip-back" size={30} color="#ffffff" />
-                  </TouchableOpacity>
+              <TouchableOpacity
+                onPress={nextSong}
+                style={styles.skipBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="play-skip-forward" size={30} color="#ffffff" />
+              </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={togglePlay}
-                    style={[
-                      styles.playPauseFab,
-                      {
-                        backgroundColor: palette.primary,
-                        shadowColor: palette.primary,
-                      },
-                    ]}
-                    activeOpacity={0.8}
-                  >
-                    {isLoading ? (
-                      <Ionicons name="sync" size={32} color="#000000" />
-                    ) : (
-                      <Ionicons
-                        name={isPlaying ? 'pause' : 'play'}
-                        size={36}
-                        color="#000000"
-                      />
-                    )}
-                  </TouchableOpacity>
+              <TouchableOpacity
+                onPress={toggleRepeat}
+                style={styles.auxBtn}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={repeatMode === 'one' ? 'repeat-outline' : 'repeat'}
+                  size={22}
+                  color={
+                    repeatMode !== 'off' ? palette.primary : 'rgba(255,255,255,0.4)'
+                  }
+                />
+              </TouchableOpacity>
+            </View>
 
-                  <TouchableOpacity
-                    onPress={nextSong}
-                    style={styles.skipBtn}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="play-skip-forward" size={30} color="#ffffff" />
-                  </TouchableOpacity>
+            {/* Bottom Floating Utilities: Lyrics & Queue Toggles */}
+            <View style={styles.bottomUtilitiesRow}>
 
-                  <TouchableOpacity
-                    onPress={toggleRepeat}
-                    style={styles.auxBtn}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons
-                      name={repeatMode === 'one' ? 'repeat-outline' : 'repeat'}
-                      size={22}
-                      color={
-                        repeatMode !== 'off' ? palette.primary : 'rgba(255,255,255,0.4)'
-                      }
-                    />
-                  </TouchableOpacity>
-                </View>
+              <TouchableOpacity
+                style={[
+                  styles.utilityPill,
+                  showLyrics && { backgroundColor: palette.primary, borderColor: palette.primary },
+                ]}
+                onPress={() => {
+                  setShowLyrics((prev) => !prev);
+                  if (showCanvas) setShowCanvas(false);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="mic-outline"
+                  size={16}
+                  color={showLyrics ? '#000000' : '#ffffff'}
+                />
+                <Text
+                  style={[
+                    styles.utilityText,
+                    showLyrics && styles.utilityTextActive,
+                  ]}
+                >
+                  Lyrics
+                </Text>
+              </TouchableOpacity>
 
-                {/* Bottom Floating Utilities: Lyrics & Queue Toggles */}
-                <View style={styles.bottomUtilitiesRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.utilityPill,
-                      showLyrics && { backgroundColor: palette.primary, borderColor: palette.primary },
-                    ]}
-                    onPress={() => {
-                      setShowLyrics((prev) => !prev);
-                      if (showCanvas) setShowCanvas(false);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons
-                      name="mic-outline"
-                      size={16}
-                      color={showLyrics ? '#000000' : '#ffffff'}
-                    />
-                    <Text
-                      style={[
-                        styles.utilityText,
-                        showLyrics && styles.utilityTextActive,
-                      ]}
-                    >
-                      Lyrics
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.utilityPill}
-                    onPress={() => setShowQueue(true)}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="list-outline" size={16} color="#ffffff" />
-                    <Text style={styles.utilityText}>Queue ({upcomingQueue.length})</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+              <TouchableOpacity
+                style={styles.utilityPill}
+                onPress={() => setShowQueue(true)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="list-outline" size={16} color="#ffffff" />
+                <Text style={styles.utilityText}>Queue ({upcomingQueue.length})</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Offline Status Banner */}
             <OfflineBanner
@@ -1024,7 +826,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '600',
-    maxWidth: '75%',
+    maxWidth: width * 0.55,
   },
   likeBtn: {
     padding: 6,
@@ -1101,33 +903,5 @@ const styles = StyleSheet.create({
   utilityTextActive: {
     color: '#000000',
     fontWeight: '800',
-  },
-  landscapeContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 28,
-    paddingHorizontal: 16,
-  },
-  landscapeLeftPane: {
-    flex: 1,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  landscapeRightPane: {
-    flex: 1.15,
-    height: '100%',
-    justifyContent: 'center',
-    gap: 10,
-    paddingVertical: 10,
-  },
-  landscapeLyricsBox: {
-    flex: 1,
-    maxHeight: 280,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    marginBottom: 8,
   },
 });

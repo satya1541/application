@@ -2,14 +2,13 @@
   "expo": {
     "name": "Shorty",
     "slug": "satya",
-    "version": "3.0",
+    "version": "2.1",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shorty",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon",
-      "supportsTablet": true,
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"

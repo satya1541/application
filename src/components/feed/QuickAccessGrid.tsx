@@ -11,7 +11,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Song, Playlist } from '@/types/music';
 import { useAudio } from '@/contexts/AudioContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
 import { getListeningHistory, HistoryEntry } from '@/services/historyService';
 import { getUserPlaylists, UserPlaylist } from '@/services/userPlaylistService';
 import { INITIAL_SONGS } from '@/services/musicCatalog';
@@ -61,9 +60,8 @@ getUserPlaylists()
   .catch(() => {});
 
 export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ songs, playlists }) => {
-  const { currentSong, isPlaying, likedSongsList, isLiked } = useAudio();
+  const { currentSong, isPlaying, likedSongsList, likedSongIds } = useAudio();
   const { accent, surfaceHex } = useAppTheme();
-  const { isTablet, contentPadding } = useResponsive();
 
   // Initialize directly from in-memory cache so frame 1 has real data with zero flicker
   const [historyItems, setHistoryItems] = useState<HistoryEntry[]>(_cachedHistory);
@@ -96,7 +94,7 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
           if (
             prev.length === hist.length &&
             (prev.length === 0 ||
-              (prev[0]?.id === hist[0]?.id && prev[0]?.playedAt === hist[0]?.playedAt))
+              (prev[0]?.song?.id === hist[0]?.song?.id && prev[0]?.playedAt === hist[0]?.playedAt))
           ) {
             return prev;
           }
@@ -113,103 +111,132 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
           }
           return plist;
         });
-      } catch (err) {
-        console.warn('QuickAccessGrid silent load error:', err);
+      } catch {
+        // silent
       }
     };
 
     loadData();
+
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentSong?.id]);
 
-  // Compute 6 dynamic tiles based on liked songs, user playlists, and recent history
-  const tiles = useMemo<QuickAccessTile[]>(() => {
-    const list: QuickAccessTile[] = [];
+  // Compute 6 contextual items based on time of day & listening frequency
+  const tiles: QuickAccessTile[] = useMemo(() => {
+    const result: QuickAccessTile[] = [];
 
-    // TILE 1: Liked Songs (Always #1 slot)
-    const isLikedPlaying = Boolean(
-      currentSong && isLiked(currentSong.id)
-    );
+    // ── Tile 1: Liked Songs (Always #1 Top-Left) ──
+    const isLikedPlaying =
+      isPlaying && !!currentSong && likedSongIds.includes(currentSong.id);
 
-    list.push({
-      id: 'liked-songs',
+    result.push({
+      id: 'tile_liked_songs',
       title: 'Liked Songs',
-      subtitle: `${likedSongsList.length} songs`,
+      subtitle: `${likedSongsList.length} tracks`,
       isLikedSongs: true,
+      onCardPress: () => {
+        setShowLikedModal(true);
+      },
       isCurrentlyPlaying: isLikedPlaying,
-      onCardPress: () => setShowLikedModal(true),
     });
 
-    // Track IDs already in the grid to avoid duplicate cards
-    const addedIds = new Set<string>();
-
-    // Priority 1: User Playlists
-    for (const pl of userPlaylists) {
-      if (list.length >= 6) break;
-      const plCover = pl.coverUrl;
-      const isThisPlaylistPlaying = Boolean(
-        currentSong && pl.songs?.some((s) => s.id === currentSong.id)
-      );
-
-      list.push({
-        id: `pl-${pl.id}`,
-        title: pl.name,
-        subtitle: `${pl.songs?.length || 0} songs`,
-        coverUri: plCover,
-        playlist: pl,
-        isCurrentlyPlaying: isThisPlaylistPlaying,
-        onCardPress: () => setSelectedPlaylist(pl),
-      });
-      addedIds.add(`pl-${pl.id}`);
+    // ── Compute Looped Songs from History ──
+    const songPlayCountMap = new Map<string, { song: Song; count: number; lastPlayed: number }>();
+    for (const entry of historyItems) {
+      if (!entry.song?.id) continue;
+      const existing = songPlayCountMap.get(entry.song.id);
+      if (existing) {
+        existing.count += 1;
+        existing.lastPlayed = Math.max(existing.lastPlayed, entry.playedAt);
+      } else {
+        songPlayCountMap.set(entry.song.id, {
+          song: entry.song,
+          count: 1,
+          lastPlayed: entry.playedAt,
+        });
+      }
     }
 
-    // Priority 2: Recent Listening History
-    for (const item of historyItems) {
-      if (list.length >= 6) break;
-      if (!item.song?.id || addedIds.has(item.song.id)) continue;
+    // Sort songs by play count descending, then last played descending
+    const sortedLoopedSongs = Array.from(songPlayCountMap.values())
+      .sort((a, b) => b.count - a.count || b.lastPlayed - a.lastPlayed)
+      .map((item) => item.song);
 
-      const song = item.song;
-      addedIds.add(song.id);
+    // ── Contextual Slot Fillers ──
+    const seenSongIds = new Set<string>();
 
-      list.push({
-        id: `history-${song.id}`,
+    // Add user custom playlists first if any exist
+    for (const up of userPlaylists) {
+      if (result.length >= 6) break;
+      if (up.songs && up.songs.length > 0) {
+        const isThisPlaylistPlaying =
+          isPlaying && !!currentSong && up.songs.some((s) => s.id === currentSong.id);
+
+        result.push({
+          id: `plist_${up.id}`,
+          title: up.name,
+          subtitle: `${up.songs.length} songs`,
+          coverUri: up.coverUrl || up.songs[0]?.cover,
+          playlist: up,
+          onCardPress: () => {
+            setSelectedPlaylist(up);
+          },
+          isCurrentlyPlaying: isThisPlaylistPlaying,
+        });
+      }
+    }
+
+    // Add most looped songs from history
+    for (const song of sortedLoopedSongs) {
+      if (result.length >= 6) break;
+      if (seenSongIds.has(song.id)) continue;
+      seenSongIds.add(song.id);
+
+      const isCurrent = currentSong?.id === song.id;
+      result.push({
+        id: `song_${song.id}`,
         title: song.name,
         subtitle: song.artist,
         coverUri: song.cover,
-        song: song,
-        isCurrentlyPlaying: currentSong?.id === song.id,
-        onCardPress: () => setSelectedSong(song),
+        song,
+        onCardPress: () => {
+          setSelectedSong(song);
+        },
+        isCurrentlyPlaying: isCurrent && isPlaying,
       });
     }
 
-    // Priority 3: Fallback to Catalog Top Hits if grid is not full (< 6 items)
-    const fallbackPool = songs && songs.length > 0 ? songs : INITIAL_SONGS;
-    for (const song of fallbackPool) {
-      if (list.length >= 6) break;
-      if (addedIds.has(song.id)) continue;
+    // Fallback backfill from props or catalog if fewer than 6 items
+    const pool = (songs && songs.length > 0 ? songs : INITIAL_SONGS) || [];
+    for (const song of pool) {
+      if (result.length >= 6) break;
+      if (seenSongIds.has(song.id)) continue;
+      seenSongIds.add(song.id);
 
-      addedIds.add(song.id);
-
-      list.push({
-        id: `catalog-${song.id}`,
+      const isCurrent = currentSong?.id === song.id;
+      result.push({
+        id: `fallback_${song.id}`,
         title: song.name,
         subtitle: song.artist,
         coverUri: song.cover,
-        song: song,
-        isCurrentlyPlaying: currentSong?.id === song.id,
-        onCardPress: () => setSelectedSong(song),
+        song,
+        onCardPress: () => {
+          setSelectedSong(song);
+        },
+        isCurrentlyPlaying: isCurrent && isPlaying,
       });
     }
 
-    return list.slice(0, 6);
+    return result.slice(0, 6);
   }, [
-    likedSongsList.length,
-    isLiked,
-    userPlaylists,
     historyItems,
+    userPlaylists,
+    likedSongsList.length,
+    likedSongIds,
     currentSong?.id,
+    isPlaying,
     songs,
   ]);
 
@@ -218,18 +245,14 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
   }
 
   return (
-    <View style={[styles.gridContainer, { paddingHorizontal: contentPadding }]}>
+    <View style={styles.gridContainer}>
       {tiles.map((tile) => {
         const isCurrent = tile.isCurrentlyPlaying;
 
         return (
           <TouchableOpacity
             key={tile.id}
-            style={[
-              styles.card,
-              { backgroundColor: surfaceHex },
-              isTablet && styles.tabletCard,
-            ]}
+            style={[styles.card, { backgroundColor: surfaceHex }]}
             activeOpacity={0.75}
             onPress={tile.onCardPress}
           >
@@ -239,25 +262,25 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
                 colors={['#450af5', '#8e8ee5']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
-                style={[styles.likedGradientCover, isTablet && styles.tabletCover]}
+                style={styles.likedGradientCover}
               >
-                <Ionicons name="heart" size={isTablet ? 26 : 24} color="#ffffff" />
+                <Ionicons name="heart" size={24} color="#ffffff" />
               </LinearGradient>
             ) : tile.coverUri ? (
               <Image
                 source={{ uri: tile.coverUri }}
-                style={[styles.image, isTablet && styles.tabletCover]}
+                style={styles.image}
                 resizeMode="cover"
               />
             ) : (
-              <View style={[styles.image, styles.fallbackImage, isTablet && styles.tabletCover]}>
+              <View style={[styles.image, styles.fallbackImage]}>
                 <Ionicons name="musical-notes" size={22} color="rgba(255,255,255,0.4)" />
               </View>
             )}
 
             {/* Title & Metadata */}
             <View style={styles.titleContainer}>
-              <Text style={[styles.title, isTablet && styles.tabletTitle]} numberOfLines={2}>
+              <Text style={styles.title} numberOfLines={2}>
                 {tile.title}
               </Text>
             </View>
@@ -316,11 +339,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  tabletCard: {
-    width: '32%',
-    height: 64,
-    borderRadius: 8,
-  },
   likedGradientCover: {
     width: 58,
     height: 58,
@@ -331,10 +349,6 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     backgroundColor: '#2b2b2b',
-  },
-  tabletCover: {
-    width: 64,
-    height: 64,
   },
   fallbackImage: {
     alignItems: 'center',
@@ -350,10 +364,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 17,
-  },
-  tabletTitle: {
-    fontSize: 13.5,
-    lineHeight: 18,
   },
   playingIndicator: {
     marginRight: 10,

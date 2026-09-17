@@ -1,5 +1,5 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { cleanTitle } from './textCleaner';
-import { SafeStorage } from './storage';
 
 export interface YouTubePlaylistItem {
   id: string;
@@ -793,7 +793,7 @@ export async function resolveLivePlaylistCover(playlistId: string): Promise<stri
 
   // Check persistent cache
   try {
-    const cached = await SafeStorage.getItem(COVER_CACHE_KEY_PREFIX + playlistId);
+    const cached = await AsyncStorage.getItem(COVER_CACHE_KEY_PREFIX + playlistId);
     if (cached && cached.startsWith('http') && cached.includes('/vi/')) {
       liveCoverMemoryCache.set(playlistId, cached);
       return cached;
@@ -861,7 +861,7 @@ export async function resolveLivePlaylistCover(playlistId: string): Promise<stri
       if (leadVideoId && typeof leadVideoId === 'string' && leadVideoId.length === 11) {
         const permanentUrl = `https://i.ytimg.com/vi/${leadVideoId}/hqdefault.jpg`;
         liveCoverMemoryCache.set(playlistId, permanentUrl);
-        SafeStorage.setItem(COVER_CACHE_KEY_PREFIX + playlistId, permanentUrl).catch(() => {});
+        AsyncStorage.setItem(COVER_CACHE_KEY_PREFIX + playlistId, permanentUrl).catch(() => {});
         return permanentUrl;
       }
     } catch (err) {
@@ -889,10 +889,10 @@ export async function fetchDynamicYouTubePlaylists(
     return memoryCache;
   }
 
-  // 2. Try reading from persistent SafeStorage if not force-refreshing
+  // 2. Try reading from persistent AsyncStorage if not force-refreshing
   if (!forceRefresh) {
     try {
-      const stored = await SafeStorage.getItem(STORAGE_KEY);
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as YouTubePlaylistItem[];
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -902,7 +902,7 @@ export async function fetchDynamicYouTubePlaylists(
             .then((live) => {
               if (live && live.length > 0) {
                 memoryCache = live;
-                SafeStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
+                AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
               }
             })
             .catch(() => {});
@@ -919,7 +919,7 @@ export async function fetchDynamicYouTubePlaylists(
     const live = await fetchFromLiveChannel();
     if (live && live.length > 0) {
       memoryCache = live;
-      SafeStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
       return live;
     }
   } catch (err) {

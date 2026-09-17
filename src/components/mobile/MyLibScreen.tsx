@@ -34,7 +34,9 @@ import { ShortyReplayModal } from '../profile/ShortyReplayModal';
 import { autoFixImportedPlaylistCovers } from '@/services/playlistImportService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
+
+const { width } = Dimensions.get('window');
+const PLAYLIST_CARD_WIDTH = (width - 44) / 2;
 
 type FilterChip = 'All' | 'Playlists' | 'Liked Songs';
 
@@ -51,12 +53,6 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
   const { likedSongsList, playSong } = useAudio();
   const { user } = useAuth();
   const { bgHex, surfaceHex, accent } = useAppTheme();
-  const { isTablet, contentPadding, columns, width: screenWidth } = useResponsive();
-  const numColumns = columns.playlists;
-  const tileGap = 12;
-  const tileWidth = Math.floor(
-    (screenWidth - contentPadding * 2 - (numColumns - 1) * tileGap) / numColumns
-  );
 
   const [activeFilter, setActiveFilter] = useState<FilterChip>('All');
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
@@ -152,7 +148,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
       <StatusBar barStyle="light-content" backgroundColor={bgHex} />
 
       {/* Top Header */}
-      <View style={[styles.header, { paddingHorizontal: contentPadding }]}>
+      <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>My Lib</Text>
         </View>
@@ -191,7 +187,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
       </View>
 
       {/* Filter Chips */}
-      <View style={[styles.filterChipsRow, { paddingHorizontal: contentPadding }]}>
+      <View style={styles.filterChipsRow}>
         {(['All', 'Playlists', 'Liked Songs'] as FilterChip[]).map((chip) => {
           const isSelected = activeFilter === chip;
           return (
@@ -214,7 +210,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: contentPadding, paddingBottom: insets.bottom + 100 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={accent.hex} />
@@ -223,7 +219,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
         {/* 1. HERO LIKED SONGS CARD */}
         {(activeFilter === 'All' || activeFilter === 'Liked Songs') && (
           <TouchableOpacity
-            style={[styles.likedHeroCardWrapper, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}
+            style={styles.likedHeroCardWrapper}
             onPress={() => setShowLikedModal(true)}
             activeOpacity={0.88}
           >
@@ -286,7 +282,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
             <View style={styles.playlistsGrid}>
               {/* Create Playlist Action Tile */}
               <TouchableOpacity
-                style={[styles.createPlaylistTile, { width: tileWidth }]}
+                style={styles.createPlaylistTile}
                 onPress={() => setShowCreateModal(true)}
                 activeOpacity={0.7}
               >
@@ -299,7 +295,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
 
               {/* Import from URL Action Tile */}
               <TouchableOpacity
-                style={[styles.createPlaylistTile, { width: tileWidth }]}
+                style={styles.createPlaylistTile}
                 onPress={() => setShowImportModal(true)}
                 activeOpacity={0.7}
               >
@@ -321,7 +317,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
                 return (
                   <TouchableOpacity
                     key={pl.id}
-                    style={[styles.playlistTile, { width: tileWidth }]}
+                    style={styles.playlistTile}
                     onPress={() => setSelectedPlaylist(pl)}
                     activeOpacity={0.8}
                   >
@@ -363,7 +359,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
               </TouchableOpacity>
             </View>
 
-            <View style={[styles.recentHistoryCard, isTablet && { maxWidth: 860, alignSelf: 'center', width: '100%' }]}>
+            <View style={styles.recentHistoryCard}>
               {recentHistory.map((item, idx) => (
                 <TouchableOpacity
                   key={`${item.id}_${idx}`}
@@ -420,7 +416,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
         >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.createModalSheet, isTablet && { maxWidth: 500, alignSelf: 'center' }]}
+            style={styles.createModalSheet}
             onPress={(e) => e.stopPropagation()}
           >
             <Text style={styles.createModalTitle}>New Playlist</Text>
@@ -745,6 +741,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   createPlaylistTile: {
+    width: PLAYLIST_CARD_WIDTH,
     backgroundColor: '#161616',
     borderRadius: 14,
     padding: 16,
@@ -775,6 +772,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   playlistTile: {
+    width: PLAYLIST_CARD_WIDTH,
     backgroundColor: '#161616',
     borderRadius: 14,
     padding: 12,

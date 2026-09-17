@@ -17,7 +17,6 @@ import { SongItemRow } from '../common/SongItemRow';
 import { getSafeCoverArt } from '@/services/imageUtils';
 import { Song } from '@/types/music';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { useResponsive } from '@/hooks/useResponsive';
 
 interface QueueModalProps {
   visible?: boolean;
@@ -29,7 +28,6 @@ export const QueueModal: React.FC<QueueModalProps> = ({
   onClose: propOnClose,
 }) => {
   const { bgHex, surfaceHex, accent } = useAppTheme();
-  const { isTablet, maxModalWidth } = useResponsive();
   const {
     currentSong,
     queue,
@@ -80,35 +78,10 @@ export const QueueModal: React.FC<QueueModalProps> = ({
     <Modal
       visible={isVisible}
       animationType="slide"
-      presentationStyle={isTablet ? 'overFullScreen' : 'pageSheet'}
-      transparent={isTablet}
+      presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <View style={[styles.rootContainer, isTablet && styles.tabletBackdrop]}>
-        {isTablet && (
-          <TouchableOpacity
-            style={StyleSheet.absoluteFill}
-            activeOpacity={1}
-            onPress={handleClose}
-          />
-        )}
-        <SafeAreaView
-          style={[
-            styles.container,
-            { backgroundColor: bgHex },
-            isTablet && {
-              maxWidth: maxModalWidth,
-              width: '92%',
-              alignSelf: 'center',
-              borderRadius: 24,
-              maxHeight: '90%',
-              marginVertical: '5%',
-              overflow: 'hidden',
-              borderWidth: 1,
-              borderColor: 'rgba(255, 255, 255, 0.1)',
-            },
-          ]}
-        >
+      <SafeAreaView style={[styles.container, { backgroundColor: bgHex }]}>
         {/* Top Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleClose} style={styles.closeBtn} activeOpacity={0.7}>
@@ -317,22 +290,12 @@ export const QueueModal: React.FC<QueueModalProps> = ({
             )}
           </View>
         </ScrollView>
-        </SafeAreaView>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  rootContainer: {
-    flex: 1,
-    backgroundColor: '#121212',
-  },
-  tabletBackdrop: {
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   container: {
     flex: 1,
     backgroundColor: '#121212',
