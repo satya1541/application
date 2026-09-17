@@ -18,6 +18,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '@/contexts/AuthContext';
 import { StreamingQuality } from '@/services/supabase';
+import {
+  subscribeToUpdates,
+  checkAndApplyUpdateManually,
+  reloadAppToApplyUpdate,
+  type AppUpdateStatus,
+} from '@/services/updateService';
 
 const STREAMING_QUALITIES: {
   id: StreamingQuality;
@@ -124,6 +130,51 @@ export const ProfileModal: React.FC = () => {
       refreshStats();
     }
   }, [isProfileModalVisible, refreshStats]);
+
+  // OTA Updates State & Subscription
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus | null>(null);
+
+  useEffect(() => {
+    const unsub = subscribeToUpdates((st) => {
+      setUpdateStatus(st);
+    });
+    return unsub;
+  }, []);
+
+  const handleManualCheckUpdates = useCallback(async () => {
+    if (updateStatus?.isUpdatePending) {
+      await reloadAppToApplyUpdate();
+      return;
+    }
+
+    setIsCheckingUpdates(true);
+    const result = await checkAndApplyUpdateManually();
+    setIsCheckingUpdates(false);
+
+    if (result.isNew) {
+      Alert.alert(
+        '✨ Update Received & Ready!',
+        'The latest update has been downloaded to your device. Would you like to restart Shorty now to apply it?',
+        [
+          { text: 'Later', style: 'cancel' },
+          {
+            text: 'Restart Now',
+            onPress: () => reloadAppToApplyUpdate(),
+          },
+        ]
+      );
+    } else if (result.isAvailable) {
+      Alert.alert('✨ Update Available', 'Downloading latest update in the background...');
+    } else if (result.error) {
+      Alert.alert('Update Status', result.error);
+    } else {
+      Alert.alert(
+        'Up to Date! 🎉',
+        `You are running the latest version.\n\nVersion: ${updateStatus?.runtimeVersion || '4.0'}\nUpdate ID: ${updateStatus?.shortUpdateId || 'Embedded'}`
+      );
+    }
+  }, [updateStatus]);
 
   const handleSaveProfile = useCallback(async () => {
     if (!editName.trim()) {
@@ -818,6 +869,73 @@ export const ProfileModal: React.FC = () => {
                   </TouchableOpacity>
                 );
               })}
+            </View>
+          </View>
+
+          {/* APP VERSION & OTA UPDATES */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleRow}>
+                <Ionicons name="cloud-download-outline" size={18} color="#38bdf8" />
+                <Text style={styles.sectionTitle}>App Version & Updates</Text>
+              </View>
+              <View style={styles.activeChannelPill}>
+                <Text style={styles.activeChannelText}>v{updateStatus?.runtimeVersion || '4.0'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.updateCard}>
+              <View style={styles.updateRow}>
+                <View style={styles.updateInfoCol}>
+                  <Text style={styles.updateInfoLabel}>Current Build</Text>
+                  <Text style={styles.updateInfoValue}>
+                    {updateStatus?.isEmbedded
+                      ? 'Embedded (Original Build)'
+                      : `OTA: ${updateStatus?.shortUpdateId}`}
+                  </Text>
+                </View>
+
+                <View style={styles.updateStatusPill}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      updateStatus?.isUpdatePending ? styles.statusDotPending : styles.statusDotActive,
+                    ]}
+                  />
+                  <Text style={styles.statusPillText}>
+                    {updateStatus?.isUpdatePending ? 'Update Ready' : 'Up to Date'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Check for updates button */}
+              <TouchableOpacity
+                style={[
+                  styles.checkUpdateBtn,
+                  isCheckingUpdates && styles.checkUpdateBtnLoading,
+                ]}
+                onPress={handleManualCheckUpdates}
+                disabled={isCheckingUpdates}
+                activeOpacity={0.8}
+              >
+                {isCheckingUpdates ? (
+                  <ActivityIndicator size="small" color="#000000" style={{ marginRight: 8 }} />
+                ) : (
+                  <Ionicons
+                    name={updateStatus?.isUpdatePending ? 'flash' : 'refresh'}
+                    size={16}
+                    color="#000000"
+                    style={{ marginRight: 8 }}
+                  />
+                )}
+                <Text style={styles.checkUpdateBtnText}>
+                  {isCheckingUpdates
+                    ? 'Checking Server for Updates...'
+                    : updateStatus?.isUpdatePending
+                    ? 'Restart Shorty to Apply'
+                    : 'Check for Updates'}
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -1530,5 +1648,89 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#EF4444',
+  },
+  activeChannelPill: {
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  activeChannelText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  updateCard: {
+    backgroundColor: '#18181b',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#27272a',
+    gap: 14,
+  },
+  updateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  updateInfoCol: {
+    flex: 1,
+  },
+  updateInfoLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.5)',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  updateInfoValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+    marginTop: 2,
+  },
+  updateStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  statusDotActive: {
+    backgroundColor: '#22c55e',
+  },
+  statusDotPending: {
+    backgroundColor: '#38bdf8',
+  },
+  statusPillText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  checkUpdateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#38bdf8',
+    paddingVertical: 12,
+    borderRadius: 14,
+  },
+  checkUpdateBtnLoading: {
+    opacity: 0.8,
+  },
+  checkUpdateBtnText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });

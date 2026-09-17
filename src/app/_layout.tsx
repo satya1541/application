@@ -10,9 +10,11 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { ProfileModal } from '@/components/profile/ProfileModal';
 import { MonthlyReplayController } from '@/components/profile/MonthlyReplayController';
+import { UpdateNotificationBanner } from '@/components/common/UpdateNotificationBanner';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initCacheLifecycle } from '@/services/cacheManager';
 import { lockPortraitAsync } from '@/services/orientationManager';
+import { initUpdateManager } from '@/services/updateService';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import '../global.css';
 
@@ -25,6 +27,7 @@ export default function RootLayout() {
     }
     SplashScreen.hideAsync().catch(() => {});
     lockPortraitAsync();
+    initUpdateManager();
     const cleanupCache = initCacheLifecycle();
     return () => {
       cleanupCache();
@@ -43,6 +46,7 @@ export default function RootLayout() {
                 <AuthModal />
                 <ProfileModal />
                 <MonthlyReplayController />
+                <UpdateNotificationBanner />
               </AudioProvider>
             </AuthProvider>
           </NetworkProvider>
