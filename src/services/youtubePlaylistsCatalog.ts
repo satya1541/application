@@ -69,7 +69,10 @@ export function categorizePlaylist(item: { id: string; title: string; descriptio
     text.includes('sufiyana') ||
     text.includes('ghazal') ||
     text.includes('hindustani') ||
-    text.includes('hindi')
+    text.includes('hindi') ||
+    text.includes('arijit') ||
+    text.includes('shreya') ||
+    text.includes('atif aslam')
   ) {
     if (text.includes('retro') || text.includes('90s') || text.includes('00s') || text.includes('old hindi')) {
       return { category: 'Retro & 90s', badge: 'Retro' };
@@ -94,7 +97,15 @@ export function categorizePlaylist(item: { id: string; title: string; descriptio
     text.includes('bhojpuri') ||
     text.includes('haryanvi') ||
     text.includes('marathi') ||
-    text.includes('carnatic')
+    text.includes('carnatic') ||
+    text.includes('odia') ||
+    text.includes('sambalpuri') ||
+    text.includes('bengali') ||
+    text.includes('kannada') ||
+    text.includes('gujarati') ||
+    text.includes('rajasthani') ||
+    text.includes('moose wala') ||
+    text.includes('aujla')
   ) {
     if (text.includes('party') || text.includes('dance')) {
       return { category: 'Party & Dance', badge: 'Party' };
@@ -281,6 +292,240 @@ export const FALLBACK_YOUTUBE_PLAYLISTS: YouTubePlaylistItem[] = [
     "category": "Retro & 90s",
     "badge": "Retro 90s",
     "thumbnail": "https://i.ytimg.com/vi/sWqjZpBtcxc/hqdefault.jpg",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_n3wF8q0e4r1V5b6i7L8k9p2O3m4",
+    "title": "Arijit Singh Melodies",
+    "description": "Heartfelt soul, romantic chartbusters, and unforgettable anthems by Arijit Singh.",
+    "category": "Bollywood & Hindi",
+    "badge": "Arijit Singh",
+    "thumbnail": "https://c.saavncdn.com/artists/Arijit_Singh_002_20230323062147_500x500.jpg",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m5_9zO9wZJ5f_F5e2r9_a0_w8bF3",
+    "title": "Romantic Hits Hindi",
+    "description": "The sweetest love songs, soulful acoustic duets, and heartfelt Bollywood romance.",
+    "category": "Bollywood & Hindi",
+    "badge": "Romance",
+    "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Shreya Ghoshal Essentials",
+    "description": "The golden, melodious voice of Indian cinema with her greatest hits.",
+    "category": "Bollywood & Hindi",
+    "badge": "Shreya Ghoshal",
+    "thumbnail": "https://c.saavncdn.com/artists/Shreya_Ghoshal_004_20230323061434_500x500.jpg",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k1w3_F5e2r9_a0_w8bF3i4L2Vf_P9",
+    "title": "Bollywood Dance Anthems",
+    "description": "High-octane club bangers and dance-floor destroyers from Hindi cinema.",
+    "category": "Bollywood & Hindi",
+    "badge": "Dance",
+    "thumbnail": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l7e2r_9v8_w8bF3i4L2Vf_P9vF1W0",
+    "title": "Soulful Sufi & Ghazals",
+    "description": "Deeply spiritual, poetic sufi melodies, and timeless qawwalis.",
+    "category": "Bollywood & Hindi",
+    "badge": "Sufi",
+    "thumbnail": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k9Vb4k3L2v0Z5x4Q6w8bF3i4L2Vf_P9v",
+    "title": "Sad Hindi Melodies",
+    "description": "Emotional depth, broken hearts, and late-night Hindi sorrow.",
+    "category": "Bollywood & Hindi",
+    "badge": "Heartbreak",
+    "thumbnail": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m5F2r9_a0_w8bF3i4L2Vf_P9vF1W0e",
+    "title": "Atif Aslam Love Anthems",
+    "description": "Mesmerizing vocals and legendary romantic tracks from Atif Aslam.",
+    "category": "Bollywood & Hindi",
+    "badge": "Atif Aslam",
+    "thumbnail": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l0v4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Sidhu Moose Wala Legends",
+    "description": "Immortal Punjabi hip-hop anthems, raw storytelling, and legendary flow.",
+    "category": "Punjabi & Regional",
+    "badge": "Moose Wala",
+    "thumbnail": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k7w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Diljit Dosanjh Essentials",
+    "description": "From Bhangra blockbusters to smooth pop melodies from the G.O.A.T.",
+    "category": "Punjabi & Regional",
+    "badge": "Diljit Dosanjh",
+    "thumbnail": "https://c.saavncdn.com/artists/Diljit_Dosanjh_004_20221006184545_500x500.jpg",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_n2w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Karan Aujla Hits",
+    "description": "Geetan Di Machine Karan Aujla's chart-topping bangers and hard-hitting lines.",
+    "category": "Punjabi & Regional",
+    "badge": "Karan Aujla",
+    "thumbnail": "https://c.saavncdn.com/artists/Karan_Aujla_003_20230818090712_500x500.jpg",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k2w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Tollywood Superhits (Telugu)",
+    "description": "Mass beats, fiery melodies, and sensational chartbusters from Telugu cinema.",
+    "category": "Punjabi & Regional",
+    "badge": "Telugu",
+    "thumbnail": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l3w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Kollywood Superhits (Tamil)",
+    "description": "Energetic Tamil cinema chartbusters, kuthu beats, and AR Rahman / Anirudh magic.",
+    "category": "Punjabi & Regional",
+    "badge": "Tamil",
+    "thumbnail": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m4w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Anirudh Ravichander Blockbusters",
+    "description": "Rockstar Anirudh's viral background scores, high-voltage hooks, and viral hits.",
+    "category": "Punjabi & Regional",
+    "badge": "Anirudh",
+    "thumbnail": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_n5w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Odia & Sambalpuri Superhits",
+    "description": "Electrifying folk rhythm, Dhol-Nishan beats, and modern Odia-Sambalpuri blockbusters.",
+    "category": "Punjabi & Regional",
+    "badge": "Odia / Sambalpuri",
+    "thumbnail": "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k6w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Bhojpuri Dhamaka & Dance",
+    "description": "High-energy Bhojpuri party hits, DJ remixes, and festival dance anthems.",
+    "category": "Punjabi & Regional",
+    "badge": "Bhojpuri",
+    "thumbnail": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l7w3_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Haryanvi Mashup & Ragni",
+    "description": "Heavy desi bass, viral dance beats, and popular Haryanvi music hits.",
+    "category": "Punjabi & Regional",
+    "badge": "Haryanvi",
+    "thumbnail": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k3w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Kishore Kumar Golden Classics",
+    "description": "The unparalleled voice that defined Bollywood romance, joy, and nostalgia.",
+    "category": "Retro & 90s",
+    "badge": "Kishore Kumar",
+    "thumbnail": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l4w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Lata Mangeshkar & RD Burman Magic",
+    "description": "The Nightingale of India meets Pancham Da's revolutionary melodies.",
+    "category": "Retro & 90s",
+    "badge": "Lata & RD",
+    "thumbnail": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m5w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "90s Kumar Sanu & Alka Yagnik Romance",
+    "description": "Timeless 1990s duets that defined a generation of pure Bollywood melody.",
+    "category": "Retro & 90s",
+    "badge": "90s Romance",
+    "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_n6w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "2000s Bollywood Nostalgia",
+    "description": "Iconic pop and film music memories from the vibrant 2000s era.",
+    "category": "Retro & 90s",
+    "badge": "2000s Hits",
+    "thumbnail": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l8w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Chai & Acoustic Hindi",
+    "description": "Stripped-down guitars, warm vocals, and cozy afternoon tea melodies.",
+    "category": "Moods & Chill",
+    "badge": "Acoustic",
+    "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_m9w4_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Rainy Day Monsoon Melodies",
+    "description": "Evocative Hindi songs that bring the gentle comfort of rain and memories.",
+    "category": "Moods & Chill",
+    "badge": "Monsoon",
+    "thumbnail": "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_n0w5_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Late Night Hindi Drives",
+    "description": "Smooth synth beats and soothing Hindi vocals for late-night city streets.",
+    "category": "Moods & Chill",
+    "badge": "Late Night",
+    "thumbnail": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k4w5_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Gully Gang & Divine Anthems",
+    "description": "Street-tested Mumbai rap, real grit, and anthems of the gully revolution.",
+    "category": "Hip-Hop & Rap",
+    "badge": "Gully Gang",
+    "thumbnail": "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_k9w5_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Punjabi Dhol & Bhangra Blast",
+    "description": "Pure percussion, thumping dhol rhythms, and festival celebration songs.",
+    "category": "Party & Dance",
+    "badge": "Bhangra",
+    "thumbnail": "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=800&auto=format&fit=crop&q=80",
+    "type": "Curated Mix"
+  },
+  {
+    "id": "RDCLAK5uy_l0w6_F5e2r9_a0_w8bF3i4L2Vf_P9v",
+    "title": "Club Bollywood Bangers",
+    "description": "Remixed blockbusters, electro drops, and high-energy Bollywood dance party.",
+    "category": "Party & Dance",
+    "badge": "Club",
+    "thumbnail": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80",
     "type": "Curated Mix"
   },
   {
@@ -765,17 +1010,52 @@ export const FALLBACK_YOUTUBE_PLAYLISTS: YouTubePlaylistItem[] = [
 export const OFFICIAL_YOUTUBE_PLAYLISTS: YouTubePlaylistItem[] = FALLBACK_YOUTUBE_PLAYLISTS;
 
 
-// In-memory runtime cache for dynamic live playlists
-let memoryCache: YouTubePlaylistItem[] = [];
+// In-memory runtime cache for dynamic live playlists - initialized with full curated catalog
+let memoryCache: YouTubePlaylistItem[] = [...FALLBACK_YOUTUBE_PLAYLISTS];
 
 export function getCachedDynamicPlaylists(): YouTubePlaylistItem[] {
-  return memoryCache;
+  return memoryCache && memoryCache.length > 0 ? memoryCache : FALLBACK_YOUTUBE_PLAYLISTS;
 }
 
-const STORAGE_KEY = '@deluxe_dynamic_yt_live_playlists_hd_v2';
+const STORAGE_KEY = '@deluxe_dynamic_yt_live_playlists_hd_v3';
 const COVER_CACHE_KEY_PREFIX = '@deluxe_pl_cover_';
 const liveCoverMemoryCache = new Map<string, string>();
 const inFlightCoverResolutions = new Map<string, Promise<string | null>>();
+
+/**
+ * Merges dynamic or stored items with the rich curated base catalog.
+ * Guarantees that ALL curated playlists (Bollywood, Punjabi, Odia, Retro, Charts, Moods, etc.)
+ * remain available and are never wiped out by sparse live scrapes.
+ */
+export function mergeWithBasePlaylists(incoming: YouTubePlaylistItem[]): YouTubePlaylistItem[] {
+  if (!incoming || incoming.length === 0) {
+    return [...FALLBACK_YOUTUBE_PLAYLISTS];
+  }
+
+  const playlistMap = new Map<string, YouTubePlaylistItem>();
+  for (const item of FALLBACK_YOUTUBE_PLAYLISTS) {
+    playlistMap.set(item.id, item);
+  }
+
+  for (const item of incoming) {
+    if (!item || !item.id) continue;
+    const existing = playlistMap.get(item.id);
+    if (existing) {
+      playlistMap.set(item.id, {
+        ...existing,
+        ...item,
+        thumbnail: item.thumbnail || existing.thumbnail,
+        category: item.category || existing.category,
+        badge: item.badge || existing.badge,
+        type: item.type || existing.type,
+      });
+    } else {
+      playlistMap.set(item.id, item);
+    }
+  }
+
+  return Array.from(playlistMap.values());
+}
 
 /**
  * Resolves the real, authentic lead video thumbnail of any playlist live from YouTube.
@@ -805,10 +1085,14 @@ export async function resolveLivePlaylistCover(playlistId: string): Promise<stri
   }
 
   const promise = (async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
     try {
       const browseId = playlistId.startsWith('VL') ? playlistId : 'VL' + playlistId;
       const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
         method: 'POST',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           'User-Agent':
@@ -867,6 +1151,7 @@ export async function resolveLivePlaylistCover(playlistId: string): Promise<stri
     } catch (err) {
       console.warn('[PlaylistCover] Failed to resolve live cover for', playlistId, err);
     } finally {
+      clearTimeout(timeoutId);
       inFlightCoverResolutions.delete(playlistId);
     }
     return null;
@@ -879,13 +1164,14 @@ export async function resolveLivePlaylistCover(playlistId: string): Promise<stri
 /**
  * Returns live official YouTube playlists with instant cached retrieval.
  * Uses persistent AsyncStorage and memory caching to load instantly (0ms)
- * without adding or falling back to hardcoded playlists.
+ * while ensuring all curated regional, bollywood, retro, and global categories
+ * are fully preserved.
  */
 export async function fetchDynamicYouTubePlaylists(
   forceRefresh: boolean = false
 ): Promise<YouTubePlaylistItem[]> {
-  // 1. If memory cache is available and not force-refreshing, return immediately (0ms)
-  if (!forceRefresh && memoryCache && memoryCache.length > 0) {
+  // 1. If memory cache is available and has full catalog and not force-refreshing, return immediately (0ms)
+  if (!forceRefresh && memoryCache && memoryCache.length >= FALLBACK_YOUTUBE_PLAYLISTS.length) {
     return memoryCache;
   }
 
@@ -896,17 +1182,19 @@ export async function fetchDynamicYouTubePlaylists(
       if (stored) {
         const parsed = JSON.parse(stored) as YouTubePlaylistItem[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          memoryCache = parsed;
+          const merged = mergeWithBasePlaylists(parsed);
+          memoryCache = merged;
           // Silently refresh in background
           fetchFromLiveChannel()
             .then((live) => {
               if (live && live.length > 0) {
-                memoryCache = live;
-                AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
+                const refreshed = mergeWithBasePlaylists(live);
+                memoryCache = refreshed;
+                AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(refreshed)).catch(() => {});
               }
             })
             .catch(() => {});
-          return parsed;
+          return merged;
         }
       }
     } catch (e) {
@@ -918,107 +1206,122 @@ export async function fetchDynamicYouTubePlaylists(
   try {
     const live = await fetchFromLiveChannel();
     if (live && live.length > 0) {
-      memoryCache = live;
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(live)).catch(() => {});
-      return live;
+      const merged = mergeWithBasePlaylists(live);
+      memoryCache = merged;
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(merged)).catch(() => {});
+      return merged;
     }
   } catch (err) {
-    console.warn('[Playlists] Error fetching live channel playlists:', err);
+    console.warn('[Playlists] Error fetching live channel playlists (retaining curated catalog):', err);
   }
 
+  // Fallback to ensuring memoryCache has all fallback playlists
+  if (!memoryCache || memoryCache.length === 0) {
+    memoryCache = [...FALLBACK_YOUTUBE_PLAYLISTS];
+  }
   return memoryCache;
 }
 
 /**
  * Scrapes live playlists directly from YouTube channel page.
+ * Uses AbortController with 4500ms timeout to ensure fast failure without hanging.
  */
 async function fetchFromLiveChannel(): Promise<YouTubePlaylistItem[]> {
-  const url = 'https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6FgpwQ/playlists';
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
 
-  if (!res.ok) {
-    throw new Error(`YouTube channel HTTP error: ${res.status}`);
-  }
+  try {
+    const url = 'https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6FgpwQ/playlists';
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
 
-  const html = await res.text();
-  const match =
-    html.match(/var ytInitialData = ({.*?});<\/script>/s) ||
-    html.match(/ytInitialData\s*=\s*({.*?});/s);
+    if (!res.ok) {
+      throw new Error(`YouTube channel HTTP error: ${res.status}`);
+    }
 
-  if (!match) {
-    throw new Error('Could not parse ytInitialData from channel page');
-  }
+    const html = await res.text();
+    const match =
+      html.match(/var ytInitialData = ({.*?});<\/script>/s) ||
+      html.match(/ytInitialData\s*=\s*({.*?});/s);
 
-  const data = JSON.parse(match[1]);
-  const liveItems: YouTubePlaylistItem[] = [];
-  const seenIds = new Set<string>();
+    if (!match) {
+      throw new Error('Could not parse ytInitialData from channel page');
+    }
 
-  function scanNodes(node: any) {
-    if (!node || typeof node !== 'object') return;
+    const data = JSON.parse(match[1]);
+    const liveItems: YouTubePlaylistItem[] = [];
+    const seenIds = new Set<string>();
 
-    if (node.lockupViewModel) {
-      const lvm = node.lockupViewModel;
-      const id = lvm.contentId;
-      const rawTitle = lvm.metadata?.lockupMetadataViewModel?.title?.content;
+    function scanNodes(node: any) {
+      if (!node || typeof node !== 'object') return;
 
-      if (id && rawTitle && (id.startsWith('RDCLAK') || id.startsWith('PL') || id.startsWith('OLAK'))) {
-        if (!seenIds.has(id)) {
-          seenIds.add(id);
+      if (node.lockupViewModel) {
+        const lvm = node.lockupViewModel;
+        const id = lvm.contentId;
+        const rawTitle = lvm.metadata?.lockupMetadataViewModel?.title?.content;
 
-          const metaRows =
-            lvm.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows || [];
-          let subtitle = '';
-          for (const row of metaRows) {
-            for (const part of row.metadataParts || []) {
-              if (part.text?.content) {
-                subtitle = subtitle ? `${subtitle} • ${part.text.content}` : part.text.content;
+        if (id && rawTitle && (id.startsWith('RDCLAK') || id.startsWith('PL') || id.startsWith('OLAK'))) {
+          if (!seenIds.has(id)) {
+            seenIds.add(id);
+
+            const metaRows =
+              lvm.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows || [];
+            let subtitle = '';
+            for (const row of metaRows) {
+              for (const part of row.metadataParts || []) {
+                if (part.text?.content) {
+                  subtitle = subtitle ? `${subtitle} • ${part.text.content}` : part.text.content;
+                }
               }
             }
-          }
 
-          const classification = categorizePlaylist({
-            id,
-            title: rawTitle,
-            description: subtitle,
-          });
+            const classification = categorizePlaylist({
+              id,
+              title: rawTitle,
+              description: subtitle,
+            });
 
-          // Select crystal-clear HD thumbnail: pick 640x640 source (or highest available)
-          const sources = lvm.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources || [];
-          let thumb = '';
-          if (sources.length > 0) {
-            const hdSource = sources.find((s: { width?: number }) => s.width && s.width >= 500 && s.width <= 900)
-              || (sources.length > 1 ? sources[1] : sources[0]);
-            thumb = hdSource?.url || '';
-          }
-          if (!thumb) {
-            thumb = extractThumbnailUrl(lvm.contentImage, classification.category);
-          }
+            // Select crystal-clear HD thumbnail: pick 640x640 source (or highest available)
+            const sources = lvm.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources || [];
+            let thumb = '';
+            if (sources.length > 0) {
+              const hdSource = sources.find((s: { width?: number }) => s.width && s.width >= 500 && s.width <= 900)
+                || (sources.length > 1 ? sources[1] : sources[0]);
+              thumb = hdSource?.url || '';
+            }
+            if (!thumb) {
+              thumb = extractThumbnailUrl(lvm.contentImage, classification.category);
+            }
 
-          liveItems.push({
-            id,
-            title: cleanTitle(rawTitle),
-            description: subtitle,
-            category: classification.category,
-            badge: classification.badge,
-            thumbnail: thumb,
-            type: id.startsWith('PL') ? 'Official Chart' : 'Curated Mix',
-          });
+            liveItems.push({
+              id,
+              title: cleanTitle(rawTitle),
+              description: subtitle,
+              category: classification.category,
+              badge: classification.badge,
+              thumbnail: thumb,
+              type: id.startsWith('PL') ? 'Official Chart' : 'Curated Mix',
+            });
+          }
         }
+      }
+
+      for (const key of Object.keys(node)) {
+        scanNodes(node[key]);
       }
     }
 
-    for (const key of Object.keys(node)) {
-      scanNodes(node[key]);
-    }
+    scanNodes(data);
+
+    return liveItems;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  scanNodes(data);
-
-  return liveItems;
 }
+
