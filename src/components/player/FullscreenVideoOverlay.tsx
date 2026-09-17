@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudio, useAudioProgress } from '@/contexts/AudioContext';
 import { lockPortraitAsync, addOrientationListener } from '@/services/orientationManager';
 
@@ -40,6 +41,18 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const insets = useSafeAreaInsets();
   const { currentSong, isPlaying, togglePlay, seekTo } = useAudio();
   const { position, duration } = useAudioProgress();
+
+  // Prevent screen auto-sleep while watching fullscreen video
+  useEffect(() => {
+    if (isVisible) {
+      activateKeepAwakeAsync('fullscreen_video').catch(() => {});
+      return () => {
+        deactivateKeepAwake('fullscreen_video');
+      };
+    } else {
+      deactivateKeepAwake('fullscreen_video');
+    }
+  }, [isVisible]);
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [contentFit, setContentFit] = useState<'contain' | 'cover'>('cover');

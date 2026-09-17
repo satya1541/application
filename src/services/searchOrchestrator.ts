@@ -282,8 +282,8 @@ export class SearchOrchestrator {
 
       try {
         const [saavnSongs, ytSongs, saavnArtists, saavnAlbums] = await Promise.allSettled([
-          fetchWithTimeout(searchSaavnSongs(searchTarget, 1, 20), 4000, []),
-          fetchWithTimeout(searchYouTubeMusic(searchTarget, 20), 4000, []),
+          fetchWithTimeout(searchSaavnSongs(searchTarget, 1, 20), 5000, []),
+          fetchWithTimeout(searchYouTubeMusic(searchTarget, 20), 6000, []),
           fetchWithTimeout(cachedSearchSaavnArtists(searchTarget, 6), 3500, []),
           fetchWithTimeout(searchSaavnAlbums(searchTarget, 6), 3500, []),
         ]);
@@ -315,12 +315,16 @@ export class SearchOrchestrator {
     // 2. First Pass: Primary Retrieval
     let { onlineSongs, onlineArtists, onlineAlbums } = await fetchLiveCandidates(effectiveQuery);
 
-    // 3. Multi-Source Deduplication & Per-Item Quality Comparison (Lossless + Opus)
+    // 3. Multi-Source Deduplication & Per-Item Quality Comparison (Preserves both Lossless and Opus)
     const buildMergedSongs = (rawList: ExploreSong[]): CanonicalSong[] => {
       const canonicalSongs: CanonicalSong[] = [];
 
       for (const raw of rawList) {
-        const existingIdx = canonicalSongs.findIndex((c) => isCanonicalSongMatch(c, raw));
+        // Only deduplicate identical tracks within the same source or identical ID.
+        // This guarantees both Lossless (JioSaavn) and Opus (YouTube) tracks are presented to the user!
+        const existingIdx = canonicalSongs.findIndex(
+          (c) => c.id === raw.id || (c.source === raw.source && isCanonicalSongMatch(c, raw))
+        );
 
         if (existingIdx !== -1) {
           // Merge as fallback source
