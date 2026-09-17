@@ -177,15 +177,26 @@ export async function resolveDirectYouTubeStream(videoId: string): Promise<strin
   }
 }
 
-interface CachedVideoStream {
+export interface VideoStreamDetails {
   url: string;
+  qualityLabel: string;
+  resolution: '4K' | '2K' | '1080p' | '720p' | '480p';
+  badge: string;
+  width?: number;
+  height?: number;
+  fps?: number;
+  bitrate?: number;
+}
+
+interface CachedVideoStream {
+  details: VideoStreamDetails;
   expiresAt: number;
 }
 
 const videoStreamCache = new Map<string, CachedVideoStream>();
 const MAX_VIDEO_CACHE_ENTRIES = 50;
 
-function setCachedVideoUrl(cleanId: string, url: string): void {
+function setCachedVideoDetails(cleanId: string, details: VideoStreamDetails): void {
   if (videoStreamCache.size >= MAX_VIDEO_CACHE_ENTRIES) {
     const oldestKey = videoStreamCache.keys().next().value;
     if (oldestKey) {
@@ -194,19 +205,80 @@ function setCachedVideoUrl(cleanId: string, url: string): void {
   }
 
   let expiresAt = Date.now() + 5 * 60 * 60 * 1000; // default 5 hours
-  const match = url.match(/[?&]expire=(\d+)/);
+  const match = details.url.match(/[?&]expire=(\d+)/);
   if (match && match[1]) {
     expiresAt = parseInt(match[1], 10) * 1000;
   }
 
-  videoStreamCache.set(cleanId, { url, expiresAt });
+  videoStreamCache.set(cleanId, { details, expiresAt });
+}
+
+export function getCachedVideoDetails(videoId: string): VideoStreamDetails | null {
+  const cleanId = videoId.replace(/^yt_/, '').trim();
+  const cached = videoStreamCache.get(cleanId);
+  if (cached && Date.now() < cached.expiresAt - 300000) {
+    return cached.details;
+  }
+  return null;
+}
+
+function scoreVideoFormat(f: any): number {
+  let score = 0;
+  const q = (f.qualityLabel || '').toLowerCase();
+  const h = f.height || 0;
+  const fps = f.fps || 30;
+  const br = f.bitrate || 0;
+
+  // 1. Resolution tiers (Favor 4K / 2K for max sharpness and supersampled color)
+  if (h >= 2160 || q.includes('2160') || q.includes('4k')) {
+    score += 45000000;
+  } else if (h >= 1440 || q.includes('1440') || q.includes('2k')) {
+    score += 40000000;
+  } else if (h >= 1080 || q.includes('1080')) {
+    score += 25000000;
+  } else if (h >= 720 || q.includes('720')) {
+    score += 15000000;
+  } else {
+    score += 5000000;
+  }
+
+  // 2. High frame rate bonus (50fps/60fps)
+  if (fps >= 50 || /\b60\b|60fps|p60/i.test(q)) {
+    score += 6000000;
+  }
+
+  // 3. Bitrate bonus (vital for sharpness & eliminating compression artifacts)
+  score += Math.min(br, 25000000);
+
+  return score;
+}
+
+function getResolutionLabel(f: any): { resolution: '4K' | '2K' | '1080p' | '720p' | '480p'; badge: string } {
+  const h = f.height || 0;
+  const q = (f.qualityLabel || '').toLowerCase();
+  const fps = f.fps || 30;
+  const is60 = fps >= 50 || /\b60\b|60fps|p60/i.test(q);
+
+  if (h >= 2160 || q.includes('2160') || q.includes('4k')) {
+    return { resolution: '4K', badge: is60 ? '4K 60' : '4K UHD' };
+  }
+  if (h >= 1440 || q.includes('1440') || q.includes('2k')) {
+    return { resolution: '2K', badge: is60 ? '2K 60' : '2K QHD' };
+  }
+  if (h >= 1080 || q.includes('1080')) {
+    return { resolution: '1080p', badge: is60 ? '1080p60' : '1080p HD' };
+  }
+  if (h >= 720 || q.includes('720')) {
+    return { resolution: '720p', badge: is60 ? '720p60' : '720p HD' };
+  }
+  return { resolution: '480p', badge: '480p' };
 }
 
 /**
- * Resolves direct googlevideo MP4 video stream URL for any YouTube video ID.
- * Returns direct HTTPS video URL (720p or 480p MP4) suitable for silent background canvas loops.
+ * Resolves direct googlevideo video stream details (including URL, resolution, bitrate, and badge).
+ * Unlocks 4K (2160p) and 2K (1440p) VP9 / AV1 streams with up to 18 Mbps bitrate for cinema-grade sharpness.
  */
-export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<string | null> {
+export async function resolveDirectYouTubeVideoDetails(videoId: string): Promise<VideoStreamDetails | null> {
   const cleanId = videoId.replace(/^yt_/, '').trim();
   if (!/^[a-zA-Z0-9_-]{11}$/.test(cleanId)) {
     return null;
@@ -214,11 +286,9 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
 
   const cached = videoStreamCache.get(cleanId);
   if (cached) {
-    // Return cached URL if it has more than 5 minutes before expiration
     if (Date.now() < cached.expiresAt - 300000) {
-      return cached.url;
+      return cached.details;
     }
-    // Expired - purge from cache to trigger fresh resolution
     videoStreamCache.delete(cleanId);
   }
 
@@ -276,123 +346,49 @@ export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<
     }
 
     const adaptive = data?.streamingData?.adaptiveFormats || [];
-    const videoMp4Formats = adaptive.filter(
-      (f: any) => f?.mimeType && f.mimeType.includes('video/mp4') && f?.url
+    // Accept both video/mp4 and video/webm (VP9, AV1, and H.264) for ultra-sharp 4K/2K/1080p
+    const videoFormats = adaptive.filter(
+      (f: any) =>
+        f?.mimeType &&
+        (f.mimeType.includes('video/mp4') || f.mimeType.includes('video/webm')) &&
+        f?.url
     );
 
-    if (videoMp4Formats.length === 0) {
+    if (videoFormats.length === 0) {
       return null;
     }
 
-    // 1. Primary: 1080p 60fps MP4 (itag 299, H.264 / avc1 hardware accelerated, ultra smooth 60fps)
-    const p1080p60H264 = videoMp4Formats.find(
-      (f: any) =>
-        f.itag === 299 ||
-        ((f.fps === 60 || f?.qualityLabel?.includes('60')) &&
-          f?.qualityLabel?.includes('1080') &&
-          f?.mimeType?.includes('avc1'))
-    );
-    if (p1080p60H264?.url) {
-      setCachedVideoUrl(cleanId, p1080p60H264.url);
-      return p1080p60H264.url;
-    }
+    videoFormats.sort((a: any, b: any) => scoreVideoFormat(b) - scoreVideoFormat(a));
+    const best = videoFormats[0];
+    const { resolution, badge } = getResolutionLabel(best);
 
-    // 2. Any 1080p 60fps format (e.g. itag 399 or qualityLabel 1080p60)
-    const p1080p60Any = videoMp4Formats.find(
-      (f: any) =>
-        f.itag === 299 ||
-        f.itag === 399 ||
-        (f.fps === 60 && f?.qualityLabel?.includes('1080')) ||
-        f?.qualityLabel?.includes('1080p60')
-    );
-    if (p1080p60Any?.url) {
-      setCachedVideoUrl(cleanId, p1080p60Any.url);
-      return p1080p60Any.url;
-    }
+    const details: VideoStreamDetails = {
+      url: best.url,
+      qualityLabel: best.qualityLabel || `${best.height || 1080}p`,
+      resolution,
+      badge,
+      width: best.width,
+      height: best.height,
+      fps: best.fps,
+      bitrate: best.bitrate,
+    };
 
-    // 3. Standard 1080p (30fps) MP4 H.264 (itag 137 or qualityLabel 1080)
-    const p1080H264 = videoMp4Formats.find(
-      (f: any) =>
-        (f.itag === 137 || f?.qualityLabel?.includes('1080')) &&
-        f?.mimeType?.includes('avc1')
-    );
-    if (p1080H264?.url) {
-      setCachedVideoUrl(cleanId, p1080H264.url);
-      return p1080H264.url;
-    }
-
-    // 4. Any 1080p format
-    const p1080Any = videoMp4Formats.find(
-      (f: any) => f?.qualityLabel?.includes('1080')
-    );
-    if (p1080Any?.url) {
-      setCachedVideoUrl(cleanId, p1080Any.url);
-      return p1080Any.url;
-    }
-
-    // 5. Fallback: 720p 60fps MP4 (itag 298, H.264 / avc1 hardware accelerated, ultra smooth 60fps)
-    const p720p60H264 = videoMp4Formats.find(
-      (f: any) =>
-        f.itag === 298 ||
-        ((f.fps === 60 || f?.qualityLabel?.includes('60')) &&
-          f?.qualityLabel?.includes('720') &&
-          f?.mimeType?.includes('avc1'))
-    );
-    if (p720p60H264?.url) {
-      setCachedVideoUrl(cleanId, p720p60H264.url);
-      return p720p60H264.url;
-    }
-
-    // 6. Fallback: Any 720p 60fps format (e.g. itag 398 or qualityLabel 720p60)
-    const p720p60Any = videoMp4Formats.find(
-      (f: any) =>
-        f.itag === 298 ||
-        f.itag === 398 ||
-        (f.fps === 60 && f?.qualityLabel?.includes('720')) ||
-        f?.qualityLabel?.includes('720p60')
-    );
-    if (p720p60Any?.url) {
-      setCachedVideoUrl(cleanId, p720p60Any.url);
-      return p720p60Any.url;
-    }
-
-    // 7. Fallback: Standard 720p (30fps) MP4 H.264 (itag 136 or qualityLabel 720)
-    const p720H264 = videoMp4Formats.find(
-      (f: any) =>
-        (f.itag === 136 || f?.qualityLabel?.includes('720')) &&
-        f?.mimeType?.includes('avc1')
-    );
-    if (p720H264?.url) {
-      setCachedVideoUrl(cleanId, p720H264.url);
-      return p720H264.url;
-    }
-
-    // 8. Fallback: Any 720p format
-    const p720Any = videoMp4Formats.find(
-      (f: any) => f?.qualityLabel?.includes('720')
-    );
-    if (p720Any?.url) {
-      setCachedVideoUrl(cleanId, p720Any.url);
-      return p720Any.url;
-    }
-
-    // 9. Fallback: 480p / 360p
-    const p480 = videoMp4Formats.find(
-      (f: any) => f.itag === 135 || f?.qualityLabel?.includes('480')
-    );
-    if (p480?.url) {
-      setCachedVideoUrl(cleanId, p480.url);
-      return p480.url;
-    }
-
-    const first = videoMp4Formats[0]?.url || null;
-    if (first) setCachedVideoUrl(cleanId, first);
-    return first;
+    setCachedVideoDetails(cleanId, details);
+    return details;
   } catch (err: any) {
     if (err?.name === 'AbortError' || err?.message?.includes('canceled') || err?.message?.includes('aborted')) {
       return null;
     }
     return null;
   }
+}
+
+/**
+ * Resolves direct googlevideo video stream URL for any YouTube video ID.
+ * Returns direct HTTPS video URL (4K, 2K, 1080p, or 720p).
+ */
+export async function resolveDirectYouTubeVideoStream(videoId: string): Promise<string | null> {
+  const details = await resolveDirectYouTubeVideoDetails(videoId);
+  return details?.url || null;
 }
 

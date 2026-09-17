@@ -18,6 +18,7 @@ interface VideoCanvasViewProps {
   videoUrl: string;
   isPlaying: boolean;
   isVisible?: boolean;
+  qualityBadge?: string;
   width?: number;
   height?: number;
   borderRadius?: number;
@@ -30,6 +31,7 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
   videoUrl,
   isPlaying,
   isVisible = true,
+  qualityBadge = '1080p',
   width = DEFAULT_CARD_SIZE,
   height = DEFAULT_CARD_SIZE,
   borderRadius = 24,
@@ -349,7 +351,7 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
       {/* Bottom info & actions row */}
       <View style={styles.bottomRow}>
         <View style={styles.canvasBadge}>
-          <Text style={styles.canvasBadgeText}>VIDEO</Text>
+          <Text style={styles.canvasBadgeText}>{qualityBadge || 'VIDEO'}</Text>
         </View>
 
         {/* Fullscreen Expand Button (Four-corner expand bracket icon matching user image) */}
@@ -367,6 +369,7 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
       <FullscreenVideoOverlay
         player={player}
         isVisible={isFullscreen}
+        qualityBadge={qualityBadge}
         onExitFullscreen={handleExitFullscreen}
       />
     </View>

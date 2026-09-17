@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { VideoView, type VideoPlayer } from 'expo-video';
+import { LinearGradient } from 'expo-linear-gradient';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudio, useAudioProgress } from '@/contexts/AudioContext';
 import { lockPortraitAsync, addOrientationListener } from '@/services/orientationManager';
@@ -23,6 +24,7 @@ import { lockPortraitAsync, addOrientationListener } from '@/services/orientatio
 interface FullscreenVideoOverlayProps {
   player: VideoPlayer | null;
   isVisible: boolean;
+  qualityBadge?: string;
   onExitFullscreen: () => void;
 }
 
@@ -36,6 +38,7 @@ const formatTime = (seconds: number): string => {
 export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   player,
   isVisible,
+  qualityBadge = '1080p',
   onExitFullscreen,
 }) => {
   const insets = useSafeAreaInsets();
@@ -56,6 +59,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
 
   const [controlsVisible, setControlsVisible] = useState(true);
   const [contentFit, setContentFit] = useState<'contain' | 'cover'>('cover');
+  const [isVivid, setIsVivid] = useState<boolean>(true);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState(0);
 
@@ -214,14 +218,34 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
     >
       <StatusBar hidden={!controlsVisible} animated />
       <View style={styles.container}>
-        {/* Fullscreen Video View */}
+        {/* Fullscreen Video View: Native surfaceView for direct hardware compositor overlay, full 10-bit HDR/DCI-P3 color and maximum sharpness */}
         <VideoView
           style={StyleSheet.absoluteFill}
           player={player}
           contentFit={contentFit}
           nativeControls={false}
-          surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+          surfaceType={Platform.OS === 'android' ? 'surfaceView' : undefined}
         />
+
+        {/* Vivid / HDR Color Boost Layer: Micro-contrast enhancer and warm color saturation pop */}
+        {isVivid && (
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {/* Subtle cinematic micro-contrast vignette to deepen black levels without clipping highlights */}
+            <LinearGradient
+              colors={['rgba(0, 0, 0, 0.16)', 'transparent', 'rgba(0, 0, 0, 0.22)']}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+            {/* Subtle warm saturation lift (enhances reds, golds, skin tones & lights) */}
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: 'rgba(255, 120, 0, 0.015)' },
+              ]}
+              pointerEvents="none"
+            />
+          </View>
+        )}
 
         {/* Double-tap visual feedback */}
         {seekFeedback && (
@@ -261,7 +285,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
           ]}
           pointerEvents={controlsVisible ? 'box-none' : 'none'}
         >
-          {/* Top Bar: Back button, Track Title & Artist, Aspect Ratio Toggle */}
+          {/* Top Bar: Back button, Track Title & Artist, Quality Badge, Vivid Mode Toggle, Aspect Ratio Toggle */}
           <View style={styles.topBar}>
             <TouchableOpacity
               onPress={handleExit}
@@ -280,6 +304,32 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
               </Text>
             </View>
 
+            {/* Quality Badge (e.g. 4K UHD, 2K QHD, 1080p60) */}
+            <View style={styles.qualityBadge}>
+              <Text style={styles.qualityBadgeText}>{qualityBadge || '1080p'}</Text>
+            </View>
+
+            {/* Vivid / HDR Color Boost Mode Toggle */}
+            <TouchableOpacity
+              onPress={() => {
+                setIsVivid((prev) => !prev);
+                resetHideTimer();
+              }}
+              style={[styles.vividToggleBtn, isVivid && styles.vividToggleBtnActive]}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="sparkles"
+                size={12}
+                color={isVivid ? '#38bdf8' : 'rgba(255, 255, 255, 0.6)'}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.vividToggleText, isVivid && styles.vividToggleTextActive]}>
+                VIVID
+              </Text>
+            </TouchableOpacity>
+
+            {/* Aspect Ratio Toggle (FIT / FILL) */}
             <TouchableOpacity
               onPress={() => {
                 setContentFit((prev) => (prev === 'contain' ? 'cover' : 'contain'));
@@ -423,6 +473,51 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     marginTop: 2,
+  },
+  qualityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(56, 189, 248, 0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+    marginRight: 8,
+  },
+  qualityBadgeText: {
+    color: '#38bdf8',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  vividToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    marginRight: 8,
+  },
+  vividToggleBtnActive: {
+    backgroundColor: 'rgba(56, 189, 248, 0.22)',
+    borderColor: '#38bdf8',
+    shadowColor: '#38bdf8',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  vividToggleText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  vividToggleTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
   },
   fitToggleBtn: {
     paddingHorizontal: 12,

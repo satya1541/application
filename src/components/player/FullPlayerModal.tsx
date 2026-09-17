@@ -28,7 +28,10 @@ import { OfflineBanner } from '../common/OfflineBanner';
 import { AmbientPlayerBackground, getPaletteForSong } from './AmbientPlayerBackground';
 import { getHighResCoverArt } from '@/services/imageUtils';
 import { registerPlayerSheetListeners } from '@/services/playerSheetController';
-import { resolveDirectYouTubeVideoStream } from '@/services/youtubeStreamResolver';
+import {
+  resolveDirectYouTubeVideoStream,
+  resolveDirectYouTubeVideoDetails,
+} from '@/services/youtubeStreamResolver';
 import { lockPortraitAsync } from '@/services/orientationManager';
 
 const { width, height } = Dimensions.get('window');
@@ -132,19 +135,22 @@ export const FullPlayerModal: React.FC = () => {
   const [showQueue, setShowQueue] = useState(false);
   const [showCanvas, setShowCanvas] = useState(false);
   const [canvasVideoUrl, setCanvasVideoUrl] = useState<string | null>(null);
+  const [videoQualityBadge, setVideoQualityBadge] = useState<string>('1080p');
 
-  // Automatically resolve direct YouTube MP4 video stream if playing a YouTube / Opus track
+  // Automatically resolve direct YouTube 2K/4K/1080p video stream if playing a YouTube / Opus track
   useEffect(() => {
     let isMounted = true;
     setCanvasVideoUrl(null);
+    setVideoQualityBadge('1080p');
     setShowCanvas(false); // Every song opens as 'Song' filter by default!
 
     const isYouTube = currentSong?.source === 'youtube' || currentSong?.id?.startsWith('yt_');
     if (isYouTube && currentSong?.id) {
-      resolveDirectYouTubeVideoStream(currentSong.id)
-        .then((url) => {
-          if (isMounted && url) {
-            setCanvasVideoUrl(url);
+      resolveDirectYouTubeVideoDetails(currentSong.id)
+        .then((details) => {
+          if (isMounted && details?.url) {
+            setCanvasVideoUrl(details.url);
+            setVideoQualityBadge(details.badge);
           }
         })
         .catch(() => {});
@@ -486,6 +492,7 @@ export const FullPlayerModal: React.FC = () => {
                         videoUrl={canvasVideoUrl}
                         isPlaying={isPlaying}
                         isVisible={showCanvas}
+                        qualityBadge={videoQualityBadge}
                       />
                     </View>
                   )}
