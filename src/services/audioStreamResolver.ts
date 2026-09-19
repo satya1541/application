@@ -231,29 +231,29 @@ export async function resolveStreamUrl(
  * java.lang.OutOfMemoryError and severe battery/thermal overheating.
  * Pre-resolving the URL guarantees 0ms instant playback via progressive streaming without memory bloat.
  */
-export function prefetchStreamUrl(song: Song): void {
+export function prefetchStreamUrl(song: Song, targetQuality: StreamingQuality = 'very_high'): void {
   if (!song) return;
-  const cacheKey = song.id || `${song.name}__${song.artist}`;
+  const cacheKey = `${song.id || `${song.name}__${song.artist}`}__${targetQuality}`;
 
   if (streamCache.has(cacheKey)) {
     return;
   }
 
   // Pre-resolve stream URL into LRU cache ahead of time (fire-and-forget)
-  resolveStreamUrl(song).catch(() => {});
+  resolveStreamUrl(song, targetQuality).catch(() => {});
 }
 
 /**
  * Pre-warms the next 2 tracks and previous 1 track ahead of time.
  */
-export function prewarmUpcomingQueue(queue: Song[], currentIdx: number): void {
+export function prewarmUpcomingQueue(queue: Song[], currentIdx: number, targetQuality: StreamingQuality = 'very_high'): void {
   if (!queue || queue.length === 0 || currentIdx < 0) return;
 
   const next1 = queue[currentIdx + 1];
   const next2 = queue[currentIdx + 2];
   const prev1 = queue[currentIdx - 1];
 
-  if (next1) prefetchStreamUrl(next1);
-  if (next2) prefetchStreamUrl(next2);
-  if (prev1) prefetchStreamUrl(prev1);
+  if (next1) prefetchStreamUrl(next1, targetQuality);
+  if (next2) prefetchStreamUrl(next2, targetQuality);
+  if (prev1) prefetchStreamUrl(prev1, targetQuality);
 }

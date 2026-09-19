@@ -131,7 +131,7 @@ export function formatSaavnSong(raw: any): ExploreSong | null {
       artist = raw.more_info.music;
     }
 
-    const duration = parseInt(raw.more_info?.duration || raw.duration || '240', 10);
+    const duration = parseInt(raw.more_info?.duration || raw.duration || '0', 10);
     const cover = getHdCoverArt(raw.image);
     const name = cleanTitle(unescapeHtml(raw.title || raw.song || 'Unknown Song'));
     const cleanArt = cleanArtist(unescapeHtml(artist));
@@ -142,7 +142,7 @@ export function formatSaavnSong(raw: any): ExploreSong | null {
       artist: cleanArt,
       album: unescapeHtml(raw.more_info?.album || raw.album || 'Single'),
       year: raw.year || raw.more_info?.year || '',
-      duration: isNaN(duration) ? 240 : duration,
+      duration: isNaN(duration) || duration <= 0 ? 0 : duration,
       cover,
       streamUrl: directStreamUrl,
       quality: quality || 'Lossless',

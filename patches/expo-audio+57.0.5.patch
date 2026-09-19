@@ -337,7 +337,7 @@ index 86880d9..dff53af 100644
  ) : Record
  
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
-index 196a5d5..2fbd142 100644
+index 196a5d5..736a99b 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioControlsService.kt
 @@ -88,8 +88,10 @@ class AudioControlsService : MediaSessionService() {
@@ -448,7 +448,7 @@ index 196a5d5..2fbd142 100644
      builder.setStyle(style)
      return builder.build()
    }
-@@ -240,19 +244,22 @@ class AudioControlsService : MediaSessionService() {
+@@ -240,19 +244,23 @@ class AudioControlsService : MediaSessionService() {
      val session = mediaSession ?: return
      val mediaButtons = mutableListOf<CommandButton>()
  
@@ -466,6 +466,7 @@ index 196a5d5..2fbd142 100644
 +          .setDisplayName("Previous")
            .setEnabled(true)
 -          .setSessionCommand(SessionCommand(ACTION_SEEK_BACKWARD, Bundle.EMPTY))
++          .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
 +          .setSessionCommand(SessionCommand(ACTION_PREV, Bundle.EMPTY))
            .setSlots(CommandButton.SLOT_BACK)
            .build()
@@ -477,7 +478,7 @@ index 196a5d5..2fbd142 100644
      mediaButtons.add(
        CommandButton.Builder(if (isPlaying) CommandButton.ICON_PAUSE else CommandButton.ICON_PLAY)
          .setDisplayName(if (isPlaying) "Pause" else "Play")
-@@ -262,13 +269,13 @@ class AudioControlsService : MediaSessionService() {
+@@ -262,13 +270,14 @@ class AudioControlsService : MediaSessionService() {
          .build()
      )
  
@@ -492,11 +493,12 @@ index 196a5d5..2fbd142 100644
 +          .setDisplayName("Next")
            .setEnabled(true)
 -          .setSessionCommand(SessionCommand(ACTION_SEEK_FORWARD, Bundle.EMPTY))
++          .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
 +          .setSessionCommand(SessionCommand(ACTION_NEXT, Bundle.EMPTY))
            .setSlots(CommandButton.SLOT_FORWARD)
            .build()
        )
-@@ -321,7 +328,7 @@ class AudioControlsService : MediaSessionService() {
+@@ -321,7 +330,7 @@ class AudioControlsService : MediaSessionService() {
    }
  
    private fun resolveSessionPlayer(player: AudioPlayer, options: AudioLockScreenOptions?): Player {
@@ -505,7 +507,7 @@ index 196a5d5..2fbd142 100644
      if (!isLive) {
        return player.ref
      }
-@@ -381,6 +388,7 @@ class AudioControlsService : MediaSessionService() {
+@@ -381,6 +390,7 @@ class AudioControlsService : MediaSessionService() {
          addSession(session)
          mediaSession = session
          sessionMetadataPlayer = sessionPlayer
@@ -513,7 +515,7 @@ index 196a5d5..2fbd142 100644
  
          updateSessionCustomLayout(player.ref.isPlaying)
  
-@@ -461,9 +469,13 @@ class AudioControlsService : MediaSessionService() {
+@@ -461,9 +471,13 @@ class AudioControlsService : MediaSessionService() {
          addSession(session)
          mediaSession = session
          sessionMetadataPlayer = sessionPlayer
@@ -527,7 +529,7 @@ index 196a5d5..2fbd142 100644
        }
  
        // Reload artwork if metadata has changed
-@@ -524,6 +536,9 @@ class AudioControlsService : MediaSessionService() {
+@@ -524,6 +538,9 @@ class AudioControlsService : MediaSessionService() {
      currentOptions = null
      currentArtwork = null
      currentArtworkUrl = null
@@ -537,7 +539,7 @@ index 196a5d5..2fbd142 100644
      removePlayerListener()
    }
  
-@@ -537,6 +552,18 @@ class AudioControlsService : MediaSessionService() {
+@@ -537,6 +554,18 @@ class AudioControlsService : MediaSessionService() {
        override fun onPlaybackStateChanged(playbackState: Int) {
          postOrStartForegroundNotification(startInForeground = false)
        }
@@ -556,7 +558,7 @@ index 196a5d5..2fbd142 100644
      }
      playbackListener = listener
      player.ref.addListener(listener)
-@@ -550,15 +577,30 @@ class AudioControlsService : MediaSessionService() {
+@@ -550,15 +579,30 @@ class AudioControlsService : MediaSessionService() {
      }
    }
  
@@ -588,10 +590,18 @@ index 196a5d5..2fbd142 100644
    }
  }
 diff --git a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
-index 839aaef..d388742 100644
+index 839aaef..2d0eec5 100644
 --- a/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
 +++ b/node_modules/expo-audio/android/src/main/java/expo/modules/audio/service/AudioMediaSessionCallback.kt
-@@ -24,15 +24,12 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+@@ -20,29 +20,49 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+       return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+         .setAvailablePlayerCommands(
+           MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
++            .add(Player.COMMAND_SEEK_TO_NEXT)
++            .add(Player.COMMAND_SEEK_TO_PREVIOUS)
++            .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
++            .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+             // Keep seek commands for the seek slider
              .add(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM)
              .add(Player.COMMAND_SEEK_FORWARD)
              .add(Player.COMMAND_SEEK_BACK)
@@ -609,7 +619,11 @@ index 839aaef..d388742 100644
              .add(SessionCommand(AudioControlsService.ACTION_SEEK_BACKWARD, Bundle.EMPTY))
              .add(SessionCommand(AudioControlsService.ACTION_SEEK_FORWARD, Bundle.EMPTY))
              .build()
-@@ -43,6 +40,14 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+         )
++        .setCustomLayout(session.customLayout)
+         .build()
+     } catch (e: Exception) {
+       return MediaSession.ConnectionResult.reject()
      }
    }
  
@@ -618,13 +632,23 @@ index 839aaef..d388742 100644
 +    controller: MediaSession.ControllerInfo,
 +    playerCommand: Int
 +  ): Int {
++    when (playerCommand) {
++      Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
++        AudioControlsService.handleMediaAction("next")
++        return MediaSession.ConnectionResult.RESULT_SUCCESS
++      }
++      Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
++        AudioControlsService.handleMediaAction("prev")
++        return MediaSession.ConnectionResult.RESULT_SUCCESS
++      }
++    }
 +    return super.onPlayerCommandRequest(session, controller, playerCommand)
 +  }
 +
    override fun onCustomCommand(
      session: MediaSession,
      controller: MediaSession.ControllerInfo,
-@@ -50,11 +55,13 @@ class AudioMediaSessionCallback : MediaSession.Callback {
+@@ -50,11 +70,13 @@ class AudioMediaSessionCallback : MediaSession.Callback {
      args: Bundle
    ): ListenableFuture<SessionResult> {
      when (command.customAction) {

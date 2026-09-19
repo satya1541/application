@@ -440,21 +440,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const sub = AppState.addEventListener('change', (nextState) => {
       appStateRef.current = nextState;
       if (nextState === 'active') {
-        // Recovery: if a song ended while locked and the next-track advance
-        // failed (network throttled by Android), retry it now.
-        if (bgAdvanceFailedRef.current && pendingNextTrackRef.current) {
-          const pendingSong = pendingNextTrackRef.current;
-          pendingNextTrackRef.current = null;
-          bgAdvanceFailedRef.current = false;
-          console.log('[AudioContext] Retrying background-failed advance for:', pendingSong.name);
-          loadAndPlayTrack(pendingSong, true);
-        } else if (bgAdvanceFailedRef.current) {
-          // No pending song stored, but advance failed — just call nextSong
-          bgAdvanceFailedRef.current = false;
-          console.log('[AudioContext] Retrying background-failed nextSong on foreground');
-          nextSongRef.current?.();
-        }
-
         if (playerRef.current) {
           try {
             const pos = playerRef.current.currentTime || 0;
@@ -660,9 +645,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const prevSongRef = useRef<() => Promise<void>>(() => Promise.resolve());
 
   const syncLockScreenControls = (player: AudioPlayer, song: Song, durationOverride?: number) => {
+    // Only pass duration if it's a real verified duration (durationOverride > 0),
+    // or if song.duration is genuinely known (not placeholder 240 or 0).
+    // If unknown, pass undefined so MetadataInjectingPlayer lets ExoPlayer report its own duration.
+    const hasValidSongDuration = typeof song.duration === 'number' && song.duration > 0 && song.duration !== 240;
     const songDuration = (durationOverride && durationOverride > 0)
       ? durationOverride
-      : (song.duration && song.duration > 0 ? song.duration : (durationRef.current > 0 ? durationRef.current : undefined));
+      : (hasValidSongDuration ? song.duration : (durationRef.current > 0 && durationRef.current !== 240 ? durationRef.current : undefined));
 
     const metadata = {
       title: song.name || 'Unknown Track',
@@ -674,8 +663,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const options = {
       showNext: true,
       showPrevious: true,
-      showSeekForward: false,
-      showSeekBackward: false,
+      showSeekForward: true,
+      showSeekBackward: true,
       isLiveStream: false,
     };
 
@@ -831,8 +820,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (status.duration && status.duration > 0) {
         const prevDuration = durationRef.current;
-        durationRef.current = status.duration;
-        if (!prevDuration || Math.abs(prevDuration - status.duration) > 1.5) {
+        if (!prevDuration || Math.abs(prevDuration - status.duration) > 0.5) {
+          durationRef.current = status.duration;
           if (!isExpoGo && currentSongRef.current && playerRef.current) {
             try {
               playerRef.current.updateLockScreenMetadata({
@@ -1013,10 +1002,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       statusSubscriptionRef.current = null;
     }
 
-    // Remove outgoing player
+    // Remove outgoing player (keep foreground service alive!)
     try {
       outgoing.pause();
-      if (!isExpoGo) { try { outgoing.clearLockScreenControls(); } catch {} }
       outgoing.remove();
     } catch {}
 
@@ -1240,7 +1228,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
         if (playerRef.current) {
           try {
-            if (!isExpoGo) { try { playerRef.current.clearLockScreenControls(); } catch {} }
             playerRef.current.remove();
           } catch {}
         }
@@ -1249,8 +1236,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playerRef.current = promotedPlayer;
         _activeAudioPlayer = promotedPlayer;
         rampVolumeIn(promotedPlayer);
-        syncLockScreenControls(promotedPlayer, song);
-        attachPlayerStatusListener(promotedPlayer);
 
         if (initialPositionSeconds > 0) {
           try { await promotedPlayer.seekTo(initialPositionSeconds); } catch {}
@@ -1259,6 +1244,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           promotedPlayer.play();
           updateIsPlaying(true);
         }
+        syncLockScreenControls(promotedPlayer, song);
+        attachPlayerStatusListener(promotedPlayer);
+
         updateIsLoading(false);
         persistPlaybackState(true);
         return;
@@ -1274,30 +1262,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
 
-      // Background-aware stream resolution: when the screen is locked, Android
-      // aggressively throttles network requests and JS execution. Add a timeout
-      // so the player doesn't hang forever in the background.
-      const isInBackground = appStateRef.current !== 'active';
-      const streamTimeout = isInBackground ? 8000 : 25000; // 8s bg, 25s fg
-
       let playableUrl: string;
       try {
-        playableUrl = await Promise.race([
-          resolveStreamUrl(song, targetQuality),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Stream resolution timed out')), streamTimeout)
-          ),
-        ]);
-      } catch (timeoutErr) {
-        console.warn('[AudioContext] Stream resolution failed/timed out:', timeoutErr);
-        if (isInBackground) {
-          // Store the song for retry when app comes to foreground
-          pendingNextTrackRef.current = song;
-          bgAdvanceFailedRef.current = true;
-          updateIsLoading(false);
-          return;
-        }
-        throw timeoutErr; // re-throw in foreground so the outer catch handles it
+        playableUrl = await resolveStreamUrl(song, targetQuality);
+      } catch (streamErr) {
+        console.warn('[AudioContext] Stream resolution failed:', streamErr);
+        updateIsLoading(false);
+        nextSongRef.current?.();
+        return;
       }
 
       // RACE GUARD: If another song was requested while we awaited the URL, abort.
@@ -1313,8 +1285,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           _activeAudioPlayer = playerRef.current;
           rampVolumeIn(playerRef.current);
 
-          syncLockScreenControls(playerRef.current, song);
-
           if (initialPositionSeconds > 0) {
             try {
               await playerRef.current.seekTo(initialPositionSeconds);
@@ -1327,6 +1297,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             playerRef.current.play();
             updateIsPlaying(true);
           }
+
+          syncLockScreenControls(playerRef.current, song);
           updateIsLoading(false);
           persistPlaybackState(true);
           return;
@@ -1361,11 +1333,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       _activeAudioPlayer = player;
       rampVolumeIn(player);
 
-      syncLockScreenControls(player, song);
-
-      // Subscribe to playback status updates (shared listener function)
-      attachPlayerStatusListener(player);
-
       if (initialPositionSeconds > 0) {
         try {
           await player.seekTo(initialPositionSeconds);
@@ -1380,17 +1347,17 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         player.play();
         setIsPlaying(true);
       }
+
+      syncLockScreenControls(player, song);
+
+      // Subscribe to playback status updates (shared listener function)
+      attachPlayerStatusListener(player);
       persistPlaybackState(true);
     } catch (err) {
       console.warn('Failed to load track with expo-audio:', err);
       updateIsLoading(false);
       updateIsPlaying(false);
-
-      // If we failed in the background, mark for retry on foreground
-      if (appStateRef.current !== 'active') {
-        pendingNextTrackRef.current = song;
-        bgAdvanceFailedRef.current = true;
-      }
+      nextSongRef.current?.();
     }
   };
 
@@ -1399,7 +1366,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!currentSong || queue.length === 0) return;
     const currentIdx = queue.findIndex((s) => s.id === currentSong.id);
     if (currentIdx !== -1) {
-      prewarmUpcomingQueue(queue, currentIdx);
+      const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
+      prewarmUpcomingQueue(queue, currentIdx, targetQuality);
     }
   }, [currentSong?.id, queue]);
 
