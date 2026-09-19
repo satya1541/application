@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '4.0',
-  otaVersion: '4.0.1',
-  releaseTag: 'v4.0.1',
-  releaseName: '2K/4K Ultra HD & Vivid Colors',
-  releaseDate: '2026-09-17',
+  otaVersion: '4.0.2',
+  releaseTag: 'v4.0.2',
+  releaseName: 'Lockscreen Auto-Advance Fix',
+  releaseDate: '2026-09-19',
   channel: 'preview',
 };
