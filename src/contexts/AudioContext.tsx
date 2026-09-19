@@ -875,6 +875,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       // ── CROSSFADE TRIGGER ──
       const crossfadeSec = crossfadeDurationRef.current;
+      const isInBg = appStateRef.current !== 'active';
       if (
         crossfadeSec > 0 &&
         status.playing &&
@@ -885,7 +886,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         preloadedPlayerRef.current &&
         preloadedSongRef.current
       ) {
-        performCrossfadeTransition();
+        if (isInBg) {
+          // Background/lockscreen: skip crossfade (Android throttles setInterval),
+          // do instant gapless-style transition instead
+          performGaplessTransition();
+        } else {
+          performCrossfadeTransition();
+        }
         return;
       }
 
@@ -917,9 +924,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         hasTriggeredTransitionRef.current = true;
         SafeStorage.removeItem(STORAGE_KEY_LAST_PLAYBACK).catch(() => {});
         if (preloadedPlayerRef.current && preloadedSongRef.current) {
-          if (crossfadeSec > 0) {
+          if (crossfadeSec > 0 && !isInBg) {
             performCrossfadeTransition();
-          } else if (gaplessEnabledRef.current) {
+          } else if (gaplessEnabledRef.current || isInBg) {
+            // In background: always use instant gapless (no setInterval)
             performGaplessTransition();
           } else {
             handleTrackEnd();
@@ -1108,6 +1116,18 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         finalizeTransitionHandover(outgoing, incoming, incomingSong);
       }
     }, stepMs);
+
+    // Safety net: if setInterval gets throttled (e.g. user locks screen mid-crossfade),
+    // force-finalize the transition after the crossfade duration + buffer.
+    // Without this, a throttled interval leaves the player permanently stuck.
+    setTimeout(() => {
+      if (isTransitioningRef.current && crossfadeIntervalRef.current) {
+        console.log('[AudioContext] Crossfade safety timeout: force-finalizing stuck transition');
+        clearInterval(crossfadeIntervalRef.current);
+        crossfadeIntervalRef.current = null;
+        try { finalizeTransitionHandover(outgoing, incoming, incomingSong); } catch {}
+      }
+    }, (crossfadeSec + 3) * 1000);
   };
 
   // ─── Instant 0ms gapless transition to pre-buffered player ───
