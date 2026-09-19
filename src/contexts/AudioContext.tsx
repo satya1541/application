@@ -394,6 +394,13 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const initialPositionRef = useRef<number>(0);
   const lastSaveTimestampRef = useRef<number>(0);
 
+  // Background auto-advance recovery:
+  // When a song ends while the screen is locked, Android throttles background network
+  // requests and JS execution, causing resolveStreamUrl to hang. This ref stores the
+  // song that needs to play, so we can retry when the app returns to foreground.
+  const pendingNextTrackRef = useRef<Song | null>(null);
+  const bgAdvanceFailedRef = useRef<boolean>(false);
+
   // Playback generation counter: prevents race conditions when songs are tapped rapidly.
   // Each loadAndPlayTrack call increments this; stale async callbacks abort if their
   // captured generation doesn't match the current value.
@@ -432,12 +439,29 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       appStateRef.current = nextState;
-      if (nextState === 'active' && playerRef.current) {
-        try {
-          const pos = playerRef.current.currentTime || 0;
-          positionRef.current = pos;
-          notifyProgressListeners(pos, durationRef.current);
-        } catch { }
+      if (nextState === 'active') {
+        // Recovery: if a song ended while locked and the next-track advance
+        // failed (network throttled by Android), retry it now.
+        if (bgAdvanceFailedRef.current && pendingNextTrackRef.current) {
+          const pendingSong = pendingNextTrackRef.current;
+          pendingNextTrackRef.current = null;
+          bgAdvanceFailedRef.current = false;
+          console.log('[AudioContext] Retrying background-failed advance for:', pendingSong.name);
+          loadAndPlayTrack(pendingSong, true);
+        } else if (bgAdvanceFailedRef.current) {
+          // No pending song stored, but advance failed — just call nextSong
+          bgAdvanceFailedRef.current = false;
+          console.log('[AudioContext] Retrying background-failed nextSong on foreground');
+          nextSongRef.current?.();
+        }
+
+        if (playerRef.current) {
+          try {
+            const pos = playerRef.current.currentTime || 0;
+            positionRef.current = pos;
+            notifyProgressListeners(pos, durationRef.current);
+          } catch { }
+        }
       } else if (nextState === 'background' || nextState === 'inactive') {
         persistPlaybackState(true);
       }
@@ -732,6 +756,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return;
     }
+
+    // Determine the next track BEFORE calling nextSong, so we can store it
+    // as a recovery candidate if the background advance fails.
+    const candidate = getUpcomingTrackCandidate();
+    if (candidate) {
+      pendingNextTrackRef.current = candidate;
+    }
+
     nextSongRef.current?.();
   }, []);
 
@@ -1129,6 +1161,10 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     hasPreloadedNextTrackRef.current = false;
     hasTriggeredTransitionRef.current = false;
 
+    // Clear background advance failure flag — a new track is being loaded
+    bgAdvanceFailedRef.current = false;
+    pendingNextTrackRef.current = null;
+
     // Record previously playing track into history before switching if it had playback
     const outgoingSong = currentSongRef.current;
     const outgoingPos = positionRef.current;
@@ -1217,7 +1253,32 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
-      const playableUrl = await resolveStreamUrl(song, targetQuality);
+
+      // Background-aware stream resolution: when the screen is locked, Android
+      // aggressively throttles network requests and JS execution. Add a timeout
+      // so the player doesn't hang forever in the background.
+      const isInBackground = appStateRef.current !== 'active';
+      const streamTimeout = isInBackground ? 8000 : 25000; // 8s bg, 25s fg
+
+      let playableUrl: string;
+      try {
+        playableUrl = await Promise.race([
+          resolveStreamUrl(song, targetQuality),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Stream resolution timed out')), streamTimeout)
+          ),
+        ]);
+      } catch (timeoutErr) {
+        console.warn('[AudioContext] Stream resolution failed/timed out:', timeoutErr);
+        if (isInBackground) {
+          // Store the song for retry when app comes to foreground
+          pendingNextTrackRef.current = song;
+          bgAdvanceFailedRef.current = true;
+          updateIsLoading(false);
+          return;
+        }
+        throw timeoutErr; // re-throw in foreground so the outer catch handles it
+      }
 
       // RACE GUARD: If another song was requested while we awaited the URL, abort.
       if (gen !== playbackGenRef.current) {
@@ -1302,8 +1363,14 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       persistPlaybackState(true);
     } catch (err) {
       console.warn('Failed to load track with expo-audio:', err);
-      setIsLoading(false);
-      setIsPlaying(false);
+      updateIsLoading(false);
+      updateIsPlaying(false);
+
+      // If we failed in the background, mark for retry on foreground
+      if (appStateRef.current !== 'active') {
+        pendingNextTrackRef.current = song;
+        bgAdvanceFailedRef.current = true;
+      }
     }
   };
 
