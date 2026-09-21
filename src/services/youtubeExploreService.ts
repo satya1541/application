@@ -40,15 +40,19 @@ export interface MoodOrGenre {
 
 export interface CategoryShelfItem {
   id: string;
+  videoId?: string;
   title: string;
   subtitle: string;
+  album?: string;
   thumbnail: string;
   isPlaylist?: boolean;
   isVideo?: boolean;
+  isSong?: boolean;
 }
 
 export interface CategoryShelf {
   title: string;
+  isSongsShelf?: boolean;
   items: CategoryShelfItem[];
 }
 
@@ -490,18 +494,27 @@ export async function fetchCategoryDetails(
           const subtitle = twoRow.subtitle?.runs?.map((r: any) => r.text).join('') || '';
           const browseEndpoint = twoRow.navigationEndpoint?.browseEndpoint;
           const watchEndpoint = twoRow.navigationEndpoint?.watchEndpoint;
-          const id = browseEndpoint?.browseId || watchEndpoint?.videoId || '';
+          const browseId = browseEndpoint?.browseId || '';
+          const videoId = watchEndpoint?.videoId || '';
+          const id = browseId || videoId || '';
           const thumb =
             twoRow.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url || '';
 
           if (itemTitle && id) {
+            const isPl = !!browseEndpoint || browseId.startsWith('VL') || browseId.startsWith('MPREb');
             shelfItems.push({
-              id,
+              id: browseId
+                ? browseId.startsWith('VL') || browseId.startsWith('MPREb')
+                  ? browseId
+                  : `VL${browseId}`
+                : `yt_${videoId}`,
+              videoId: videoId || undefined,
               title: itemTitle,
               subtitle,
               thumbnail: normalizeExploreUrl(thumb),
-              isPlaylist: !!browseEndpoint,
+              isPlaylist: isPl,
               isVideo: !!watchEndpoint,
+              isSong: !isPl,
             });
           }
         } else if (responsive) {
@@ -510,18 +523,28 @@ export async function fetchCategoryDetails(
             flexCols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') || '';
           const subtitle =
             flexCols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') || '';
+          const albumText =
+            flexCols[2]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') || '';
           const videoId =
-            responsive.playlistItemData?.videoId || responsive.navigationEndpoint?.watchEndpoint?.videoId || '';
+            responsive.playlistItemData?.videoId ||
+            responsive.navigationEndpoint?.watchEndpoint?.videoId ||
+            responsive.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+              ?.playNavigationEndpoint?.watchEndpoint?.videoId ||
+            '';
           const thumb =
             responsive.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
-            `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+            (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
 
           if (itemTitle && videoId) {
             shelfItems.push({
-              id: videoId,
+              id: `yt_${videoId}`,
+              videoId,
               title: itemTitle,
               subtitle,
+              album: albumText,
               thumbnail: normalizeExploreUrl(thumb),
+              isSong: true,
+              isPlaylist: false,
               isVideo: true,
             });
           }
@@ -529,8 +552,13 @@ export async function fetchCategoryDetails(
       }
 
       if (shelfItems.length > 0) {
+        const isSongsShelf =
+          shelfTitle.toLowerCase().trim() === 'songs' ||
+          shelfTitle.toLowerCase().includes('trending songs') ||
+          shelfItems.every((it) => it.isSong);
         shelves.push({
           title: shelfTitle,
+          isSongsShelf,
           items: shelfItems,
         });
       }

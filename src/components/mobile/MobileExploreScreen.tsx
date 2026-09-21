@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
+import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
 import {
   ExploreSong,
   ExploreAlbum,
@@ -48,6 +49,14 @@ const PLAYLIST_CARD_WIDTH = 150;
 
 type FilterChip = 'all' | 'trending' | 'moods' | 'genres' | 'albums' | 'videos';
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const res: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    res.push(arr.slice(i, i + size));
+  }
+  return res;
+}
+
 interface MobileExploreScreenProps {
   onNavigateHome?: () => void;
 }
@@ -66,7 +75,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Category Shelves Modal State (e.g. Chill -> Coffee shop blends, Unwind + explore, etc.)
+  // Category Shelves Modal State (e.g. Hindi -> "Songs", "Featured playlists", "Community playlists")
   const [selectedCategory, setSelectedCategory] = useState<MoodOrGenre | null>(null);
   const [categoryDetail, setCategoryDetail] = useState<CategoryDetailResult | null>(null);
   const [isLoadingCategory, setIsLoadingCategory] = useState(false);
@@ -191,6 +200,52 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     [trendingSongs, playSong]
   );
 
+  // Play a song directly from category's "Songs" shelf
+  const handlePlayCategorySong = useCallback(
+    (item: CategoryShelfItem, shelfItems: CategoryShelfItem[]) => {
+      const videoId = item.videoId || item.id.replace(/^yt_/, '');
+      const song: Song = {
+        id: `yt_${videoId}`,
+        name: item.title,
+        artist: item.subtitle.split('•')[0]?.trim() || item.subtitle,
+        album: item.album || (selectedCategory ? `${selectedCategory.text} Songs` : 'YouTube Music'),
+        duration: 215,
+        cover: item.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+        streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        quality: 'Opus',
+        source: 'youtube',
+        sourceBadge: YOUTUBE_OPUS_BADGE,
+        hasLyrics: false,
+      };
+
+      const songQueue: Song[] = shelfItems
+        .filter((it) => it.isSong || !it.isPlaylist)
+        .map((it) => {
+          const vId = it.videoId || it.id.replace(/^yt_/, '');
+          return {
+            id: `yt_${vId}`,
+            name: it.title,
+            artist: it.subtitle.split('•')[0]?.trim() || it.subtitle,
+            album: it.album || (selectedCategory ? `${selectedCategory.text} Songs` : 'YouTube Music'),
+            duration: 215,
+            cover: it.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+            streamUrl: `https://www.youtube.com/watch?v=${vId}`,
+            quality: 'Opus' as const,
+            source: 'youtube' as const,
+            sourceBadge: YOUTUBE_OPUS_BADGE,
+            hasLyrics: false,
+          };
+        });
+
+      const clickedIdx = songQueue.findIndex((s) => s.id === song.id);
+      const orderedQueue =
+        clickedIdx > 0 ? [...songQueue.slice(clickedIdx), ...songQueue.slice(0, clickedIdx)] : songQueue;
+
+      playSong(song, orderedQueue);
+    },
+    [selectedCategory, playSong]
+  );
+
   // Play a track from a playlist
   const handlePlayPlaylistTrack = useCallback(
     (track: ExplorePlaylistTrack, playlist: ExplorePlaylistDetail) => {
@@ -258,7 +313,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <Ionicons name="refresh" size={17} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.screenSubtitle}>Trending Hits, Moods, Genres & Official Playlists</Text>
+        <Text style={styles.screenSubtitle}>Trending Hits, Songs, Genres & Official Playlists</Text>
       </View>
 
       {/* Filter Chips Bar */}
@@ -315,7 +370,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             />
           }
         >
-          {/* 1. Moods & Moments (Curated Hubs that lead to Playlists) */}
+          {/* 1. Moods & Moments (Curated Hubs with Playlists) */}
           {(activeChip === 'all' || activeChip === 'moods') && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
@@ -323,7 +378,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   <Ionicons name="heart" size={18} color="#ffa4c5" style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>Moods & Moments</Text>
                 </View>
-                <Text style={styles.sectionBadge}>11 Playlists Hubs</Text>
+                <Text style={styles.sectionBadge}>11 Categories</Text>
               </View>
 
               <View style={styles.moodsGrid}>
@@ -532,7 +587,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             </View>
           )}
 
-          {/* 5. Genres Hub (38 Regional & Global Genres that lead to Playlists) */}
+          {/* 5. Genres Hub (38 Regional & Global Genres that lead to Songs & Playlists) */}
           {(activeChip === 'all' || activeChip === 'genres') && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
@@ -543,7 +598,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                     color="#FFD700"
                     style={{ marginRight: 6 }}
                   />
-                  <Text style={styles.sectionTitle}>Genres & Playlists</Text>
+                  <Text style={styles.sectionTitle}>Genres & Languages</Text>
                 </View>
                 <Text style={styles.sectionBadge}>{genres.length} Genres</Text>
               </View>
@@ -572,7 +627,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       )}
 
       {/* ========================================================================= */}
-      {/* 1. Category Shelves Modal: Shows Playlists Shelves for Mood or Genre      */}
+      {/* 1. Category Shelves Modal: Shows "Songs" AND "Playlists" Shelves          */}
       {/* ========================================================================= */}
       <Modal
         visible={selectedCategory !== null && selectedPlaylistId === null}
@@ -601,7 +656,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 ]}
               />
               <Text style={styles.modalTitle} numberOfLines={1}>
-                {selectedCategory?.text || 'Explore Playlists'}
+                {selectedCategory?.text || 'Explore Category'}
               </Text>
             </View>
 
@@ -613,56 +668,173 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <View style={styles.modalLoader}>
               <ActivityIndicator size="large" color={accent.hex} />
               <Text style={styles.modalLoaderText}>
-                Loading {selectedCategory?.text} playlists...
+                Loading {selectedCategory?.text} content...
               </Text>
             </View>
           ) : categoryDetail && categoryDetail.shelves.length > 0 ? (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-              {categoryDetail.shelves.map((shelf, sIdx) => (
-                <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
-                  <Text style={styles.shelfTitle}>{shelf.title}</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.horizontalScroll}
-                  >
-                    {shelf.items.map((item) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={[styles.shelfCard, { backgroundColor: surfaceHex }]}
-                        activeOpacity={0.8}
-                        onPress={() => handleOpenPlaylist(item.id, item.title, item.thumbnail)}
-                      >
-                        <View style={styles.shelfCoverWrapper}>
-                          <ExpoImage
-                            source={{ uri: item.thumbnail }}
-                            style={styles.shelfCover}
-                            contentFit="cover"
+              {categoryDetail.shelves.map((shelf, sIdx) => {
+                // If this is a Songs shelf (like in Hindi, Punjabi, Pop, etc.)
+                if (shelf.isSongsShelf) {
+                  return (
+                    <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
+                      <View style={styles.shelfHeaderRow}>
+                        <View style={styles.sectionTitleWithIcon}>
+                          <Ionicons
+                            name="musical-notes"
+                            size={18}
+                            color={accent.hex}
+                            style={{ marginRight: 6 }}
                           />
-                          <View style={styles.playlistTagBadge}>
-                            <Ionicons name="list" size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
-                            <Text style={styles.playlistTagText}>PLAYLIST</Text>
-                          </View>
+                          <Text style={styles.shelfTitle}>{shelf.title}</Text>
                         </View>
-                        <Text style={styles.shelfItemTitle} numberOfLines={1}>
-                          {item.title}
-                        </Text>
-                        <Text style={styles.shelfItemSubtitle} numberOfLines={1}>
-                          {item.subtitle}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              ))}
+                        <Text style={styles.sectionBadge}>{shelf.items.length} songs</Text>
+                      </View>
+
+                      {/* 4-row Horizontal Carousel of Songs */}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.songsShelfScroll}
+                      >
+                        {chunkArray(shelf.items, 4).map((chunk, cIdx) => (
+                          <View key={`chunk_${cIdx}`} style={styles.songColumnChunk}>
+                            {chunk.map((songItem) => {
+                              const isCurrent =
+                                currentSong?.id === songItem.id ||
+                                (songItem.videoId &&
+                                  currentSong?.streamUrl?.includes(songItem.videoId));
+                              return (
+                                <TouchableOpacity
+                                  key={songItem.id}
+                                  style={[
+                                    styles.categorySongRow,
+                                    { backgroundColor: surfaceHex },
+                                    isCurrent && [
+                                      styles.categorySongRowActive,
+                                      { borderColor: accent.hex },
+                                    ],
+                                  ]}
+                                  activeOpacity={0.7}
+                                  onPress={() => handlePlayCategorySong(songItem, shelf.items)}
+                                >
+                                  <View style={styles.categorySongThumbWrapper}>
+                                    <ExpoImage
+                                      source={{ uri: songItem.thumbnail }}
+                                      style={styles.categorySongThumb}
+                                      contentFit="cover"
+                                    />
+                                    <View style={styles.categorySongPlayOverlay}>
+                                      <Ionicons
+                                        name={isCurrent && isPlaying ? 'pause' : 'play'}
+                                        size={12}
+                                        color="#FFFFFF"
+                                      />
+                                    </View>
+                                  </View>
+
+                                  <View style={styles.categorySongMeta}>
+                                    <Text
+                                      style={[
+                                        styles.categorySongTitle,
+                                        isCurrent && { color: accent.hex },
+                                      ]}
+                                      numberOfLines={1}
+                                    >
+                                      {songItem.title}
+                                    </Text>
+                                    <Text
+                                      style={styles.categorySongSubtitle}
+                                      numberOfLines={1}
+                                    >
+                                      {songItem.subtitle}
+                                    </Text>
+                                  </View>
+
+                                  <Ionicons
+                                    name={
+                                      isCurrent && isPlaying
+                                        ? 'volume-high'
+                                        : 'play-circle-outline'
+                                    }
+                                    size={20}
+                                    color={isCurrent ? accent.hex : '#777777'}
+                                    style={{ marginLeft: 6 }}
+                                  />
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  );
+                }
+
+                // Otherwise, this is a Playlists shelf ("Featured playlists", "Community playlists", etc.)
+                return (
+                  <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
+                    <View style={styles.shelfHeaderRow}>
+                      <View style={styles.sectionTitleWithIcon}>
+                        <Ionicons
+                          name="albums"
+                          size={17}
+                          color="#AAAAAA"
+                          style={{ marginRight: 6 }}
+                        />
+                        <Text style={styles.shelfTitle}>{shelf.title}</Text>
+                      </View>
+                      <Text style={styles.sectionBadge}>{shelf.items.length} playlists</Text>
+                    </View>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.horizontalScroll}
+                    >
+                      {shelf.items.map((item) => (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[styles.shelfCard, { backgroundColor: surfaceHex }]}
+                          activeOpacity={0.8}
+                          onPress={() => handleOpenPlaylist(item.id, item.title, item.thumbnail)}
+                        >
+                          <View style={styles.shelfCoverWrapper}>
+                            <ExpoImage
+                              source={{ uri: item.thumbnail }}
+                              style={styles.shelfCover}
+                              contentFit="cover"
+                            />
+                            <View style={styles.playlistTagBadge}>
+                              <Ionicons
+                                name="list"
+                                size={10}
+                                color="#FFFFFF"
+                                style={{ marginRight: 3 }}
+                              />
+                              <Text style={styles.playlistTagText}>PLAYLIST</Text>
+                            </View>
+                          </View>
+                          <Text style={styles.shelfItemTitle} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.shelfItemSubtitle} numberOfLines={1}>
+                            {item.subtitle}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                );
+              })}
               <View style={{ height: 80 }} />
             </ScrollView>
           ) : (
             <View style={styles.modalEmpty}>
               <Ionicons name="musical-notes-outline" size={48} color="#666666" />
-              <Text style={styles.modalEmptyTitle}>No Playlists Found</Text>
+              <Text style={styles.modalEmptyTitle}>No Content Found</Text>
               <Text style={styles.modalEmptySubtitle}>
-                Could not load playlists for this category right now.
+                Could not load content for this category right now.
               </Text>
             </View>
           )}
@@ -1243,12 +1415,70 @@ const styles = StyleSheet.create({
   shelfBlock: {
     marginBottom: 24,
   },
+  shelfHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   shelfTitle: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
-    marginBottom: 12,
   },
+  // 4-row song shelf layout
+  songsShelfScroll: {
+    paddingRight: CARD_PADDING,
+    gap: 12,
+  },
+  songColumnChunk: {
+    width: SCREEN_WIDTH * 0.82,
+    gap: 8,
+  },
+  categorySongRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  categorySongRowActive: {
+    borderColor: '#1DB954',
+  },
+  categorySongThumbWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  categorySongThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  categorySongPlayOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  categorySongMeta: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  categorySongTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  categorySongSubtitle: {
+    color: '#888888',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  // Playlist cards
   shelfCard: {
     width: PLAYLIST_CARD_WIDTH,
     borderRadius: 12,
