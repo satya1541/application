@@ -200,15 +200,15 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     [trendingSongs, playSong]
   );
 
-  // Play a song directly from category's "Songs" shelf
+  // Play a song or music video directly from category shelves
   const handlePlayCategorySong = useCallback(
     (item: CategoryShelfItem, shelfItems: CategoryShelfItem[]) => {
-      const videoId = item.videoId || item.id.replace(/^yt_/, '');
+      const videoId = item.videoId || item.id.replace(/^yt_/, '').replace(/^VL/, '');
       const song: Song = {
         id: `yt_${videoId}`,
         name: item.title,
         artist: item.subtitle.split('•')[0]?.trim() || item.subtitle,
-        album: item.album || (selectedCategory ? `${selectedCategory.text} Songs` : 'YouTube Music'),
+        album: item.album || (selectedCategory ? `${selectedCategory.text} • ${item.isVideo ? 'Music Video' : 'Songs'}` : 'YouTube Music'),
         duration: 215,
         cover: item.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
         streamUrl: `https://www.youtube.com/watch?v=${videoId}`,
@@ -219,14 +219,14 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       };
 
       const songQueue: Song[] = shelfItems
-        .filter((it) => it.isSong || !it.isPlaylist)
+        .filter((it) => it.isSong || it.isVideo || !it.isPlaylist)
         .map((it) => {
-          const vId = it.videoId || it.id.replace(/^yt_/, '');
+          const vId = it.videoId || it.id.replace(/^yt_/, '').replace(/^VL/, '');
           return {
             id: `yt_${vId}`,
             name: it.title,
             artist: it.subtitle.split('•')[0]?.trim() || it.subtitle,
-            album: it.album || (selectedCategory ? `${selectedCategory.text} Songs` : 'YouTube Music'),
+            album: it.album || (selectedCategory ? `${selectedCategory.text} • ${it.isVideo ? 'Music Video' : 'Songs'}` : 'YouTube Music'),
             duration: 215,
             cover: it.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
             streamUrl: `https://www.youtube.com/watch?v=${vId}`,
@@ -548,41 +548,73 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.horizontalScroll}
               >
-                {newMusicVideos.map((vid) => (
-                  <TouchableOpacity
-                    key={vid.videoId}
-                    style={[styles.videoCard, { backgroundColor: surfaceHex }]}
-                    activeOpacity={0.8}
-                    onPress={() =>
-                      handlePlayTrendingSong({
-                        id: `yt_${vid.videoId}`,
-                        videoId: vid.videoId,
-                        title: vid.title,
-                        artist: vid.artist,
-                        thumbnail: vid.thumbnail,
-                      })
-                    }
-                  >
-                    <View style={styles.videoThumbWrapper}>
-                      <ExpoImage
-                        source={{ uri: vid.thumbnail }}
-                        style={styles.videoThumb}
-                        contentFit="cover"
-                      />
-                      <View style={styles.videoPlayBtn}>
-                        <Ionicons name="play" size={16} color="#FFFFFF" />
+                {newMusicVideos.map((vid) => {
+                  const isCurrent =
+                    currentSong?.id === `yt_${vid.videoId}` ||
+                    (vid.videoId && currentSong?.streamUrl?.includes(vid.videoId));
+
+                  return (
+                    <TouchableOpacity
+                      key={vid.videoId}
+                      style={[
+                        styles.videoCard,
+                        { backgroundColor: surfaceHex },
+                        isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        handlePlayTrendingSong({
+                          id: `yt_${vid.videoId}`,
+                          videoId: vid.videoId,
+                          title: vid.title,
+                          artist: vid.artist,
+                          thumbnail: vid.thumbnail,
+                        })
+                      }
+                    >
+                      <View style={styles.videoThumbWrapper}>
+                        <ExpoImage
+                          source={{ uri: vid.thumbnail }}
+                          style={styles.videoThumb}
+                          contentFit="cover"
+                        />
+                        <View
+                          style={[
+                            styles.videoCenterPlayBtn,
+                            isCurrent && isPlaying && { backgroundColor: accent.hex },
+                          ]}
+                        >
+                          <Ionicons
+                            name={isCurrent && isPlaying ? 'pause' : 'play'}
+                            size={20}
+                            color="#FFFFFF"
+                            style={{ marginLeft: isCurrent && isPlaying ? 0 : 2 }}
+                          />
+                        </View>
+                        <View style={styles.videoTagBadge}>
+                          <Ionicons
+                            name="videocam"
+                            size={10}
+                            color="#FFFFFF"
+                            style={{ marginRight: 3 }}
+                          />
+                          <Text style={styles.videoTagText}>MUSIC VIDEO</Text>
+                        </View>
                       </View>
-                    </View>
-                    <View style={styles.videoInfo}>
-                      <Text style={styles.videoTitle} numberOfLines={1}>
-                        {vid.title}
-                      </Text>
-                      <Text style={styles.videoArtist} numberOfLines={1}>
-                        {vid.artist} {vid.views ? `• ${vid.views}` : ''}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                      <View style={styles.videoInfo}>
+                        <Text
+                          style={[styles.videoTitle, isCurrent && { color: accent.hex }]}
+                          numberOfLines={1}
+                        >
+                          {vid.title}
+                        </Text>
+                        <Text style={styles.videoArtist} numberOfLines={1}>
+                          {vid.artist} {vid.views ? `• ${vid.views}` : ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
             </View>
           )}
@@ -771,7 +803,99 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   );
                 }
 
-                // Otherwise, this is a Playlists shelf ("Featured playlists", "Community playlists", etc.)
+                // If this is a Music Videos shelf ("Music videos", etc.)
+                if (shelf.isVideosShelf || shelf.title.toLowerCase().includes('video')) {
+                  return (
+                    <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
+                      <View style={styles.shelfHeaderRow}>
+                        <View style={styles.sectionTitleWithIcon}>
+                          <Ionicons
+                            name="videocam"
+                            size={18}
+                            color="#FF0000"
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text style={styles.shelfTitle}>{shelf.title}</Text>
+                        </View>
+                        <Text style={styles.sectionBadge}>{shelf.items.length} videos</Text>
+                      </View>
+
+                      {/* 16:9 Widescreen Music Video Cards */}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.horizontalScroll}
+                      >
+                        {shelf.items.map((videoItem) => {
+                          const isCurrent =
+                            currentSong?.id === videoItem.id ||
+                            (videoItem.videoId &&
+                              currentSong?.streamUrl?.includes(videoItem.videoId));
+
+                          return (
+                            <TouchableOpacity
+                              key={videoItem.id}
+                              style={[
+                                styles.videoCard,
+                                { backgroundColor: surfaceHex },
+                                isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
+                              ]}
+                              activeOpacity={0.8}
+                              onPress={() => handlePlayCategorySong(videoItem, shelf.items)}
+                            >
+                              <View style={styles.videoThumbWrapper}>
+                                <ExpoImage
+                                  source={{ uri: videoItem.thumbnail }}
+                                  style={styles.videoThumb}
+                                  contentFit="cover"
+                                />
+                                {/* YouTube Music Center Play Button Overlay */}
+                                <View
+                                  style={[
+                                    styles.videoCenterPlayBtn,
+                                    isCurrent && isPlaying && { backgroundColor: accent.hex },
+                                  ]}
+                                >
+                                  <Ionicons
+                                    name={isCurrent && isPlaying ? 'pause' : 'play'}
+                                    size={22}
+                                    color="#FFFFFF"
+                                    style={{ marginLeft: isCurrent && isPlaying ? 0 : 2 }}
+                                  />
+                                </View>
+
+                                {/* Video Badge */}
+                                <View style={styles.videoTagBadge}>
+                                  <Ionicons
+                                    name="videocam"
+                                    size={10}
+                                    color="#FFFFFF"
+                                    style={{ marginRight: 3 }}
+                                  />
+                                  <Text style={styles.videoTagText}>MUSIC VIDEO</Text>
+                                </View>
+                              </View>
+
+                              <View style={styles.videoInfo}>
+                                <Text
+                                  style={[styles.videoTitle, isCurrent && { color: accent.hex }]}
+                                  numberOfLines={1}
+                                >
+                                  {videoItem.title}
+                                </Text>
+                                <Text style={styles.videoArtist} numberOfLines={2}>
+                                  {videoItem.subtitle}
+                                </Text>
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    </View>
+                  );
+                }
+
+                // Otherwise, this is a Playlists or Albums shelf ("Featured playlists", "Community playlists", "Albums", etc.)
                 return (
                   <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
                     <View style={styles.shelfHeaderRow}>
@@ -797,7 +921,13 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                           key={item.id}
                           style={[styles.shelfCard, { backgroundColor: surfaceHex }]}
                           activeOpacity={0.8}
-                          onPress={() => handleOpenPlaylist(item.id, item.title, item.thumbnail)}
+                          onPress={() => {
+                            if (item.isSong || item.isVideo || !item.isPlaylist) {
+                              handlePlayCategorySong(item, shelf.items);
+                            } else {
+                              handleOpenPlaylist(item.id, item.title, item.thumbnail);
+                            }
+                          }}
                         >
                           <View style={styles.shelfCoverWrapper}>
                             <ExpoImage
@@ -807,12 +937,14 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                             />
                             <View style={styles.playlistTagBadge}>
                               <Ionicons
-                                name="list"
+                                name={item.isVideo ? 'videocam' : item.isSong ? 'musical-note' : 'list'}
                                 size={10}
                                 color="#FFFFFF"
                                 style={{ marginRight: 3 }}
                               />
-                              <Text style={styles.playlistTagText}>PLAYLIST</Text>
+                              <Text style={styles.playlistTagText}>
+                                {item.isVideo ? 'VIDEO' : item.isSong ? 'SONG' : 'PLAYLIST'}
+                              </Text>
                             </View>
                           </View>
                           <Text style={styles.shelfItemTitle} numberOfLines={1}>
@@ -1318,6 +1450,38 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  videoCenterPlayBtn: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -20,
+    marginLeft: -20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  videoTagBadge: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  videoTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   videoInfo: {
     padding: 8,

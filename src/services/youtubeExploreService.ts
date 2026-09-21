@@ -53,6 +53,7 @@ export interface CategoryShelfItem {
 export interface CategoryShelf {
   title: string;
   isSongsShelf?: boolean;
+  isVideosShelf?: boolean;
   items: CategoryShelfItem[];
 }
 
@@ -484,6 +485,7 @@ export async function fetchCategoryDetails(
 
       const itemsNode = shelfRenderer.contents || shelfRenderer.items || [];
       const shelfItems: CategoryShelfItem[] = [];
+      const isShelfVideo = shelfTitle.toLowerCase().includes('video');
 
       for (const it of itemsNode) {
         const twoRow = it.musicTwoRowItemRenderer;
@@ -495,26 +497,49 @@ export async function fetchCategoryDetails(
           const browseEndpoint = twoRow.navigationEndpoint?.browseEndpoint;
           const watchEndpoint = twoRow.navigationEndpoint?.watchEndpoint;
           const browseId = browseEndpoint?.browseId || '';
-          const videoId = watchEndpoint?.videoId || '';
-          const id = browseId || videoId || '';
+
+          // Look for videoId across all possible InnerTube locations
+          let videoId =
+            watchEndpoint?.videoId ||
+            twoRow.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+              ?.playNavigationEndpoint?.watchEndpoint?.videoId ||
+            twoRow.menu?.menuRenderer?.items?.[0]?.menuServiceItemRenderer?.serviceEndpoint?.queueAddEndpoint
+              ?.queueTarget?.videoId ||
+            (browseId.startsWith('MPED') ? browseId.replace('MPED', '') : '') ||
+            '';
+
           const thumb =
             twoRow.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url || '';
 
+          if (!videoId && thumb) {
+            const match = thumb.match(/\/vi\/([a-zA-Z0-9_-]{11})\//);
+            if (match) {
+              videoId = match[1];
+            }
+          }
+
+          const isAspect169 = twoRow.aspectRatio === 'MUSIC_TWO_ROW_ITEM_THUMBNAIL_ASPECT_RATIO_RECTANGLE_16_9';
+          const isItemVideo = isShelfVideo || isAspect169 || (!!videoId && (!browseId || browseId.startsWith('MPED')));
+          const isPl = !isItemVideo && (browseId.startsWith('VL') || browseId.startsWith('MPREb') || (!!browseEndpoint && !videoId));
+
+          const id = isItemVideo && videoId
+            ? `yt_${videoId}`
+            : browseId
+            ? (browseId.startsWith('VL') || browseId.startsWith('MPREb') ? browseId : `VL${browseId}`)
+            : videoId
+            ? `yt_${videoId}`
+            : '';
+
           if (itemTitle && id) {
-            const isPl = !!browseEndpoint || browseId.startsWith('VL') || browseId.startsWith('MPREb');
             shelfItems.push({
-              id: browseId
-                ? browseId.startsWith('VL') || browseId.startsWith('MPREb')
-                  ? browseId
-                  : `VL${browseId}`
-                : `yt_${videoId}`,
+              id,
               videoId: videoId || undefined,
               title: itemTitle,
               subtitle,
               thumbnail: normalizeExploreUrl(thumb),
               isPlaylist: isPl,
-              isVideo: !!watchEndpoint,
-              isSong: !isPl,
+              isVideo: isItemVideo,
+              isSong: isItemVideo || !isPl,
             });
           }
         } else if (responsive) {
@@ -552,13 +577,20 @@ export async function fetchCategoryDetails(
       }
 
       if (shelfItems.length > 0) {
+        const isVideosShelf =
+          isShelfVideo ||
+          shelfItems.every((it) => it.isVideo);
+
         const isSongsShelf =
-          shelfTitle.toLowerCase().trim() === 'songs' ||
-          shelfTitle.toLowerCase().includes('trending songs') ||
-          shelfItems.every((it) => it.isSong);
+          !isVideosShelf &&
+          (shelfTitle.toLowerCase().trim() === 'songs' ||
+            shelfTitle.toLowerCase().includes('trending songs') ||
+            shelfItems.every((it) => it.isSong && !it.isVideo));
+
         shelves.push({
           title: shelfTitle,
           isSongsShelf,
+          isVideosShelf,
           items: shelfItems,
         });
       }
