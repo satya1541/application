@@ -788,3 +788,149 @@ export function explorePlaylistTrackToSong(track: ExplorePlaylistTrack, playlist
     hasLyrics: false,
   };
 }
+
+export interface ChartArtist {
+  id: string; // browseId, e.g. 'UCptBkLZ6XRxoyn8SkUMc_Iw'
+  rank: number;
+  name: string;
+  subscribers?: string;
+  thumbnail: string;
+  rankTrend?: 'up' | 'down' | 'neutral';
+}
+
+const CACHE_KEY_TOP_CHART_ARTISTS = '@shorty_yt_top_chart_artists_v1';
+let inMemoryChartArtistsCache: ChartArtist[] | null = null;
+let inMemoryChartArtistsTimestamp = 0;
+
+/**
+ * Fetches Top Artists directly from YouTube Music Charts (https://music.youtube.com/charts)
+ */
+export async function fetchTopChartArtists(forceRefresh = false, gl = 'IN'): Promise<ChartArtist[]> {
+  if (
+    !forceRefresh &&
+    inMemoryChartArtistsCache &&
+    inMemoryChartArtistsCache.length > 0 &&
+    Date.now() - inMemoryChartArtistsTimestamp < CACHE_TTL_MS
+  ) {
+    return inMemoryChartArtistsCache;
+  }
+
+  // Check persistent disk cache
+  if (!forceRefresh) {
+    try {
+      const raw = await SafeStorage.getItem(CACHE_KEY_TOP_CHART_ARTISTS);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ChartArtist[];
+        if (parsed && parsed.length > 0) {
+          inMemoryChartArtistsCache = parsed;
+          inMemoryChartArtistsTimestamp = Date.now();
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    const res = await fetch('https://music.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-YouTube-Client-Name': '67',
+        'X-YouTube-Client-Version': '1.20240105.01.00',
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com/charts',
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB_REMIX',
+            clientVersion: '1.20240105.01.00',
+            hl: 'en',
+            gl: gl || 'IN',
+          },
+        },
+        browseId: 'FEmusic_charts',
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`InnerTube charts failed with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const sections =
+      data?.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents ||
+      [];
+
+    const artistSection = sections.find((s: any) => {
+      const title =
+        s?.musicCarouselShelfRenderer?.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text ||
+        s?.musicShelfRenderer?.title?.runs?.[0]?.text;
+      return title && title.toLowerCase().includes('artist');
+    });
+
+    const items =
+      artistSection?.musicCarouselShelfRenderer?.contents || artistSection?.musicShelfRenderer?.contents || [];
+
+    const artists: ChartArtist[] = [];
+    items.forEach((it: any, idx: number) => {
+      const r = it?.musicResponsiveListItemRenderer;
+      if (!r) return;
+
+      const name = r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || '';
+      if (!name) return;
+
+      const subscribers = r.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text || '';
+      const rawRank = r.customIndexColumn?.musicCustomIndexColumnRenderer?.text?.runs?.[0]?.text;
+      const rank = rawRank ? parseInt(rawRank, 10) : idx + 1;
+      const iconType = r.customIndexColumn?.musicCustomIndexColumnRenderer?.icon?.iconType || '';
+      let rankTrend: 'up' | 'down' | 'neutral' = 'neutral';
+      if (iconType.includes('UP')) rankTrend = 'up';
+      else if (iconType.includes('DOWN')) rankTrend = 'down';
+
+      const browseId = r.navigationEndpoint?.browseEndpoint?.browseId || `chart_artist_${idx}`;
+      const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails;
+      let thumbnail = '';
+      if (thumbs && thumbs.length > 0) {
+        thumbnail = thumbs[thumbs.length - 1].url || '';
+        thumbnail = thumbnail.replace(/=w\d+-h\d+/, '=w300-h300');
+        if (thumbnail.startsWith('//')) {
+          thumbnail = 'https:' + thumbnail;
+        }
+      }
+
+      artists.push({
+        id: browseId,
+        rank,
+        name,
+        subscribers,
+        thumbnail,
+        rankTrend,
+      });
+    });
+
+    if (artists.length > 0) {
+      inMemoryChartArtistsCache = artists;
+      inMemoryChartArtistsTimestamp = Date.now();
+      SafeStorage.setItem(CACHE_KEY_TOP_CHART_ARTISTS, JSON.stringify(artists)).catch(() => {});
+      return artists;
+    }
+  } catch (err) {
+    console.warn('[youtubeExploreService] Error fetching top chart artists:', err);
+  }
+
+  // Fallback to disk cache if available
+  try {
+    const raw = await SafeStorage.getItem(CACHE_KEY_TOP_CHART_ARTISTS);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ChartArtist[];
+      if (parsed && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {}
+
+  return [];
+}

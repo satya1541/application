@@ -29,6 +29,7 @@ import { NoInternetView } from '../common/NoInternetView';
 import { useNetwork } from '@/contexts/NetworkContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { fetchTopChartArtists, ChartArtist } from '@/services/youtubeExploreService';
 
 interface BrowseCategory {
   id: string;
@@ -153,52 +154,46 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
   const [suggestions, setSuggestions] = useState<GroupedSuggestions | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
 
+  const { playSong } = useAudio();
+  const { isOffline, refreshNetwork } = useNetwork();
+
   // Active Category Detail View State (Opened via Browse All)
   const [selectedCategory, setSelectedCategory] = useState<BrowseCategory | null>(null);
   const [categorySongs, setCategorySongs] = useState<Song[]>([]);
   const [isCategoryLoading, setIsCategoryLoading] = useState(false);
 
-  // Dynamic live #1 covers for Browse Categories
-  const [dynamicCovers, setDynamicCovers] = useState<Record<string, string>>({});
+  // Top Artists from YouTube Music Charts (https://music.youtube.com/charts)
+  const [topArtists, setTopArtists] = useState<ChartArtist[]>([]);
+  const [isLoadingArtists, setIsLoadingArtists] = useState(false);
+
+  const loadTopArtists = useCallback(async (force = false) => {
+    setIsLoadingArtists(true);
+    try {
+      const artists = await fetchTopChartArtists(force);
+      if (artists && artists.length > 0) {
+        setTopArtists(artists);
+      }
+    } catch (err) {
+      console.warn('[MobileSearchScreen] Failed to fetch top chart artists:', err);
+    } finally {
+      setIsLoadingArtists(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    const fetchCategoryCovers = async () => {
-      const batchSize = 4;
-      for (let i = 0; i < BROWSE_CATEGORIES.length; i += batchSize) {
-        if (!isMounted) break;
-        const batch = BROWSE_CATEGORIES.slice(i, i + batchSize);
-        const covers: Record<string, string> = {};
-        await Promise.allSettled(
-          batch.map(async (cat) => {
-            try {
-              const targetKey = cat.chartKey || cat.language;
-              if (!targetKey) return;
-              const songs = await getTrendingYouTubeMusic(targetKey, 1);
-              if (songs.length > 0 && songs[0]?.cover) {
-                covers[cat.id] = songs[0].cover;
-              }
-            } catch {}
-          })
-        );
-        if (isMounted && Object.keys(covers).length > 0) {
-          setDynamicCovers((prev) => ({ ...prev, ...covers }));
-        }
-      }
-    };
+    loadTopArtists();
+  }, [loadTopArtists]);
 
-    fetchCategoryCovers();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  // Re-fetch when coming back online if top artists list is empty
+  useEffect(() => {
+    if (!isOffline && topArtists.length === 0) {
+      loadTopArtists();
+    }
+  }, [isOffline, topArtists.length, loadTopArtists]);
 
   // Modal States for Artist & Album Discovery
   const [selectedArtist, setSelectedArtist] = useState<{ id: string; name: string; image?: string } | null>(null);
   const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
-
-  const { playSong } = useAudio();
-  const { isOffline, refreshNetwork } = useNetwork();
 
   const inputRef = useRef<TextInput>(null);
   const [isInputFocused, setIsInputFocused] = useState(false);
@@ -807,40 +802,121 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
             /* OFFLINE STATE (Matching Image 1) */
             <NoInternetView onRetry={refreshNetwork} style={styles.offlineView} />
           ) : !query.trim() ? (
-            /* MODE 2: Spotify Browse All UI (Reference Design) */
-            <View>
-              {/* Browse All Header & Grid */}
-              <View style={styles.browseSection}>
-                <Text style={styles.browseTitle}>Browse all</Text>
-
-                <View style={styles.browseGrid}>
-                  {BROWSE_CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={[styles.browseCard, { backgroundColor: cat.color }]}
-                      activeOpacity={0.88}
-                      onPress={() => handleSelectCategory(cat)}
-                    >
-                      <Text style={styles.browseCardText} numberOfLines={2}>
-                        {cat.title}
-                      </Text>
-                      <View style={styles.diskContainer}>
-                        <ExpoImage
-                          source={{ uri: dynamicCovers[cat.id] || cat.cover }}
-                          style={styles.diskImage}
-                          contentFit="cover"
-                          cachePolicy="memory-disk"
-                          transition={150}
-                        />
-                        {/* Center spindle hole for vinyl disk look */}
-                        <View style={[styles.diskCenterHole, { backgroundColor: bgHex }]}>
-                          <View style={styles.diskCenterDot} />
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+            /* MODE 2: Dynamic YouTube Music Charts Top Artists (https://music.youtube.com/charts) */
+            <View style={styles.chartSection}>
+              {/* Top Artists Header */}
+              <View style={styles.chartHeaderRow}>
+                <View>
+                  <Text style={styles.chartSectionTitle}>Top artists</Text>
+                  <Text style={styles.chartSectionSubtitle}>YouTube Music Charts • Top 40</Text>
+                </View>
+                <View style={styles.chartOfficialBadge}>
+                  <Ionicons name="trending-up" size={13} color="#38bdf8" style={{ marginRight: 4 }} />
+                  <Text style={styles.chartOfficialBadgeText}>Live Charts</Text>
                 </View>
               </View>
+
+              {isLoadingArtists && topArtists.length === 0 ? (
+                <View style={styles.chartLoadingContainer}>
+                  <ActivityIndicator size="small" color="#38bdf8" />
+                  <Text style={styles.chartLoadingText}>Loading top artists...</Text>
+                </View>
+              ) : topArtists.length === 0 && isOffline ? (
+                <NoInternetView onRetry={() => loadTopArtists(true)} style={styles.offlineView} />
+              ) : (
+                <View style={styles.artistsContainer}>
+                  {topArtists.map((artist, idx) => {
+                    const isTop3 = artist.rank <= 3;
+                    const rankBadgeColor =
+                      artist.rank === 1
+                        ? '#F59E0B'
+                        : artist.rank === 2
+                        ? '#94A3B8'
+                        : artist.rank === 3
+                        ? '#D97706'
+                        : '#64748B';
+
+                    return (
+                      <TouchableOpacity
+                        key={artist.id || `artist-${idx}`}
+                        style={styles.artistRowItem}
+                        activeOpacity={0.75}
+                        onPress={() => {
+                          setSelectedArtist({
+                            id: artist.id,
+                            name: artist.name,
+                            image: artist.thumbnail,
+                          });
+                        }}
+                      >
+                        {/* Rank & Trend Column */}
+                        <View style={styles.artistRankCol}>
+                          <Text
+                            style={[
+                              styles.artistRankNumber,
+                              isTop3 && { color: rankBadgeColor, fontWeight: '900', fontSize: 16 },
+                            ]}
+                          >
+                            {artist.rank}
+                          </Text>
+                          {artist.rankTrend === 'up' ? (
+                            <Ionicons name="caret-up" size={12} color="#22c55e" style={styles.trendIcon} />
+                          ) : artist.rankTrend === 'down' ? (
+                            <Ionicons name="caret-down" size={12} color="#ef4444" style={styles.trendIcon} />
+                          ) : (
+                            <Ionicons name="remove" size={12} color="#64748b" style={styles.trendIcon} />
+                          )}
+                        </View>
+
+                        {/* Circular Avatar */}
+                        <View style={styles.artistAvatarWrapper}>
+                          <ExpoImage
+                            source={{
+                              uri:
+                                artist.thumbnail ||
+                                'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300',
+                            }}
+                            style={styles.artistAvatarImg}
+                            contentFit="cover"
+                            cachePolicy="memory-disk"
+                            transition={150}
+                          />
+                          {artist.rank === 1 && (
+                            <View style={styles.topArtistTrophy}>
+                              <Ionicons name="trophy" size={9} color="#000000" />
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Artist Info */}
+                        <View style={styles.artistMetaCol}>
+                          <Text style={styles.artistMetaName} numberOfLines={1}>
+                            {artist.name}
+                          </Text>
+                          {!!artist.subscribers && (
+                            <Text style={styles.artistMetaSubs} numberOfLines={1}>
+                              {artist.subscribers}
+                            </Text>
+                          )}
+                        </View>
+
+                        {/* Quick Search Action */}
+                        <TouchableOpacity
+                          style={styles.artistSearchQuickBtn}
+                          activeOpacity={0.7}
+                          onPress={() => {
+                            setQuery(artist.name);
+                            inputRef.current?.focus();
+                          }}
+                          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        >
+                          <Ionicons name="search-outline" size={18} color="#94a3b8" />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           ) : (
             /* MODE 3: Intent-Aware Live Search Results View */
@@ -943,79 +1019,122 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     height: '100%',
   },
-  // Browse All Grid Styles
-  browseSection: {
+  // Top Artists from YouTube Music Charts Styles
+  chartSection: {
     marginBottom: 24,
   },
-  browseTitle: {
-    color: '#ffffff',
-    fontSize: 21,
-    fontWeight: '800',
-    marginBottom: 14,
-  },
-  browseGrid: {
+  chartHeaderRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
-    rowGap: 12,
-  },
-  browseCard: {
-    width: '48%',
-    height: 98,
-    borderRadius: 8,
-    overflow: 'hidden',
-    position: 'relative',
-    padding: 12,
-  },
-  browseCardText: {
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '800',
-    lineHeight: 21,
-    maxWidth: '62%',
-  },
-  diskContainer: {
-    position: 'absolute',
-    bottom: -8,
-    right: -10,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    transform: [{ rotate: '18deg' }],
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 6,
-    elevation: 6,
-    borderWidth: 1.5,
-    borderColor: 'rgba(0, 0, 0, 0.3)',
-    overflow: 'hidden',
-  },
-  diskImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 36,
-  },
-  diskCenterHole: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 18,
-    height: 18,
-    marginTop: -9,
-    marginLeft: -9,
-    borderRadius: 9,
-    backgroundColor: '#121212',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.45)',
-    justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 4,
   },
-  diskCenterDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  chartSectionTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  chartSectionSubtitle: {
+    color: '#8e8e93',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  chartOfficialBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+  },
+  chartOfficialBadgeText: {
+    color: '#38bdf8',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  chartLoadingContainer: {
+    paddingVertical: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartLoadingText: {
+    color: '#8e8e93',
+    fontSize: 14,
+    marginTop: 10,
+  },
+  artistsContainer: {
+    gap: 8,
+  },
+  artistRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  artistRankCol: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  artistRankNumber: {
+    color: '#94a3b8',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  trendIcon: {
+    marginTop: 2,
+  },
+  artistAvatarWrapper: {
+    position: 'relative',
+    marginRight: 14,
+  },
+  artistAvatarImg: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  topArtistTrophy: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#F59E0B',
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artistMetaCol: {
+    flex: 1,
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  artistMetaName: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 3,
+  },
+  artistMetaSubs: {
+    color: '#8e8e93',
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  artistSearchQuickBtn: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   // Suggestions Flyout
   suggestionsContainer: {
