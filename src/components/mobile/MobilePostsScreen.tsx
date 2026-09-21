@@ -28,6 +28,8 @@ import {
   fetchYouTubePosts,
   fetchNextYouTubePosts,
   getCachedYouTubePosts,
+  MUSIC_AVATAR,
+  normalizeUrl,
 } from '@/services/youtubePostsService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -223,13 +225,12 @@ export const MobilePostsScreen: React.FC<MobilePostsScreenProps> = ({ onNavigate
         </View>
 
         <View style={styles.channelBannerRow}>
-          {channelAvatar ? (
-            <ExpoImage source={{ uri: channelAvatar }} style={styles.channelAvatarSmall} />
-          ) : (
-            <View style={[styles.channelAvatarFallback, { backgroundColor: accent.hex }]}>
-              <Ionicons name="musical-notes" size={14} color="#000000" />
-            </View>
-          )}
+          <ExpoImage
+            source={{ uri: normalizeUrl(channelAvatar) || MUSIC_AVATAR }}
+            style={styles.channelAvatarSmall}
+            contentFit="cover"
+            transition={150}
+          />
           <View style={styles.channelMeta}>
             <View style={styles.channelNameRow}>
               <Text style={styles.channelNameText}>{channelTitle}</Text>
@@ -328,26 +329,38 @@ const PostCard: React.FC<PostCardProps> = React.memo(
   ({ post, isLiked, onToggleLike, onShare, onOpenLink, onPlayVideo, surfaceColor, accentColor }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [activeImageIndex, setActiveImageIndex] = useState(0);
+    const [avatarError, setAvatarError] = useState(false);
 
     const isLongText = post.text && post.text.length > 220;
     const displayText = isLongText && !isExpanded ? `${post.text.slice(0, 220)}...` : post.text;
+
+    const avatarUri = useMemo(() => {
+      if (avatarError) return MUSIC_AVATAR;
+      return normalizeUrl(post.avatar) || MUSIC_AVATAR;
+    }, [post.avatar, avatarError]);
 
     return (
       <View style={[styles.cardContainer, { backgroundColor: surfaceColor }]}>
         {/* Post Header */}
         <View style={styles.cardHeader}>
           <View style={styles.authorRow}>
-            {post.avatar ? (
-              <ExpoImage source={{ uri: post.avatar }} style={styles.authorAvatar} />
-            ) : (
-              <View style={[styles.authorAvatarFallback, { backgroundColor: accentColor }]}>
-                <Text style={styles.authorAvatarLetter}>{post.author.charAt(0)}</Text>
+            {avatarError ? (
+              <View style={[styles.authorAvatarFallback, { backgroundColor: '#FF0000' }]}>
+                <Ionicons name="musical-notes" size={18} color="#FFFFFF" />
               </View>
+            ) : (
+              <ExpoImage
+                source={{ uri: avatarUri }}
+                style={styles.authorAvatar}
+                contentFit="cover"
+                transition={150}
+                onError={() => setAvatarError(true)}
+              />
             )}
             <View style={styles.authorInfo}>
               <View style={styles.authorNameRow}>
                 <Text style={styles.authorName} numberOfLines={1}>
-                  {post.author}
+                  {post.author || 'YouTube Music'}
                 </Text>
                 <Ionicons name="checkmark-circle" size={13} color="#3ea6ff" style={{ marginLeft: 3 }} />
               </View>
@@ -640,6 +653,8 @@ const styles = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     marginRight: 10,
+    backgroundColor: '#1c1c1c',
+    overflow: 'hidden',
   },
   authorAvatarFallback: {
     width: 38,

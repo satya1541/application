@@ -45,8 +45,17 @@ const DEFAULT_CHANNEL_URL = 'https://www.youtube.com/channel/UC-9-kyTW8ZkZNDHQJ6
 const CACHE_KEY = '@deluxe_yt_posts_v1';
 const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-const MUSIC_AVATAR =
+export const MUSIC_AVATAR =
   'https://yt3.googleusercontent.com/M1Hbe-1uiAYWJI8-1ZzV3uf7MwoWcEmKAPbIivbKs3buggZcVLov91trUzy8y-96unrkOcv3oA=s900-c-k-c0x00ffffff-no-rj';
+
+export function normalizeUrl(url?: string | null): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('//')) {
+    return 'https:' + trimmed;
+  }
+  return trimmed;
+}
 
 /**
  * Built-in initial seed posts guaranteeing instant 0ms rendering on cold start or offline mode.
@@ -176,7 +185,8 @@ function parsePostRenderer(
     p.actionButtons?.commentActionButtonsRenderer?.replyButton?.buttonRenderer?.text?.runs?.[0]?.text ||
     '0';
   const author = p.authorText?.runs?.map((r: any) => r.text).join('') || channelTitle;
-  const avatar = p.authorThumbnail?.thumbnails?.slice(-1)[0]?.url || channelAvatar;
+  const rawAvatar = p.authorThumbnail?.thumbnails?.slice(-1)[0]?.url || channelAvatar || MUSIC_AVATAR;
+  const avatar = normalizeUrl(rawAvatar) || MUSIC_AVATAR;
 
   // Attachments (Images, Video, Poll)
   const images: string[] = [];
@@ -187,18 +197,18 @@ function parsePostRenderer(
   if (att) {
     if (att.backstageImageRenderer) {
       const url = att.backstageImageRenderer.image?.thumbnails?.slice(-1)[0]?.url;
-      if (url) images.push(url);
+      if (url) images.push(normalizeUrl(url));
     } else if (att.postMultiImageRenderer) {
       for (const imgItem of att.postMultiImageRenderer.images || []) {
         const url = imgItem.backstageImageRenderer?.image?.thumbnails?.slice(-1)[0]?.url;
-        if (url) images.push(url);
+        if (url) images.push(normalizeUrl(url));
       }
     } else if (att.videoRenderer) {
       const vr = att.videoRenderer;
       video = {
         videoId: vr.videoId,
         title: vr.title?.runs?.map((r: any) => r.text).join('') || vr.title?.simpleText || 'YouTube Video',
-        thumbnail: vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || '',
+        thumbnail: normalizeUrl(vr.thumbnail?.thumbnails?.slice(-1)[0]?.url || ''),
         duration: vr.lengthText?.simpleText || '',
         views: vr.viewCountText?.simpleText || '',
         url: `https://www.youtube.com/watch?v=${vr.videoId}`,
@@ -306,10 +316,11 @@ export async function fetchYouTubePosts(
         data.header?.pageHeaderRenderer?.pageTitle ||
         'YouTube Music';
 
-      const channelAvatar =
+      const rawChannelAvatar =
         data.metadata?.channelMetadataRenderer?.avatar?.thumbnails?.slice(-1)[0]?.url ||
         data.header?.c4TabbedHeaderRenderer?.avatar?.thumbnails?.slice(-1)[0]?.url ||
         MUSIC_AVATAR;
+      const channelAvatar = normalizeUrl(rawChannelAvatar) || MUSIC_AVATAR;
 
       const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
       const postsTab = tabs.find(
@@ -377,10 +388,11 @@ export async function fetchYouTubePosts(
           data.metadata?.channelMetadataRenderer?.title ||
           data.header?.c4TabbedHeaderRenderer?.title ||
           'YouTube Music';
-        const channelAvatar =
+        const rawChannelAvatar =
           data.metadata?.channelMetadataRenderer?.avatar?.thumbnails?.slice(-1)[0]?.url ||
           data.header?.c4TabbedHeaderRenderer?.avatar?.thumbnails?.slice(-1)[0]?.url ||
           MUSIC_AVATAR;
+        const channelAvatar = normalizeUrl(rawChannelAvatar) || MUSIC_AVATAR;
 
         const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs || [];
         const postsTab = tabs.find(
