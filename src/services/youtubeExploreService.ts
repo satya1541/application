@@ -57,6 +57,27 @@ export interface CategoryDetailResult {
   shelves: CategoryShelf[];
 }
 
+export interface ExplorePlaylistTrack {
+  id: string; // 'yt_' + videoId
+  videoId: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: string;
+  thumbnail: string;
+}
+
+export interface ExplorePlaylistDetail {
+  id: string;
+  title: string;
+  subtitle: string;
+  secondSubtitle: string;
+  description: string;
+  thumbnail: string;
+  trackCount: number;
+  tracks: ExplorePlaylistTrack[];
+}
+
 export interface ExploreOverviewResult {
   trendingSongs: ExploreSong[];
   newAlbums: ExploreAlbum[];
@@ -84,16 +105,16 @@ export function normalizeExploreUrl(url?: string | null): string {
  */
 export const OFFICIAL_MOODS: MoodOrGenre[] = [
   { text: 'Chill', color: '#ffa4c5', params: 'ggMPOg1uX1JOQWZFeDByc2Jm', browseId: 'FEmusic_moods_and_genres_category', icon: 'cafe-outline' },
-  { text: 'Workout', color: '#ff8d40', params: 'ggMPOg1uX09LWkhnTjRGRUJh', browseId: 'FEmusic_moods_and_genres_category', icon: 'fitness-outline' },
+  { text: 'Commute', color: '#69db7c', params: 'ggMPOg1uX044Z2o5WERLckpU', browseId: 'FEmusic_moods_and_genres_category', icon: 'car-outline' },
+  { text: 'Energize', color: '#f4c344', params: 'ggMPOg1uX2lRZUZiMnNrQnJW', browseId: 'FEmusic_moods_and_genres_category', icon: 'flash-outline' },
+  { text: 'Feel good', color: '#ffab40', params: 'ggMPOg1uXzZQbDB5eThLRTQ3', browseId: 'FEmusic_moods_and_genres_category', icon: 'sunny-outline' },
+  { text: 'Focus', color: '#7fd3ed', params: 'ggMPOg1uX0NvNGNhWThMYWRh', browseId: 'FEmusic_moods_and_genres_category', icon: 'headset-outline' },
+  { text: 'Gaming', color: '#845ef7', params: 'ggMPOg1uX3NmUVV4Vzl3WGQ0', browseId: 'FEmusic_moods_and_genres_category', icon: 'game-controller-outline' },
   { text: 'Party', color: '#b47bff', params: 'ggMPOg1uX0pmQ0s2V0JRclZs', browseId: 'FEmusic_moods_and_genres_category', icon: 'sparkles-outline' },
-  { text: 'Energize', color: '#ffffe7', params: 'ggMPOg1uX2lRZUZiMnNrQnJW', browseId: 'FEmusic_moods_and_genres_category', icon: 'flash-outline' },
-  { text: 'Focus', color: '#cccccc', params: 'ggMPOg1uX0NvNGNhWThMYWRh', browseId: 'FEmusic_moods_and_genres_category', icon: 'bulb-outline' },
-  { text: 'Romance', color: '#cc0000', params: 'ggMPOg1uX0FzQ2FhZWtUY211', browseId: 'FEmusic_moods_and_genres_category', icon: 'heart-outline' },
-  { text: 'Feel good', color: '#ffa4ff', params: 'ggMPOg1uXzZQbDB5eThLRTQ3', browseId: 'FEmusic_moods_and_genres_category', icon: 'happy-outline' },
-  { text: 'Commute', color: '#ffffc2', params: 'ggMPOg1uX044Z2o5WERLckpU', browseId: 'FEmusic_moods_and_genres_category', icon: 'car-outline' },
-  { text: 'Gaming', color: '#606060', params: 'ggMPOg1uX3NmUVV4Vzl3WGQ0', browseId: 'FEmusic_moods_and_genres_category', icon: 'game-controller-outline' },
-  { text: 'Sad', color: '#8c8c8c', params: 'ggMPOg1uX0JLQ0gySWZKZVY1', browseId: 'FEmusic_moods_and_genres_category', icon: 'rainy-outline' },
-  { text: 'Sleep', color: '#7b3edb', params: 'ggMPOg1uX1MxaFQ3Z0JMZkN4', browseId: 'FEmusic_moods_and_genres_category', icon: 'moon-outline' },
+  { text: 'Romance', color: '#ff637e', params: 'ggMPOg1uX0FzQ2FhZWtUY211', browseId: 'FEmusic_moods_and_genres_category', icon: 'heart-outline' },
+  { text: 'Sad', color: '#90a4ae', params: 'ggMPOg1uX0JLQ0gySWZKZVY1', browseId: 'FEmusic_moods_and_genres_category', icon: 'rainy-outline' },
+  { text: 'Sleep', color: '#4dabf7', params: 'ggMPOg1uX1MxaFQ3Z0JMZkN4', browseId: 'FEmusic_moods_and_genres_category', icon: 'moon-outline' },
+  { text: 'Workout', color: '#ff8d40', params: 'ggMPOg1uX09LWkhnTjRGRUJh', browseId: 'FEmusic_moods_and_genres_category', icon: 'barbell-outline' },
 ];
 
 /**
@@ -130,6 +151,13 @@ export const OFFICIAL_GENRES: MoodOrGenre[] = [
   { text: 'Metal', color: '#8c8c8c', params: 'ggMPOg1uXzdlSXhKZ0hMV1Z4', browseId: 'FEmusic_moods_and_genres_category' },
   { text: 'Decades', color: '#ffa4ff', params: 'ggMPOg1uX253QXk4VXN5NGdj', browseId: 'FEmusic_moods_and_genres_category' },
   { text: 'Monsoon', color: '#ffffe7', params: 'ggMPOg1uX2FGWmM5SHVqYlJX', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'African', color: '#f76707', params: 'ggMPOg1uX0UzWGxlRE5jMDVk', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Arabic', color: '#ff922b', params: 'ggMPOg1uX3VOQWxsblVZTFNE', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Country & Americana', color: '#fab005', params: 'ggMPOg1uX1RXcFlyZEpRb1d3', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Family', color: '#38d9a9', params: 'ggMPOg1uXzMyY3J2SGM0bVh5', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Gujarati', color: '#ffa94d', params: 'ggMPOg1uX0RXaUs0U3dTcWtD', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Marathi', color: '#ffd43b', params: 'ggMPOg1uX2Y4V2dyOWVRUHZm', browseId: 'FEmusic_moods_and_genres_category' },
+  { text: 'Reggae & caribbean', color: '#51cf66', params: 'ggMPOg1uX1JUc2lFcDFuUUth', browseId: 'FEmusic_moods_and_genres_category' },
 ];
 
 let inMemoryExploreCache: ExploreOverviewResult | null = null;
@@ -519,4 +547,184 @@ export async function fetchCategoryDetails(
       shelves: [],
     };
   }
+}
+
+/**
+ * Fetches the full contents of a YouTube Music playlist or album (e.g. 'Coffee Shop Blend').
+ * Returns metadata (title, subtitle, description, artwork) and all individual playable tracks.
+ */
+export async function fetchPlaylistDetails(playlistBrowseId: string): Promise<ExplorePlaylistDetail> {
+  const targetBrowseId =
+    playlistBrowseId.startsWith('VL') || playlistBrowseId.startsWith('MPREb')
+      ? playlistBrowseId
+      : `VL${playlistBrowseId}`;
+
+  const cacheKey = `@shorty_yt_pl_${targetBrowseId}`;
+  try {
+    const cached = await SafeStorage.getItem(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached) as ExplorePlaylistDetail;
+      if (parsed && parsed.tracks?.length > 0) return parsed;
+    }
+  } catch {}
+
+  try {
+    const res = await fetch('https://music.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-YouTube-Client-Name': '67',
+        'X-YouTube-Client-Version': '1.20240105.01.00',
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com',
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB_REMIX',
+            clientVersion: '1.20240105.01.00',
+            hl: 'en',
+            gl: 'US',
+          },
+        },
+        browseId: targetBrowseId,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Playlist fetch failed with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const twoCol = data.contents?.twoColumnBrowseResultsRenderer;
+    const singleCol = data.contents?.singleColumnBrowseResultsRenderer;
+
+    const tab0 = twoCol?.tabs?.[0]?.tabRenderer || singleCol?.tabs?.[0]?.tabRenderer;
+    const sec0 = tab0?.content?.sectionListRenderer?.contents?.[0];
+    const header =
+      sec0?.musicResponsiveHeaderRenderer ||
+      data.header?.musicResponsiveHeaderRenderer ||
+      data.header?.musicDetailHeaderRenderer;
+
+    const title = header?.title?.runs?.map((r: any) => r.text).join('') || 'Playlist';
+    const subtitle = header?.subtitle?.runs?.map((r: any) => r.text).join('') || '';
+    const secondSubtitle = header?.secondSubtitle?.runs?.map((r: any) => r.text).join('') || '';
+    const description =
+      header?.description?.musicDescriptionShelfRenderer?.description?.runs?.map((r: any) => r.text).join('') ||
+      header?.description?.runs?.map((r: any) => r.text).join('') ||
+      '';
+    const thumb =
+      header?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url || '';
+
+    const secContents =
+      twoCol?.secondaryContents?.sectionListRenderer?.contents ||
+      tab0?.content?.sectionListRenderer?.contents ||
+      [];
+
+    let trackContents: any[] = [];
+    for (const s of secContents) {
+      if (s.musicPlaylistShelfRenderer?.contents) {
+        trackContents = s.musicPlaylistShelfRenderer.contents;
+        break;
+      }
+      if (s.musicShelfRenderer?.contents) {
+        trackContents = s.musicShelfRenderer.contents;
+        break;
+      }
+    }
+
+    const tracks: ExplorePlaylistTrack[] = [];
+    for (const item of trackContents) {
+      const resp = item.musicResponsiveListItemRenderer;
+      if (!resp) continue;
+
+      const flexCols = resp.flexColumns || [];
+      const trackTitle =
+        flexCols[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') || '';
+      const trackArtist =
+        flexCols[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') || '';
+      const videoId =
+        resp.playlistItemData?.videoId ||
+        resp.navigationEndpoint?.watchEndpoint?.videoId ||
+        resp.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer?.playNavigationEndpoint
+          ?.watchEndpoint?.videoId ||
+        '';
+      const trackThumb =
+        resp.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+        (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : thumb);
+      const duration =
+        resp.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs
+          ?.map((r: any) => r.text)
+          .join('') || '';
+
+      if (trackTitle && videoId) {
+        tracks.push({
+          id: `yt_${videoId}`,
+          videoId,
+          title: trackTitle,
+          artist: trackArtist,
+          album: title,
+          duration,
+          thumbnail: normalizeExploreUrl(trackThumb),
+        });
+      }
+    }
+
+    const result: ExplorePlaylistDetail = {
+      id: targetBrowseId,
+      title,
+      subtitle,
+      secondSubtitle,
+      description,
+      thumbnail: normalizeExploreUrl(thumb),
+      trackCount: tracks.length,
+      tracks,
+    };
+
+    SafeStorage.setItem(cacheKey, JSON.stringify(result)).catch(() => {});
+    return result;
+  } catch (err) {
+    console.warn('[youtubeExploreService] Error fetching playlist details:', err);
+    return {
+      id: targetBrowseId,
+      title: 'Playlist',
+      subtitle: '',
+      secondSubtitle: '',
+      description: '',
+      thumbnail: '',
+      trackCount: 0,
+      tracks: [],
+    };
+  }
+}
+
+/**
+ * Transforms an ExplorePlaylistTrack into Shorty's Song model
+ */
+export function explorePlaylistTrackToSong(track: ExplorePlaylistTrack, playlistTitle?: string): Song {
+  let durationSec = 210;
+  if (track.duration) {
+    const parts = track.duration.split(':').map((p) => parseInt(p, 10));
+    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      durationSec = parts[0] * 60 + parts[1];
+    } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+      durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+
+  return {
+    id: track.id.startsWith('yt_') ? track.id : `yt_${track.videoId}`,
+    name: track.title,
+    artist: track.artist,
+    album: playlistTitle || track.album || 'YouTube Music Explore',
+    duration: durationSec,
+    cover: track.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+    streamUrl: `https://www.youtube.com/watch?v=${track.videoId}`,
+    quality: 'Opus',
+    source: 'youtube',
+    sourceBadge: YOUTUBE_OPUS_BADGE,
+    hasLyrics: false,
+  };
 }

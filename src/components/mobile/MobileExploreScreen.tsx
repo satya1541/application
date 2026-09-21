@@ -12,11 +12,11 @@ import {
   FlatList,
   BackHandler,
   PanResponder,
+  Share,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
 import {
@@ -26,9 +26,14 @@ import {
   MoodOrGenre,
   CategoryShelf,
   CategoryDetailResult,
+  CategoryShelfItem,
+  ExplorePlaylistDetail,
+  ExplorePlaylistTrack,
   fetchExploreOverview,
   fetchCategoryDetails,
+  fetchPlaylistDetails,
   exploreSongToSong,
+  explorePlaylistTrackToSong,
   OFFICIAL_MOODS,
   OFFICIAL_GENRES,
   normalizeExploreUrl,
@@ -39,6 +44,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
 const ALBUM_CARD_WIDTH = 145;
 const VIDEO_CARD_WIDTH = 220;
+const PLAYLIST_CARD_WIDTH = 150;
 
 type FilterChip = 'all' | 'trending' | 'moods' | 'genres' | 'albums' | 'videos';
 
@@ -60,13 +66,23 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Category Detail Modal State
+  // Category Shelves Modal State (e.g. Chill -> Coffee shop blends, Unwind + explore, etc.)
   const [selectedCategory, setSelectedCategory] = useState<MoodOrGenre | null>(null);
   const [categoryDetail, setCategoryDetail] = useState<CategoryDetailResult | null>(null);
   const [isLoadingCategory, setIsLoadingCategory] = useState(false);
 
-  // Back handling
+  // Playlist Detail Modal State (e.g. Coffee Shop Blend -> 96 tracks)
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState<string | null>(null);
+  const [playlistDetail, setPlaylistDetail] = useState<ExplorePlaylistDetail | null>(null);
+  const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
+
+  // Back handling (Stacked: Playlist Modal -> Category Modal -> Home Tab)
   const handleBack = useCallback(() => {
+    if (selectedPlaylistId) {
+      setSelectedPlaylistId(null);
+      setPlaylistDetail(null);
+      return true;
+    }
     if (selectedCategory) {
       setSelectedCategory(null);
       setCategoryDetail(null);
@@ -77,7 +93,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       return true;
     }
     return false;
-  }, [selectedCategory, onNavigateHome]);
+  }, [selectedPlaylistId, selectedCategory, onNavigateHome]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
@@ -122,7 +138,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     loadExplore(false);
   }, [loadExplore]);
 
-  // Open Category detail
+  // Open Category detail (Mood or Genre)
   const handleOpenCategory = useCallback(async (cat: MoodOrGenre) => {
     setSelectedCategory(cat);
     setIsLoadingCategory(true);
@@ -136,6 +152,35 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     }
   }, []);
 
+  // Open Playlist detail (e.g. Coffee Shop Blend)
+  const handleOpenPlaylist = useCallback(
+    async (playlistId: string, initialTitle?: string, initialThumb?: string) => {
+      setSelectedPlaylistId(playlistId);
+      setIsLoadingPlaylist(true);
+      // Optimistic initial view
+      setPlaylistDetail({
+        id: playlistId,
+        title: initialTitle || 'Playlist',
+        subtitle: 'Loading playlist...',
+        secondSubtitle: '',
+        description: '',
+        thumbnail: initialThumb || '',
+        trackCount: 0,
+        tracks: [],
+      });
+
+      try {
+        const detail = await fetchPlaylistDetails(playlistId);
+        setPlaylistDetail(detail);
+      } catch (err) {
+        console.warn('[MobileExploreScreen] Error loading playlist detail:', err);
+      } finally {
+        setIsLoadingPlaylist(false);
+      }
+    },
+    []
+  );
+
   // Play a trending song
   const handlePlayTrendingSong = useCallback(
     (item: ExploreSong) => {
@@ -146,25 +191,42 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     [trendingSongs, playSong]
   );
 
-  // Play a video/song from a category shelf
-  const handlePlayShelfItem = useCallback(
-    (item: { id: string; title: string; subtitle: string; thumbnail: string; isVideo?: boolean }) => {
-      const song: Song = {
-        id: `yt_${item.id}`,
-        name: item.title,
-        artist: item.subtitle.split('•')[0]?.trim() || item.subtitle,
-        album: 'YouTube Music Explore',
-        duration: 215,
-        cover: item.thumbnail || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
-        streamUrl: `https://www.youtube.com/watch?v=${item.id}`,
-        quality: 'Opus',
-        source: 'youtube',
-        hasLyrics: false,
-      };
-      playSong(song, [song]);
+  // Play a track from a playlist
+  const handlePlayPlaylistTrack = useCallback(
+    (track: ExplorePlaylistTrack, playlist: ExplorePlaylistDetail) => {
+      const song = explorePlaylistTrackToSong(track, playlist.title);
+      const queue = playlist.tracks.map((t) => explorePlaylistTrackToSong(t, playlist.title));
+      // Queue entire playlist with this track first
+      const clickedIdx = playlist.tracks.findIndex((t) => t.videoId === track.videoId);
+      const orderedQueue =
+        clickedIdx > 0 ? [...queue.slice(clickedIdx), ...queue.slice(0, clickedIdx)] : queue;
+      playSong(song, orderedQueue);
     },
     [playSong]
   );
+
+  // Play All or Shuffle from a playlist
+  const handlePlayAllFromPlaylist = useCallback(
+    (playlist: ExplorePlaylistDetail, shuffle = false) => {
+      if (!playlist.tracks.length) return;
+      let tracks = [...playlist.tracks];
+      if (shuffle) {
+        tracks = tracks.sort(() => Math.random() - 0.5);
+      }
+      const queue = tracks.map((t) => explorePlaylistTrackToSong(t, playlist.title));
+      playSong(queue[0], queue);
+    },
+    [playSong]
+  );
+
+  // Share playlist
+  const handleSharePlaylist = useCallback((playlist: ExplorePlaylistDetail) => {
+    const rawId = playlist.id.replace(/^VL/, '');
+    Share.share({
+      title: playlist.title,
+      message: `Listen to "${playlist.title}" on YouTube Music: https://music.youtube.com/playlist?list=${rawId}`,
+    }).catch(() => {});
+  }, []);
 
   const chips: Array<{ id: FilterChip; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
     { id: 'all', label: 'All', icon: 'apps-outline' },
@@ -176,7 +238,11 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   ];
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: bgHex }]}
+      edges={['top']}
+      {...panResponder.panHandlers}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleRow}>
@@ -192,12 +258,16 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <Ionicons name="refresh" size={17} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.screenSubtitle}>Trending Hits, Moods, Genres & Official Releases</Text>
+        <Text style={styles.screenSubtitle}>Trending Hits, Moods, Genres & Official Playlists</Text>
       </View>
 
       {/* Filter Chips Bar */}
       <View style={styles.chipsContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsScroll}
+        >
           {chips.map((chip) => {
             const isActive = activeChip === chip.id;
             return (
@@ -217,7 +287,9 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   color={isActive ? '#000000' : '#CCCCCC'}
                   style={{ marginRight: 5 }}
                 />
-                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>{chip.label}</Text>
+                <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                  {chip.label}
+                </Text>
               </TouchableOpacity>
             );
           })}
@@ -243,35 +315,35 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             />
           }
         >
-          {/* 1. Moods & Moments (Horizontal Cards) */}
+          {/* 1. Moods & Moments (Curated Hubs that lead to Playlists) */}
           {(activeChip === 'all' || activeChip === 'moods') && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="sparkles" size={18} color="#FF6584" style={{ marginRight: 6 }} />
+                  <Ionicons name="heart" size={18} color="#ffa4c5" style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>Moods & Moments</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{moods.length}</Text>
+                <Text style={styles.sectionBadge}>11 Playlists Hubs</Text>
               </View>
 
               <View style={styles.moodsGrid}>
-                {moods.map((m) => (
+                {moods.map((mood) => (
                   <TouchableOpacity
-                    key={m.text}
+                    key={mood.text}
                     style={[styles.moodCard, { backgroundColor: surfaceHex }]}
-                    activeOpacity={0.8}
-                    onPress={() => handleOpenCategory(m)}
+                    activeOpacity={0.75}
+                    onPress={() => handleOpenCategory(mood)}
                   >
-                    <View style={[styles.moodStripe, { backgroundColor: m.color }]} />
+                    <View style={[styles.moodStripe, { backgroundColor: mood.color }]} />
                     <View style={styles.moodContent}>
                       <Ionicons
-                        name={(m.icon as any) || 'musical-note-outline'}
-                        size={18}
-                        color={m.color}
-                        style={{ marginBottom: 6 }}
+                        name={(mood.icon as any) || 'musical-note'}
+                        size={20}
+                        color={mood.color}
+                        style={{ marginBottom: 4 }}
                       />
                       <Text style={styles.moodTitle} numberOfLines={1}>
-                        {m.text}
+                        {mood.text}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -280,59 +352,79 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             </View>
           )}
 
-          {/* 2. Trending Songs (Live #1 - #20) */}
+          {/* 2. Trending Songs (#1 to #20) */}
           {(activeChip === 'all' || activeChip === 'trending') && trendingSongs.length > 0 && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="flame" size={18} color="#FF4500" style={{ marginRight: 6 }} />
-                  <Text style={styles.sectionTitle}>Trending Hits</Text>
+                  <Ionicons name="flame" size={18} color="#FF5722" style={{ marginRight: 6 }} />
+                  <Text style={styles.sectionTitle}>Trending Songs</Text>
                 </View>
                 <Text style={styles.sectionBadge}>Top {trendingSongs.length}</Text>
               </View>
 
-              <View style={styles.trendingList}>
-                {trendingSongs.slice(0, activeChip === 'trending' ? 20 : 6).map((item, index) => {
-                  const isCurrent = currentSong?.id === `yt_${item.videoId}`;
+              <View style={styles.songsList}>
+                {trendingSongs.map((song, idx) => {
+                  const isCurrent = currentSong?.id === song.id;
                   return (
                     <TouchableOpacity
-                      key={item.videoId}
+                      key={song.id}
                       style={[
-                        styles.trendingCard,
+                        styles.songRow,
                         { backgroundColor: surfaceHex },
-                        isCurrent && { borderColor: accent.hex, borderWidth: 1 },
+                        isCurrent && [styles.songRowActive, { borderColor: accent.hex }],
                       ]}
-                      activeOpacity={0.8}
-                      onPress={() => handlePlayTrendingSong(item)}
+                      activeOpacity={0.7}
+                      onPress={() => handlePlayTrendingSong(song)}
                     >
-                      {/* Rank Number */}
-                      <Text style={[styles.rankNumber, index < 3 && { color: accent.hex, fontWeight: '900' }]}>
-                        {index + 1}
-                      </Text>
+                      <View style={styles.rankBadge}>
+                        <Text
+                          style={[
+                            styles.rankNumber,
+                            idx < 3 && [styles.topRankNumber, { color: accent.hex }],
+                          ]}
+                        >
+                          #{idx + 1}
+                        </Text>
+                      </View>
 
-                      {/* Artwork Thumbnail */}
-                      <View style={styles.thumbWrapper}>
-                        <ExpoImage source={{ uri: item.thumbnail }} style={styles.songThumb} contentFit="cover" />
+                      <View style={styles.songThumbWrapper}>
+                        <ExpoImage
+                          source={{ uri: song.thumbnail }}
+                          style={styles.songThumb}
+                          contentFit="cover"
+                        />
                         <View style={styles.playOverlay}>
                           <Ionicons
                             name={isCurrent && isPlaying ? 'pause' : 'play'}
-                            size={16}
+                            size={14}
                             color="#FFFFFF"
                           />
                         </View>
                       </View>
 
-                      {/* Song Details */}
                       <View style={styles.songMeta}>
-                        <Text style={[styles.songTitle, isCurrent && { color: accent.hex }]} numberOfLines={1}>
-                          {item.title}
+                        <Text
+                          style={[styles.songTitle, isCurrent && { color: accent.hex }]}
+                          numberOfLines={1}
+                        >
+                          {song.title}
                         </Text>
                         <Text style={styles.songArtist} numberOfLines={1}>
-                          {item.artist}
+                          {song.artist}
                         </Text>
                       </View>
 
-                      <Ionicons name="ellipsis-vertical" size={16} color="#777777" style={{ paddingHorizontal: 6 }} />
+                      <TouchableOpacity
+                        style={styles.moreBtn}
+                        onPress={() => handlePlayTrendingSong(song)}
+                      >
+                        <Ionicons
+                          name={isCurrent && isPlaying ? 'volume-high' : 'play-circle-outline'}
+                          size={24}
+                          color={isCurrent ? accent.hex : '#AAAAAA'}
+                        />
+                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })}
@@ -340,34 +432,35 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             </View>
           )}
 
-          {/* 3. New Albums & Singles Carousel */}
+          {/* 3. New Releases & Albums (Tapping opens Album/Playlist screen) */}
           {(activeChip === 'all' || activeChip === 'albums') && newAlbums.length > 0 && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="disc" size={18} color="#3ea6ff" style={{ marginRight: 6 }} />
+                  <Ionicons name="disc" size={18} color="#4CAF50" style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>New Albums & Singles</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{newAlbums.length}</Text>
+                <Text style={styles.sectionBadge}>{newAlbums.length} Releases</Text>
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScroll}
+              >
                 {newAlbums.map((album) => (
                   <TouchableOpacity
                     key={album.id}
                     style={[styles.albumCard, { backgroundColor: surfaceHex }]}
                     activeOpacity={0.8}
-                    onPress={() =>
-                      handleOpenCategory({
-                        text: album.title,
-                        color: accent.hex,
-                        params: album.id,
-                        browseId: album.id,
-                      })
-                    }
+                    onPress={() => handleOpenPlaylist(album.id, album.title, album.thumbnail)}
                   >
                     <View style={styles.albumCoverWrapper}>
-                      <ExpoImage source={{ uri: album.thumbnail }} style={styles.albumCover} contentFit="cover" />
+                      <ExpoImage
+                        source={{ uri: album.thumbnail }}
+                        style={styles.albumCover}
+                        contentFit="cover"
+                      />
                       <View style={styles.albumTypeBadge}>
                         <Text style={styles.albumTypeBadgeText}>{album.type}</Text>
                       </View>
@@ -395,30 +488,38 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 <Text style={styles.sectionBadge}>{newMusicVideos.length}</Text>
               </View>
 
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalScroll}
+              >
                 {newMusicVideos.map((vid) => (
                   <TouchableOpacity
                     key={vid.videoId}
                     style={[styles.videoCard, { backgroundColor: surfaceHex }]}
                     activeOpacity={0.8}
                     onPress={() =>
-                      handlePlayShelfItem({
-                        id: vid.videoId,
+                      handlePlayTrendingSong({
+                        id: `yt_${vid.videoId}`,
+                        videoId: vid.videoId,
                         title: vid.title,
-                        subtitle: `${vid.artist} • ${vid.views}`,
+                        artist: vid.artist,
                         thumbnail: vid.thumbnail,
-                        isVideo: true,
                       })
                     }
                   >
                     <View style={styles.videoThumbWrapper}>
-                      <ExpoImage source={{ uri: vid.thumbnail }} style={styles.videoThumb} contentFit="cover" />
+                      <ExpoImage
+                        source={{ uri: vid.thumbnail }}
+                        style={styles.videoThumb}
+                        contentFit="cover"
+                      />
                       <View style={styles.videoPlayBtn}>
                         <Ionicons name="play" size={16} color="#FFFFFF" />
                       </View>
                     </View>
                     <View style={styles.videoInfo}>
-                      <Text style={styles.videoTitle} numberOfLines={2}>
+                      <Text style={styles.videoTitle} numberOfLines={1}>
                         {vid.title}
                       </Text>
                       <Text style={styles.videoArtist} numberOfLines={1}>
@@ -431,110 +532,334 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             </View>
           )}
 
-          {/* 5. Genres Grid (38 Hubs) */}
+          {/* 5. Genres Hub (38 Regional & Global Genres that lead to Playlists) */}
           {(activeChip === 'all' || activeChip === 'genres') && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="musical-notes" size={18} color={accent.hex} style={{ marginRight: 6 }} />
-                  <Text style={styles.sectionTitle}>Genres & Languages</Text>
+                  <Ionicons
+                    name="musical-notes"
+                    size={18}
+                    color="#FFD700"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.sectionTitle}>Genres & Playlists</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{genres.length}</Text>
+                <Text style={styles.sectionBadge}>{genres.length} Genres</Text>
               </View>
 
               <View style={styles.genresGrid}>
-                {genres.map((g) => (
+                {genres.map((genre) => (
                   <TouchableOpacity
-                    key={g.text}
-                    style={[styles.genreTile, { backgroundColor: surfaceHex }]}
+                    key={genre.text}
+                    style={[styles.genreCard, { backgroundColor: surfaceHex }]}
                     activeOpacity={0.8}
-                    onPress={() => handleOpenCategory(g)}
+                    onPress={() => handleOpenCategory(genre)}
                   >
-                    <View style={[styles.genreStripe, { backgroundColor: g.color }]} />
-                    <Text style={styles.genreText} numberOfLines={1}>
-                      {g.text}
+                    <View style={[styles.genreLeftBar, { backgroundColor: genre.color }]} />
+                    <Text style={styles.genreTitle} numberOfLines={1}>
+                      {genre.text}
                     </Text>
-                    <Ionicons name="chevron-forward" size={14} color="#666666" style={{ marginLeft: 'auto' }} />
+                    <Ionicons name="chevron-forward" size={14} color="#666666" />
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
           )}
 
-          <View style={{ height: 110 }} />
+          <View style={{ height: 100 }} />
         </ScrollView>
       )}
 
-      {/* Category Detail Modal */}
-      <Modal visible={!!selectedCategory} animationType="slide" transparent onRequestClose={() => setSelectedCategory(null)}>
-        <View style={styles.modalBackdrop}>
-          <SafeAreaView style={[styles.modalContent, { backgroundColor: bgHex }]} edges={['top', 'bottom']}>
-            {/* Modal Header */}
-            <View style={[styles.modalHeader, { borderBottomColor: surfaceHex }]}>
-              <View style={styles.modalTitleRow}>
-                <View style={[styles.modalDot, { backgroundColor: selectedCategory?.color || accent.hex }]} />
-                <Text style={styles.modalTitle} numberOfLines={1}>
-                  {selectedCategory?.text || 'Explore Category'}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.modalCloseBtn, { backgroundColor: surfaceHex }]}
-                onPress={() => {
-                  setSelectedCategory(null);
-                  setCategoryDetail(null);
-                }}
-              >
-                <Ionicons name="close" size={18} color="#FFFFFF" />
-              </TouchableOpacity>
+      {/* ========================================================================= */}
+      {/* 1. Category Shelves Modal: Shows Playlists Shelves for Mood or Genre      */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={selectedCategory !== null && selectedPlaylistId === null}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleBack}
+      >
+        <SafeAreaView style={[styles.modalContent, { backgroundColor: bgHex }]} edges={['top']}>
+          {/* Modal Header */}
+          <View style={[styles.modalHeader, { borderBottomColor: surfaceHex }]}>
+            <TouchableOpacity
+              style={styles.modalBackBtn}
+              onPress={() => {
+                setSelectedCategory(null);
+                setCategoryDetail(null);
+              }}
+            >
+              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <View style={styles.modalTitleRow}>
+              <View
+                style={[
+                  styles.modalDot,
+                  { backgroundColor: selectedCategory?.color || accent.hex },
+                ]}
+              />
+              <Text style={styles.modalTitle} numberOfLines={1}>
+                {selectedCategory?.text || 'Explore Playlists'}
+              </Text>
             </View>
 
-            {/* Modal Content */}
-            {isLoadingCategory ? (
-              <View style={styles.modalLoader}>
-                <ActivityIndicator size="large" color={accent.hex} />
-                <Text style={styles.modalLoaderText}>Loading {selectedCategory?.text} collections...</Text>
-              </View>
-            ) : categoryDetail && categoryDetail.shelves.length > 0 ? (
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
-                {categoryDetail.shelves.map((shelf, sIdx) => (
-                  <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
-                    <Text style={styles.shelfTitle}>{shelf.title}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
-                      {shelf.items.map((item) => (
-                        <TouchableOpacity
-                          key={item.id}
-                          style={[styles.shelfCard, { backgroundColor: surfaceHex }]}
-                          activeOpacity={0.8}
-                          onPress={() => handlePlayShelfItem(item)}
-                        >
-                          <View style={styles.shelfCoverWrapper}>
-                            <ExpoImage source={{ uri: item.thumbnail }} style={styles.shelfCover} contentFit="cover" />
-                            <View style={styles.shelfPlayIcon}>
-                              <Ionicons name="play" size={14} color="#FFFFFF" />
-                            </View>
+            <View style={{ width: 40 }} />
+          </View>
+
+          {/* Modal Shelves Content */}
+          {isLoadingCategory ? (
+            <View style={styles.modalLoader}>
+              <ActivityIndicator size="large" color={accent.hex} />
+              <Text style={styles.modalLoaderText}>
+                Loading {selectedCategory?.text} playlists...
+              </Text>
+            </View>
+          ) : categoryDetail && categoryDetail.shelves.length > 0 ? (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalScroll}>
+              {categoryDetail.shelves.map((shelf, sIdx) => (
+                <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
+                  <Text style={styles.shelfTitle}>{shelf.title}</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.horizontalScroll}
+                  >
+                    {shelf.items.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.shelfCard, { backgroundColor: surfaceHex }]}
+                        activeOpacity={0.8}
+                        onPress={() => handleOpenPlaylist(item.id, item.title, item.thumbnail)}
+                      >
+                        <View style={styles.shelfCoverWrapper}>
+                          <ExpoImage
+                            source={{ uri: item.thumbnail }}
+                            style={styles.shelfCover}
+                            contentFit="cover"
+                          />
+                          <View style={styles.playlistTagBadge}>
+                            <Ionicons name="list" size={10} color="#FFFFFF" style={{ marginRight: 3 }} />
+                            <Text style={styles.playlistTagText}>PLAYLIST</Text>
                           </View>
-                          <Text style={styles.shelfItemTitle} numberOfLines={1}>
-                            {item.title}
-                          </Text>
-                          <Text style={styles.shelfItemSubtitle} numberOfLines={1}>
-                            {item.subtitle}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                ))}
-                <View style={{ height: 40 }} />
-              </ScrollView>
-            ) : (
-              <View style={styles.modalEmpty}>
-                <Ionicons name="musical-notes-outline" size={48} color="#666666" />
-                <Text style={styles.modalEmptyTitle}>No Content Found</Text>
-                <Text style={styles.modalEmptySubtitle}>Could not load items for this category right now.</Text>
-              </View>
+                        </View>
+                        <Text style={styles.shelfItemTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.shelfItemSubtitle} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              ))}
+              <View style={{ height: 80 }} />
+            </ScrollView>
+          ) : (
+            <View style={styles.modalEmpty}>
+              <Ionicons name="musical-notes-outline" size={48} color="#666666" />
+              <Text style={styles.modalEmptyTitle}>No Playlists Found</Text>
+              <Text style={styles.modalEmptySubtitle}>
+                Could not load playlists for this category right now.
+              </Text>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* ========================================================================= */}
+      {/* 2. Playlist Detail Modal: Full Screen matching YouTube Music Official UI  */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={selectedPlaylistId !== null}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={handleBack}
+      >
+        <SafeAreaView style={[styles.modalContent, { backgroundColor: bgHex }]} edges={['top']}>
+          {/* Top Bar */}
+          <View style={[styles.playlistTopBar, { borderBottomColor: surfaceHex }]}>
+            <TouchableOpacity
+              style={styles.playlistBackBtn}
+              onPress={() => {
+                setSelectedPlaylistId(null);
+                setPlaylistDetail(null);
+              }}
+            >
+              <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
+
+            <Text style={styles.playlistTopBarTitle} numberOfLines={1}>
+              {playlistDetail?.title || 'Playlist'}
+            </Text>
+
+            {playlistDetail && (
+              <TouchableOpacity
+                style={styles.playlistShareBtn}
+                onPress={() => handleSharePlaylist(playlistDetail)}
+              >
+                <Ionicons name="share-social-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
             )}
-          </SafeAreaView>
-        </View>
+          </View>
+
+          {/* Body */}
+          {isLoadingPlaylist && !playlistDetail?.tracks?.length ? (
+            <View style={styles.modalLoader}>
+              <ActivityIndicator size="large" color={accent.hex} />
+              <Text style={styles.modalLoaderText}>Loading playlist songs...</Text>
+            </View>
+          ) : playlistDetail ? (
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.playlistScroll}>
+              {/* Hero Section: Artwork, Title, Creator, Count, Actions */}
+              <View style={styles.playlistHero}>
+                <View style={styles.playlistArtWrapper}>
+                  <ExpoImage
+                    source={{
+                      uri:
+                        playlistDetail.thumbnail ||
+                        'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800',
+                    }}
+                    style={styles.playlistArt}
+                    contentFit="cover"
+                  />
+                </View>
+
+                <Text style={styles.playlistMainTitle} numberOfLines={2}>
+                  {playlistDetail.title}
+                </Text>
+
+                <Text style={styles.playlistMainSubtitle} numberOfLines={1}>
+                  {playlistDetail.subtitle || 'YouTube Music'}
+                </Text>
+
+                {playlistDetail.secondSubtitle ? (
+                  <Text style={styles.playlistSecondSubtitle} numberOfLines={1}>
+                    {playlistDetail.secondSubtitle}
+                  </Text>
+                ) : playlistDetail.trackCount ? (
+                  <Text style={styles.playlistSecondSubtitle} numberOfLines={1}>
+                    {playlistDetail.trackCount} songs
+                  </Text>
+                ) : null}
+
+                {playlistDetail.description ? (
+                  <Text style={styles.playlistDescription} numberOfLines={3}>
+                    {playlistDetail.description}
+                  </Text>
+                ) : null}
+
+                {/* Play All & Shuffle Buttons Row */}
+                <View style={styles.playlistActionRow}>
+                  <TouchableOpacity
+                    style={[styles.playlistPlayAllBtn, { backgroundColor: accent.hex }]}
+                    activeOpacity={0.8}
+                    onPress={() => handlePlayAllFromPlaylist(playlistDetail, false)}
+                  >
+                    <Ionicons name="play" size={22} color="#000000" style={{ marginLeft: 2 }} />
+                    <Text style={styles.playlistPlayAllText}>Play All</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.playlistShuffleBtn, { backgroundColor: surfaceHex }]}
+                    activeOpacity={0.8}
+                    onPress={() => handlePlayAllFromPlaylist(playlistDetail, true)}
+                  >
+                    <Ionicons name="shuffle" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.playlistShuffleText}>Shuffle</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Tracks Section Header */}
+              <View style={styles.tracksHeaderRow}>
+                <Text style={styles.tracksHeaderTitle}>Tracks</Text>
+                <Text style={styles.tracksHeaderCount}>
+                  {playlistDetail.tracks.length} songs
+                </Text>
+              </View>
+
+              {/* Track List */}
+              <View style={styles.tracksList}>
+                {playlistDetail.tracks.map((track, tIdx) => {
+                  const isCurrent =
+                    currentSong?.id === track.id || currentSong?.streamUrl?.includes(track.videoId);
+                  return (
+                    <TouchableOpacity
+                      key={`${track.videoId}_${tIdx}`}
+                      style={[
+                        styles.trackItemRow,
+                        isCurrent && [styles.trackItemRowActive, { backgroundColor: surfaceHex }],
+                      ]}
+                      activeOpacity={0.7}
+                      onPress={() => handlePlayPlaylistTrack(track, playlistDetail)}
+                    >
+                      <View style={styles.trackIndexCol}>
+                        {isCurrent && isPlaying ? (
+                          <Ionicons name="volume-high" size={16} color={accent.hex} />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.trackIndexText,
+                              isCurrent && { color: accent.hex, fontWeight: '800' },
+                            ]}
+                          >
+                            {tIdx + 1}
+                          </Text>
+                        )}
+                      </View>
+
+                      <ExpoImage
+                        source={{ uri: track.thumbnail }}
+                        style={styles.trackThumbnail}
+                        contentFit="cover"
+                      />
+
+                      <View style={styles.trackInfoCol}>
+                        <Text
+                          style={[styles.trackName, isCurrent && { color: accent.hex }]}
+                          numberOfLines={1}
+                        >
+                          {track.title}
+                        </Text>
+                        <Text style={styles.trackArtist} numberOfLines={1}>
+                          {track.artist}
+                        </Text>
+                      </View>
+
+                      {track.duration ? (
+                        <Text style={styles.trackDurationText}>{track.duration}</Text>
+                      ) : null}
+
+                      <TouchableOpacity
+                        style={styles.trackPlayBtn}
+                        onPress={() => handlePlayPlaylistTrack(track, playlistDetail)}
+                      >
+                        <Ionicons
+                          name={isCurrent && isPlaying ? 'pause-circle' : 'play-circle-outline'}
+                          size={22}
+                          color={isCurrent ? accent.hex : '#888888'}
+                        />
+                      </TouchableOpacity>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={{ height: 90 }} />
+            </ScrollView>
+          ) : (
+            <View style={styles.modalEmpty}>
+              <Ionicons name="alert-circle-outline" size={48} color="#666666" />
+              <Text style={styles.modalEmptyTitle}>Failed to Load Playlist</Text>
+              <Text style={styles.modalEmptySubtitle}>
+                Check your network connection and try again.
+              </Text>
+            </View>
+          )}
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -683,29 +1008,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  trendingList: {
+  songsList: {
     gap: 8,
   },
-  trendingCard: {
+  songRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 8,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'transparent',
+  },
+  songRowActive: {
+    borderColor: '#1DB954',
+  },
+  rankBadge: {
+    width: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   rankNumber: {
-    width: 24,
     color: '#777777',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    textAlign: 'center',
-    marginRight: 6,
   },
-  thumbWrapper: {
+  topRankNumber: {
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  songThumbWrapper: {
     width: 48,
     height: 48,
-    borderRadius: 8,
+    borderRadius: 6,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -730,9 +1064,12 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   songArtist: {
-    color: '#9E9E9E',
+    color: '#888888',
     fontSize: 12,
     fontWeight: '500',
+  },
+  moreBtn: {
+    padding: 8,
   },
   horizontalScroll: {
     gap: 12,
@@ -746,12 +1083,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   albumCoverWrapper: {
-    width: ALBUM_CARD_WIDTH - 16,
+    width: '100%',
     height: ALBUM_CARD_WIDTH - 16,
     borderRadius: 8,
     overflow: 'hidden',
-    position: 'relative',
     marginBottom: 8,
+    position: 'relative',
   },
   albumCover: {
     width: '100%',
@@ -768,8 +1105,9 @@ const styles = StyleSheet.create({
   },
   albumTypeBadgeText: {
     color: '#FFFFFF',
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
+    textTransform: 'uppercase',
   },
   albumTitle: {
     color: '#FFFFFF',
@@ -778,8 +1116,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   albumArtist: {
-    color: '#999999',
-    fontSize: 11,
+    color: '#888888',
+    fontSize: 11.5,
     fontWeight: '500',
   },
   videoCard: {
@@ -790,8 +1128,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   videoThumbWrapper: {
-    width: VIDEO_CARD_WIDTH,
-    height: 124,
+    width: '100%',
+    height: (VIDEO_CARD_WIDTH * 9) / 16,
     position: 'relative',
   },
   videoThumb: {
@@ -800,12 +1138,12 @@ const styles = StyleSheet.create({
   },
   videoPlayBtn: {
     position: 'absolute',
-    right: 8,
     bottom: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -814,66 +1152,69 @@ const styles = StyleSheet.create({
   },
   videoTitle: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   videoArtist: {
-    color: '#8E8E8E',
+    color: '#888888',
     fontSize: 11,
     fontWeight: '500',
   },
   genresGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 10,
   },
-  genreTile: {
-    width: (SCREEN_WIDTH - CARD_PADDING * 2 - 8) / 2,
+  genreCard: {
+    width: (SCREEN_WIDTH - CARD_PADDING * 2 - 10) / 2,
     height: 48,
     borderRadius: 10,
-    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingRight: 10,
+    paddingHorizontal: 12,
+    overflow: 'hidden',
+    position: 'relative',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
-  genreStripe: {
-    width: 5,
-    height: '100%',
-    marginRight: 10,
+  genreLeftBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
   },
-  genreText: {
+  genreTitle: {
+    flex: 1,
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
-    flex: 1,
+    marginLeft: 4,
   },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    justifyContent: 'flex-end',
-  },
+  // Category Shelves Modal
   modalContent: {
-    height: '88%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    overflow: 'hidden',
+    flex: 1,
   },
   modalHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    alignItems: 'center',
+    paddingHorizontal: CARD_PADDING,
+    paddingVertical: 12,
     borderBottomWidth: 1,
+  },
+  modalBackBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
     gap: 8,
+    maxWidth: SCREEN_WIDTH - 100,
   },
   modalDot: {
     width: 10,
@@ -884,14 +1225,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
-    flex: 1,
-  },
-  modalCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   modalLoader: {
     flex: 1,
@@ -900,70 +1233,75 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalLoaderText: {
-    color: '#999999',
+    color: '#888888',
     fontSize: 13,
-    fontWeight: '600',
   },
   modalScroll: {
-    paddingVertical: 12,
+    paddingVertical: 16,
+    paddingHorizontal: CARD_PADDING,
   },
   shelfBlock: {
-    marginBottom: 22,
-    paddingLeft: 16,
+    marginBottom: 24,
   },
   shelfTitle: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '800',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   shelfCard: {
-    width: 140,
-    borderRadius: 10,
+    width: PLAYLIST_CARD_WIDTH,
+    borderRadius: 12,
     padding: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   shelfCoverWrapper: {
-    width: 124,
-    height: 124,
+    width: '100%',
+    height: PLAYLIST_CARD_WIDTH - 16,
     borderRadius: 8,
     overflow: 'hidden',
+    marginBottom: 8,
     position: 'relative',
-    marginBottom: 6,
   },
   shelfCover: {
     width: '100%',
     height: '100%',
   },
-  shelfPlayIcon: {
+  playlistTagBadge: {
     position: 'absolute',
-    right: 6,
     bottom: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    left: 6,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  playlistTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   shelfItemTitle: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     marginBottom: 2,
   },
   shelfItemSubtitle: {
-    color: '#8E8E8E',
-    fontSize: 10,
+    color: '#888888',
+    fontSize: 11,
     fontWeight: '500',
   },
   modalEmpty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 24,
-    gap: 8,
+    padding: 32,
+    gap: 12,
   },
   modalEmptyTitle: {
     color: '#FFFFFF',
@@ -972,7 +1310,200 @@ const styles = StyleSheet.create({
   },
   modalEmptySubtitle: {
     color: '#888888',
-    fontSize: 12,
+    fontSize: 13,
     textAlign: 'center',
+  },
+  // Playlist Detail Screen
+  playlistTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: CARD_PADDING,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  playlistBackBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playlistTopBarTitle: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    marginHorizontal: 12,
+  },
+  playlistShareBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playlistScroll: {
+    paddingBottom: 40,
+  },
+  playlistHero: {
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
+  },
+  playlistArtWrapper: {
+    width: 210,
+    height: 210,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 16,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    backgroundColor: '#1E1E1E',
+  },
+  playlistArt: {
+    width: '100%',
+    height: '100%',
+  },
+  playlistMainTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  playlistMainSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  playlistSecondSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#777777',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  playlistDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#999999',
+    textAlign: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 10,
+  },
+  playlistActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  playlistPlayAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    elevation: 4,
+  },
+  playlistPlayAllText: {
+    color: '#000000',
+    fontSize: 14,
+    fontWeight: '800',
+    marginLeft: 6,
+  },
+  playlistShuffleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  playlistShuffleText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  tracksHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: CARD_PADDING,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  tracksHeaderTitle: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  tracksHeaderCount: {
+    color: '#777777',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tracksList: {
+    paddingTop: 4,
+  },
+  trackItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: CARD_PADDING,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  trackItemRowActive: {
+    borderRadius: 8,
+  },
+  trackIndexCol: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trackIndexText: {
+    color: '#777777',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  trackThumbnail: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    marginHorizontal: 10,
+  },
+  trackInfoCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  trackName: {
+    color: '#FFFFFF',
+    fontSize: 13.5,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  trackArtist: {
+    color: '#888888',
+    fontSize: 11.5,
+    fontWeight: '500',
+  },
+  trackDurationText: {
+    color: '#777777',
+    fontSize: 11.5,
+    fontWeight: '500',
+    marginHorizontal: 8,
+  },
+  trackPlayBtn: {
+    padding: 6,
   },
 });
