@@ -22,6 +22,8 @@ import { OfflineBanner } from '../common/OfflineBanner';
 import { useNetwork } from '@/contexts/NetworkContext';
 
 import { getSaavnAlbumDetails } from '@/services/saavnStream';
+import { fetchPlaylistDetails } from '@/services/youtubeExploreService';
+import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
 
 interface AlbumModalProps {
@@ -55,21 +57,58 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
     if (!visible || !albumId) return;
 
     setIsLoading(true);
-    getSaavnAlbumDetails(albumId)
-      .then((data) => {
-        if (data) {
-          setAlbumDetails({
-            ...data,
-            songs: data.songs as unknown as Song[],
-          });
-        }
-      })
-      .catch((err) => {
-        console.warn('Failed to load album:', err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    const cleanId = albumId.trim();
+    const isYouTubeAlbum =
+      cleanId.startsWith('MPRE') || cleanId.startsWith('VL') || cleanId.startsWith('PL') || cleanId.length > 15;
+
+    if (isYouTubeAlbum) {
+      fetchPlaylistDetails(cleanId)
+        .then((pl) => {
+          if (pl) {
+            setAlbumDetails({
+              id: pl.id,
+              name: pl.title || albumName,
+              artist: pl.subtitle || 'Various Artists',
+              year: pl.secondSubtitle || 'Album',
+              cover: pl.thumbnail || albumCover || '',
+              songs: (pl.tracks || []).map((t) => ({
+                id: t.videoId,
+                name: t.title,
+                artist: t.artist || pl.subtitle || 'Artist',
+                album: t.album || pl.title || 'Album',
+                duration: 0,
+                cover: t.thumbnail,
+                streamUrl: '',
+                quality: 'Opus',
+                source: 'youtube',
+                sourceBadge: YOUTUBE_OPUS_BADGE,
+              })) as unknown as Song[],
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to load YouTube album:', err);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else {
+      getSaavnAlbumDetails(cleanId)
+        .then((data) => {
+          if (data) {
+            setAlbumDetails({
+              ...data,
+              songs: data.songs as unknown as Song[],
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to load album:', err);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
   }, [visible, albumId]);
 
   if (!visible) return null;

@@ -934,3 +934,483 @@ export async function fetchTopChartArtists(forceRefresh = false, gl = 'IN'): Pro
 
   return [];
 }
+
+export interface YouTubeArtistDetails {
+  id: string;
+  name: string;
+  image: string;
+  role?: string;
+  followerCount?: string;
+  verified?: boolean;
+  bio?: string;
+  topSongs: Song[];
+  allSongsBrowseId?: string | null;
+  latestRelease?: {
+    id: string;
+    name: string;
+    year: string;
+    image: string;
+    type: 'album' | 'single';
+  };
+  albums: Array<{
+    id: string;
+    name: string;
+    year: string;
+    image: string;
+    songCount: number;
+    releaseType: 'album' | 'single';
+  }>;
+  singles: Array<{
+    id: string;
+    name: string;
+    year: string;
+    image: string;
+    songCount: number;
+    releaseType: 'album' | 'single';
+  }>;
+  videos?: Array<{
+    id: string;
+    title: string;
+    artist?: string;
+    artwork: string;
+    duration: number;
+    views?: string;
+    source: 'youtube';
+  }>;
+  relatedArtists?: Array<{
+    id: string;
+    name: string;
+    subscribers?: string;
+    image: string;
+  }>;
+}
+
+const inMemoryArtistDetailsCache = new Map<string, { data: YouTubeArtistDetails; timestamp: number }>();
+
+/**
+ * Resolves a YouTube channel browse ID (e.g. UCptBkLZ6XRxoyn8SkUMc_Iw) from
+ * a direct channel ID, a YouTube handle/URL (e.g. https://music.youtube.com/@Realalkayagnik),
+ * or an artist name via YouTube Music InnerTube search.
+ */
+export async function resolveYouTubeArtistBrowseId(
+  artistId?: string | null,
+  artistName?: string
+): Promise<string | null> {
+  if (!artistId && !artistName) return null;
+
+  // 1. Direct UC channel ID match
+  const directUc = (artistId || '').match(/(UC[a-zA-Z0-9_-]{20,})/);
+  if (directUc) return directUc[1];
+
+  // 2. Handle (@handle or URL)
+  const handleMatch = (artistId || '').match(/@([a-zA-Z0-9_.-]+)/);
+  if (handleMatch) {
+    const handle = handleMatch[1];
+    try {
+      const resp = await fetch(`https://www.youtube.com/@${handle}`, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
+      const html = await resp.text();
+      const m = html.match(/"browseId":"(UC[a-zA-Z0-9_-]+)"/);
+      if (m) return m[1];
+    } catch {}
+  }
+
+  // 3. Search via InnerTube with artist filter
+  const q = artistName || (artistId ? artistId.replace(/^art-|^jio_art_/, '').trim() : '');
+  if (q) {
+    try {
+      const res = await fetch('https://music.youtube.com/youtubei/v1/search?prettyPrint=false', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'X-YouTube-Client-Name': '67',
+          'X-YouTube-Client-Version': '1.20240105.01.00',
+          'Origin': 'https://music.youtube.com',
+          'Referer': 'https://music.youtube.com',
+        },
+        body: JSON.stringify({
+          context: {
+            client: { clientName: 'WEB_REMIX', clientVersion: '1.20240105.01.00', hl: 'en', gl: 'IN' },
+          },
+          query: q,
+          params: 'EgWKAQIgAUICCAE%3D',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const shelf =
+          data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer
+            ?.contents?.[0]?.musicShelfRenderer;
+        const first = shelf?.contents?.[0]?.musicResponsiveListItemRenderer;
+        const bId = first?.navigationEndpoint?.browseEndpoint?.browseId;
+        if (bId && bId.startsWith('UC')) return bId;
+      }
+    } catch (err) {
+      console.warn('[youtubeExploreService] Artist search resolution error:', err);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fetches verified YouTube Music artist profile (Top Songs, Albums, Singles, Videos, Bio, and Related Artists).
+ * Supports channel IDs, handles, and URLs (e.g. https://music.youtube.com/@Realalkayagnik).
+ */
+export async function fetchYouTubeArtistDetails(
+  artistId: string,
+  artistName?: string,
+  forceRefresh = false
+): Promise<YouTubeArtistDetails | null> {
+  const browseId = await resolveYouTubeArtistBrowseId(artistId, artistName);
+  if (!browseId) return null;
+
+  const cacheKey = `@shorty_yt_art_${browseId}`;
+
+  // 1. In-memory cache
+  if (!forceRefresh) {
+    const mem = inMemoryArtistDetailsCache.get(browseId);
+    if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
+      return mem.data;
+    }
+
+    try {
+      const disk = await SafeStorage.getItem(cacheKey);
+      if (disk) {
+        const parsed = JSON.parse(disk) as YouTubeArtistDetails;
+        if (parsed && parsed.name && parsed.topSongs?.length > 0) {
+          inMemoryArtistDetailsCache.set(browseId, { data: parsed, timestamp: Date.now() });
+          return parsed;
+        }
+      }
+    } catch {}
+  }
+
+  try {
+    const res = await fetch('https://music.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-YouTube-Client-Name': '67',
+        'X-YouTube-Client-Version': '1.20240105.01.00',
+        'Origin': 'https://music.youtube.com',
+        'Referer': 'https://music.youtube.com',
+      },
+      body: JSON.stringify({
+        context: {
+          client: { clientName: 'WEB_REMIX', clientVersion: '1.20240105.01.00', hl: 'en', gl: 'IN' },
+        },
+        browseId,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`InnerTube artist browse failed with HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const header = data.header?.musicImmersiveHeaderRenderer || data.header?.musicVisualHeaderRenderer;
+
+    const resolvedName =
+      header?.title?.runs?.map((r: any) => r.text).join('') || artistName || 'Artist';
+    const followerCount =
+      header?.subscriptionButton?.subscribeButtonRenderer?.subscriberCountText?.runs?.map((r: any) => r.text).join('') ||
+      '';
+    const bio =
+      header?.description?.runs?.map((r: any) => r.text).join('') || '';
+
+    const thumbs = header?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+    let heroImage = thumbs.length > 0 ? thumbs[thumbs.length - 1].url : '';
+    if (heroImage.startsWith('//')) heroImage = 'https:' + heroImage;
+
+    const sections =
+      data.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer
+        ?.contents || [];
+
+    let initialTopSongs: Song[] = [];
+    let allSongsBrowseId: string | null = null;
+    const albums: YouTubeArtistDetails['albums'] = [];
+    const singles: YouTubeArtistDetails['singles'] = [];
+    const videos: YouTubeArtistDetails['videos'] = [];
+    const relatedArtists: YouTubeArtistDetails['relatedArtists'] = [];
+
+    for (const s of sections) {
+      const shelf = s.musicShelfRenderer || s.musicCarouselShelfRenderer;
+      if (!shelf) continue;
+
+      const title = (
+        shelf?.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.map((r: any) => r.text).join('') ||
+        shelf?.title?.runs?.map((r: any) => r.text).join('') ||
+        ''
+      ).toLowerCase();
+
+      // Top Songs shelf
+      if (title.includes('top songs') || title.includes('songs')) {
+        allSongsBrowseId =
+          shelf?.bottomEndpoint?.browseEndpoint?.browseId ||
+          shelf?.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
+          null;
+
+        const items = shelf.contents || [];
+        for (const it of items) {
+          const r = it.musicResponsiveListItemRenderer;
+          if (!r) continue;
+          const videoId = r.playlistItemData?.videoId || r.navigationEndpoint?.watchEndpoint?.videoId;
+          if (!videoId) continue;
+
+          const songTitle =
+            r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+            '';
+          const songArtist =
+            r.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+            resolvedName;
+          const albumName =
+            r.flexColumns?.[3]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+            r.flexColumns?.[2]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+            '';
+          const itemThumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbUrl =
+            itemThumbs.length > 0
+              ? itemThumbs[itemThumbs.length - 1].url
+              : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
+          if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
+
+          initialTopSongs.push({
+            id: videoId,
+            name: songTitle,
+            artist: songArtist,
+            album: albumName || 'Single',
+            cover: thumbUrl,
+            streamUrl: '',
+            duration: 0,
+            quality: 'Opus',
+            source: 'youtube',
+            sourceBadge: YOUTUBE_OPUS_BADGE,
+          });
+        }
+      }
+
+      // Albums shelf
+      else if (title.includes('album') && !title.includes('single')) {
+        const items = shelf.contents || [];
+        for (const it of items) {
+          const r = it.musicTwoRowItemRenderer;
+          if (!r) continue;
+          const albBrowseId = r.navigationEndpoint?.browseEndpoint?.browseId;
+          const albTitle = r.title?.runs?.map((r: any) => r.text).join('') || '';
+          const albYear = r.subtitle?.runs?.map((r: any) => r.text).join('') || '';
+          const itemThumbs = r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbUrl = itemThumbs.length > 0 ? itemThumbs[itemThumbs.length - 1].url : '';
+          thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
+          if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
+
+          if (albBrowseId && albTitle) {
+            albums.push({
+              id: albBrowseId,
+              name: albTitle,
+              year: albYear,
+              image: thumbUrl,
+              songCount: 8,
+              releaseType: 'album',
+            });
+          }
+        }
+      }
+
+      // Singles & EPs shelf
+      else if (title.includes('single') || title.includes('ep')) {
+        const items = shelf.contents || [];
+        for (const it of items) {
+          const r = it.musicTwoRowItemRenderer;
+          if (!r) continue;
+          const sBrowseId = r.navigationEndpoint?.browseEndpoint?.browseId;
+          const sTitle = r.title?.runs?.map((r: any) => r.text).join('') || '';
+          const sYear = r.subtitle?.runs?.map((r: any) => r.text).join('') || '';
+          const itemThumbs = r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbUrl = itemThumbs.length > 0 ? itemThumbs[itemThumbs.length - 1].url : '';
+          thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
+          if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
+
+          if (sBrowseId && sTitle) {
+            singles.push({
+              id: sBrowseId,
+              name: sTitle,
+              year: sYear,
+              image: thumbUrl,
+              songCount: 1,
+              releaseType: 'single',
+            });
+          }
+        }
+      }
+
+      // Videos shelf
+      else if (title.includes('video')) {
+        const items = shelf.contents || [];
+        for (const it of items) {
+          const r = it.musicTwoRowItemRenderer;
+          if (!r) continue;
+          const vidId = r.navigationEndpoint?.watchEndpoint?.videoId;
+          const vidTitle = r.title?.runs?.map((r: any) => r.text).join('') || '';
+          const vidViews = r.subtitle?.runs?.map((r: any) => r.text).join('') || '';
+          const itemThumbs = r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbUrl = itemThumbs.length > 0 ? itemThumbs[itemThumbs.length - 1].url : '';
+          thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
+          if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
+
+          if (vidId && vidTitle) {
+            videos.push({
+              id: vidId,
+              title: vidTitle,
+              artist: resolvedName,
+              artwork: thumbUrl,
+              duration: 0,
+              views: vidViews,
+              source: 'youtube',
+            });
+          }
+        }
+      }
+
+      // Fans might also like
+      else if (title.includes('fans') || title.includes('like') || title.includes('related')) {
+        const items = shelf.contents || [];
+        for (const it of items) {
+          const r = it.musicTwoRowItemRenderer;
+          if (!r) continue;
+          const relBrowseId = r.navigationEndpoint?.browseEndpoint?.browseId;
+          const relName = r.title?.runs?.map((r: any) => r.text).join('') || '';
+          const relSubs = r.subtitle?.runs?.map((r: any) => r.text).join('') || '';
+          const itemThumbs = r.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+          let thumbUrl = itemThumbs.length > 0 ? itemThumbs[itemThumbs.length - 1].url : '';
+          thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w300-h300-l90-rj');
+          if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
+
+          if (relBrowseId && relName) {
+            relatedArtists.push({
+              id: relBrowseId,
+              name: relName,
+              subscribers: relSubs,
+              image: thumbUrl,
+            });
+          }
+        }
+      }
+    }
+
+    // Try fetching the full top songs playlist (up to 50 tracks) if browseId exists
+    let finalTopSongs = initialTopSongs;
+    if (allSongsBrowseId) {
+      try {
+        const plRes = await fetch('https://music.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'X-YouTube-Client-Name': '67',
+            'X-YouTube-Client-Version': '1.20240105.01.00',
+          },
+          body: JSON.stringify({
+            context: {
+              client: { clientName: 'WEB_REMIX', clientVersion: '1.20240105.01.00', hl: 'en', gl: 'IN' },
+            },
+            browseId: allSongsBrowseId,
+            params: 'ggMCCAI%3D',
+          }),
+        });
+
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          const plItems =
+            plData.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer
+              ?.contents?.[0]?.musicPlaylistShelfRenderer?.contents || [];
+          const fullList: Song[] = [];
+          for (const item of plItems) {
+            const r = item.musicResponsiveListItemRenderer;
+            if (!r) continue;
+            const vid = r.playlistItemData?.videoId || r.navigationEndpoint?.watchEndpoint?.videoId;
+            if (!vid) continue;
+            const sTitle =
+              r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+              '';
+            const sArtist =
+              r.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+              resolvedName;
+            const sAlbum =
+              r.flexColumns?.[2]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.map((r: any) => r.text).join('') ||
+              '';
+            const sThumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+            let sThumb =
+              sThumbs.length > 0 ? sThumbs[sThumbs.length - 1].url : `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+            sThumb = sThumb.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
+            if (sThumb.startsWith('//')) sThumb = 'https:' + sThumb;
+
+            fullList.push({
+              id: vid,
+              name: sTitle,
+              artist: sArtist,
+              album: sAlbum || 'Track',
+              cover: sThumb,
+              streamUrl: '',
+              duration: 0,
+              quality: 'Opus',
+              source: 'youtube',
+              sourceBadge: YOUTUBE_OPUS_BADGE,
+            });
+          }
+          if (fullList.length > 0) {
+            finalTopSongs = fullList;
+          }
+        }
+      } catch (err) {
+        console.warn('[youtubeExploreService] Failed to load full artist playlist:', err);
+      }
+    }
+
+    const firstRel = albums[0] || singles[0];
+    const latestRelease = firstRel
+      ? {
+          id: firstRel.id,
+          name: firstRel.name,
+          year: firstRel.year,
+          image: firstRel.image,
+          type: firstRel.releaseType,
+        }
+      : undefined;
+
+    const result: YouTubeArtistDetails = {
+      id: browseId,
+      name: resolvedName,
+      image: heroImage,
+      role: 'Verified Artist',
+      followerCount: followerCount || '2,450,000 subscribers',
+      verified: true,
+      bio,
+      topSongs: finalTopSongs,
+      allSongsBrowseId,
+      latestRelease,
+      albums,
+      singles,
+      videos,
+      relatedArtists,
+    };
+
+    inMemoryArtistDetailsCache.set(browseId, { data: result, timestamp: Date.now() });
+    SafeStorage.setItem(cacheKey, JSON.stringify(result)).catch(() => {});
+
+    return result;
+  } catch (err) {
+    console.warn('[youtubeExploreService] Error fetching YouTube artist details:', err);
+    return null;
+  }
+}

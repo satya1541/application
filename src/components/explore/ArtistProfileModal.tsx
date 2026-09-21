@@ -26,6 +26,11 @@ import {
   getSaavnArtistDetails,
   SaavnArtistFullDetails,
 } from '@/services/saavnStream';
+import {
+  fetchYouTubeArtistDetails,
+  YouTubeArtistDetails,
+} from '@/services/youtubeExploreService';
+import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
 import { SafeStorage } from '@/services/storage';
 
@@ -50,48 +55,105 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 }) => {
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
-  const [details, setDetails] = useState<SaavnArtistFullDetails | null>(null);
+
+  // Internal navigation state so tapping a related artist smoothly transitions
+  const [currentArtistId, setCurrentArtistId] = useState<string | null>(artistId);
+  const [currentArtistName, setCurrentArtistName] = useState<string>(artistName);
+  const [currentArtistImage, setCurrentArtistImage] = useState<string | undefined>(artistImage);
+
+  const [details, setDetails] = useState<YouTubeArtistDetails | SaavnArtistFullDetails | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isFollowing, setIsFollowing] = useState<boolean>(false);
   const [discoFilter, setDiscoFilter] = useState<'all' | 'albums' | 'singles'>('all');
   const [showAllPopular, setShowAllPopular] = useState<boolean>(false);
+  const [showFullBio, setShowFullBio] = useState<boolean>(false);
 
+  // Sync state whenever props change from parent
+  useEffect(() => {
+    setCurrentArtistId(artistId);
+    setCurrentArtistName(artistName);
+    setCurrentArtistImage(artistImage);
+    setShowAllPopular(false);
+    setShowFullBio(false);
+    setDiscoFilter('all');
+  }, [artistId, artistName, artistImage, visible]);
 
   useEffect(() => {
-    if (!visible || !artistId) return;
+    if (!visible || !currentArtistId) return;
 
     setIsLoading(true);
-    getSaavnArtistDetails(artistId, artistName)
-      .then((data) => {
-        setDetails(data);
-      })
-      .catch((err) => {
-        console.warn('Failed to load artist:', err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+    const cleanId = currentArtistId.trim();
+    const isExplicitYouTube =
+      cleanId.startsWith('UC') ||
+      cleanId.startsWith('@') ||
+      cleanId.startsWith('http') ||
+      cleanId.startsWith('chart_artist_');
+
+    if (isExplicitYouTube) {
+      fetchYouTubeArtistDetails(cleanId, currentArtistName)
+        .then((ytData) => {
+          if (ytData) {
+            setDetails(ytData);
+          } else {
+            return getSaavnArtistDetails(cleanId, currentArtistName).then((sData) => {
+              if (sData) setDetails(sData as unknown as YouTubeArtistDetails);
+            });
+          }
+        })
+        .catch(() => {
+          getSaavnArtistDetails(cleanId, currentArtistName)
+            .then((sData) => {
+              if (sData) setDetails(sData as unknown as YouTubeArtistDetails);
+            })
+            .catch((err) => console.warn('Failed to load artist:', err));
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    } else {
+      // Prioritize authentic YouTube Music artist channel (https://music.youtube.com/@...)
+      fetchYouTubeArtistDetails(cleanId, currentArtistName)
+        .then((ytData) => {
+          if (ytData && ytData.topSongs && ytData.topSongs.length > 0) {
+            setDetails(ytData);
+          } else {
+            return getSaavnArtistDetails(cleanId, currentArtistName).then((sData) => {
+              if (sData) setDetails(sData as unknown as YouTubeArtistDetails);
+            });
+          }
+        })
+        .catch(() => {
+          getSaavnArtistDetails(cleanId, currentArtistName)
+            .then((sData) => {
+              if (sData) setDetails(sData as unknown as YouTubeArtistDetails);
+            })
+            .catch((err) => console.warn('Failed to load artist:', err));
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    }
 
     SafeStorage.getItem('deluxe_followed_artists')
       .then((raw) => {
         if (raw) {
           const list: string[] = JSON.parse(raw);
-          setIsFollowing(list.includes(artistId));
+          setIsFollowing(list.includes(cleanId));
         }
       })
       .catch(() => {});
-  }, [visible, artistId, artistName]);
+  }, [visible, currentArtistId, currentArtistName]);
 
   const toggleFollow = () => {
-    if (!artistId) return;
+    if (!currentArtistId) return;
     setIsFollowing((prev) => {
       const next = !prev;
       SafeStorage.getItem('deluxe_followed_artists')
         .then((raw) => {
           const list: string[] = raw ? JSON.parse(raw) : [];
           const updated = next
-            ? [...list, artistId]
-            : list.filter((id) => id !== artistId);
+            ? [...list, currentArtistId]
+            : list.filter((id) => id !== currentArtistId);
           SafeStorage.setItem('deluxe_followed_artists', JSON.stringify(updated)).catch(() => {});
         })
         .catch(() => {});
@@ -113,8 +175,10 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 
   const heroImage =
     details?.image ||
-    artistImage ||
+    currentArtistImage ||
     'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=800&auto=format&fit=crop&q=80';
+
+  const ytDetails = details as YouTubeArtistDetails | null;
 
   return (
     <Modal
@@ -148,15 +212,15 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                 <Text style={styles.verifiedText}>Verified Artist</Text>
               </View>
               <Text style={styles.artistHeroName} numberOfLines={2}>
-                {details?.name || artistName}
+                {details?.name || currentArtistName}
               </Text>
               <Text style={styles.monthlyListeners}>
-                {details?.followerCount || '2,450,890'} monthly listeners
+                {details?.followerCount || '2,450,890 monthly listeners'}
               </Text>
             </LinearGradient>
           </View>
 
-          {/* Action Row (Play, Shuffle, Follow, Share) */}
+          {/* Action Row (Play, Shuffle, Follow) */}
           <View style={styles.actionRow}>
             <View style={styles.leftActions}>
               <TouchableOpacity
@@ -173,6 +237,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
             <View style={styles.rightActions}>
               <TouchableOpacity
                 style={styles.shuffleBtn}
+                activeOpacity={0.8}
                 onPress={() => {
                   if (topSongs.length > 0) {
                     const shuffled = [...topSongs].sort(() => Math.random() - 0.5);
@@ -248,6 +313,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                   {topSongs.length > 5 && (
                     <TouchableOpacity
                       style={styles.seeMoreBtn}
+                      activeOpacity={0.7}
                       onPress={() => setShowAllPopular((prev) => !prev)}
                     >
                       <Text style={styles.seeMoreText}>
@@ -311,6 +377,103 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                   </ScrollView>
                 </View>
               )}
+
+              {/* 🎬 Music Videos Section */}
+              {ytDetails?.videos && ytDetails.videos.length > 0 && (
+                <View style={styles.sectionBlock}>
+                  <Text style={styles.sectionHeader}>Music Videos</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.videosScroll}
+                  >
+                    {ytDetails.videos.map((vid) => (
+                      <TouchableOpacity
+                        key={vid.id}
+                        style={styles.videoCard}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          playSong({
+                            id: vid.id,
+                            name: vid.title,
+                            artist: vid.artist || details?.name || 'Artist',
+                            album: 'Music Video',
+                            cover: vid.artwork,
+                            streamUrl: '',
+                            duration: 0,
+                            quality: 'Opus',
+                            source: 'youtube',
+                            sourceBadge: YOUTUBE_OPUS_BADGE,
+                          } as unknown as Song);
+                        }}
+                      >
+                        <View style={styles.videoThumbWrapper}>
+                          <Image source={{ uri: vid.artwork }} style={styles.videoCover} />
+                          <View style={styles.videoPlayOverlay}>
+                            <Ionicons name="play" size={16} color="#ffffff" />
+                          </View>
+                        </View>
+                        <Text style={styles.videoTitle} numberOfLines={2}>
+                          {vid.title}
+                        </Text>
+                        {vid.views ? <Text style={styles.videoViews}>{vid.views}</Text> : null}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* 👥 Fans Also Like (Related Artists) */}
+              {ytDetails?.relatedArtists && ytDetails.relatedArtists.length > 0 && (
+                <View style={styles.sectionBlock}>
+                  <Text style={styles.sectionHeader}>Fans Also Like</Text>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.artistsScroll}
+                  >
+                    {ytDetails.relatedArtists.map((rel) => (
+                      <TouchableOpacity
+                        key={rel.id}
+                        style={styles.relatedArtistCard}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setCurrentArtistId(rel.id);
+                          setCurrentArtistName(rel.name);
+                          setCurrentArtistImage(rel.image);
+                        }}
+                      >
+                        <Image source={{ uri: rel.image }} style={styles.relatedArtistAvatar} />
+                        <Text style={styles.relatedArtistName} numberOfLines={1}>
+                          {rel.name}
+                        </Text>
+                        <Text style={styles.relatedArtistSubs} numberOfLines={1}>
+                          {rel.subscribers || 'Artist'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* 📖 About / Bio Section */}
+              {ytDetails?.bio && ytDetails.bio.trim().length > 0 && (
+                <View style={styles.sectionBlock}>
+                  <Text style={styles.sectionHeader}>About</Text>
+                  <TouchableOpacity
+                    style={styles.bioCard}
+                    activeOpacity={0.85}
+                    onPress={() => setShowFullBio((prev) => !prev)}
+                  >
+                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 4}>
+                      {ytDetails.bio}
+                    </Text>
+                    <Text style={styles.bioToggleText}>
+                      {showFullBio ? 'Read Less' : 'Read More'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
         </ScrollView>
@@ -330,7 +493,6 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
         <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 24 : 0} />
       </View>
     </Modal>
-
   );
 };
 
@@ -450,16 +612,6 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  loadingBox: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: '#b3b3b3',
-    fontSize: 13,
-  },
   bodyContent: {
     paddingHorizontal: 20,
     paddingBottom: 140,
@@ -562,5 +714,98 @@ const styles = StyleSheet.create({
   albumYear: {
     color: '#888888',
     fontSize: 11,
+  },
+  /* Music Videos */
+  videosScroll: {
+    gap: 14,
+    paddingRight: 20,
+  },
+  videoCard: {
+    width: 200,
+  },
+  videoThumbWrapper: {
+    width: 200,
+    height: 112,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#242424',
+    position: 'relative',
+    marginBottom: 8,
+  },
+  videoCover: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  videoPlayOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginBottom: 2,
+  },
+  videoViews: {
+    color: '#888888',
+    fontSize: 11,
+  },
+  /* Fans Also Like / Related Artists */
+  artistsScroll: {
+    gap: 16,
+    paddingRight: 20,
+  },
+  relatedArtistCard: {
+    width: 100,
+    alignItems: 'center',
+  },
+  relatedArtistAvatar: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#242424',
+    marginBottom: 8,
+  },
+  relatedArtistName: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    width: '100%',
+    marginBottom: 2,
+  },
+  relatedArtistSubs: {
+    color: '#888888',
+    fontSize: 10,
+    textAlign: 'center',
+    width: '100%',
+  },
+  /* Bio Card */
+  bioCard: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 10,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#282828',
+  },
+  bioText: {
+    color: '#cccccc',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  bioToggleText: {
+    color: '#1DB954',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
   },
 });
