@@ -15,6 +15,7 @@ import { OfflineBanner } from '../common/OfflineBanner';
 import { FullPlayerModal } from '../player/FullPlayerModal';
 import { MiniPlayer } from '../player/MiniPlayer';
 import { MobileHomeScreen } from './MobileHomeScreen';
+import { MobileExploreScreen } from './MobileExploreScreen';
 import { MobileLibraryScreen } from './MobileLibraryScreen';
 import { MobilePostsScreen } from './MobilePostsScreen';
 import { MobileSearchScreen } from './MobileSearchScreen';
@@ -24,13 +25,14 @@ import { SongActionMenu } from '../common/SongActionMenu';
 import { QueueModal } from '../explore/QueueModal';
 import { useAppTheme } from '@/contexts/ThemeContext';
 
-type TabKey = 'home' | 'search' | 'playlists' | 'posts' | 'my_lib';
+type TabKey = 'home' | 'explore' | 'search' | 'playlists' | 'posts' | 'my_lib';
 
 export const MobileMainNavigator: React.FC = () => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [visitedTabs, setVisitedTabs] = useState<Record<TabKey, boolean>>({
     home: true,
+    explore: false,
     search: false,
     playlists: false,
     posts: false,
@@ -43,6 +45,9 @@ export const MobileMainNavigator: React.FC = () => {
   // Animated values for smooth cross-screen transitions
   const homeOpacity = useRef(new Animated.Value(1)).current;
   const homeTranslateY = useRef(new Animated.Value(0)).current;
+
+  const exploreOpacity = useRef(new Animated.Value(0)).current;
+  const exploreTranslateY = useRef(new Animated.Value(8)).current;
 
   const searchOpacity = useRef(new Animated.Value(0)).current;
   const searchTranslateY = useRef(new Animated.Value(8)).current;
@@ -97,6 +102,7 @@ export const MobileMainNavigator: React.FC = () => {
 
     // Outgoing animation
     if (activeTab === 'home') animateScreenOut(homeOpacity);
+    if (activeTab === 'explore') animateScreenOut(exploreOpacity);
     if (activeTab === 'search') animateScreenOut(searchOpacity);
     if (activeTab === 'playlists') animateScreenOut(playlistsOpacity);
     if (activeTab === 'posts') animateScreenOut(postsOpacity);
@@ -104,6 +110,7 @@ export const MobileMainNavigator: React.FC = () => {
 
     // Incoming animation
     if (tab === 'home') animateScreenIn(homeOpacity, homeTranslateY);
+    if (tab === 'explore') animateScreenIn(exploreOpacity, exploreTranslateY);
     if (tab === 'search') animateScreenIn(searchOpacity, searchTranslateY);
     if (tab === 'playlists') animateScreenIn(playlistsOpacity, playlistsTranslateY);
     if (tab === 'posts') animateScreenIn(postsOpacity, postsTranslateY);
@@ -154,6 +161,23 @@ export const MobileMainNavigator: React.FC = () => {
           pointerEvents={activeTab === 'home' ? 'auto' : 'none'}
         >
           <MobileHomeScreen onOpenSettings={handleOpenSettings} />
+        </Animated.View>
+
+        {/* Layer: Explore (YT Music Explore) */}
+        <Animated.View
+          style={[
+            styles.tabPane,
+            {
+              opacity: exploreOpacity,
+              transform: [{ translateY: exploreTranslateY }],
+              zIndex: activeTab === 'explore' ? 10 : 1,
+            },
+          ]}
+          pointerEvents={activeTab === 'explore' ? 'auto' : 'none'}
+        >
+          {visitedTabs.explore && (
+            <MobileExploreScreen onNavigateHome={() => handleSelectTab('home')} />
+          )}
         </Animated.View>
 
         {/* Layer 2: Search */}
@@ -265,7 +289,28 @@ export const MobileMainNavigator: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
-        {/* 2. Search */}
+        {/* 2. Explore (YT Music Explore) */}
+        <TouchableOpacity
+          style={styles.tabButton}
+          onPress={() => handleSelectTab('explore')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={activeTab === 'explore' ? 'compass' : 'compass-outline'}
+            size={22}
+            color={activeTab === 'explore' ? accent.hex : '#999999'}
+          />
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'explore' && { color: accent.hex, fontWeight: '800' },
+            ]}
+          >
+            Explore
+          </Text>
+        </TouchableOpacity>
+
+        {/* 3. Search */}
         <TouchableOpacity
           style={styles.tabButton}
           onPress={() => handleSelectTab('search')}
