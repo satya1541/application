@@ -17,8 +17,9 @@ export default function Index() {
     );
   }
 
-  // Auth gate: Without login/signup, user cannot see the home page
-  if (!user) {
+  // Auth gate: In production APK / OTA updates, require user login.
+  // In local development (npx expo start / __DEV__), automatically bypass to Home.
+  if (!user && !__DEV__) {
     return <WelcomeAuthScreen />;
   }
 
