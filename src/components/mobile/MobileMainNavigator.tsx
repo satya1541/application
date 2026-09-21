@@ -16,6 +16,7 @@ import { FullPlayerModal } from '../player/FullPlayerModal';
 import { MiniPlayer } from '../player/MiniPlayer';
 import { MobileHomeScreen } from './MobileHomeScreen';
 import { MobileLibraryScreen } from './MobileLibraryScreen';
+import { MobilePostsScreen } from './MobilePostsScreen';
 import { MobileSearchScreen } from './MobileSearchScreen';
 import { MyLibScreen } from './MyLibScreen';
 import { SettingsScreen } from './SettingsScreen';
@@ -23,7 +24,7 @@ import { SongActionMenu } from '../common/SongActionMenu';
 import { QueueModal } from '../explore/QueueModal';
 import { useAppTheme } from '@/contexts/ThemeContext';
 
-type TabKey = 'home' | 'search' | 'playlists' | 'my_lib';
+type TabKey = 'home' | 'search' | 'playlists' | 'posts' | 'my_lib';
 
 export const MobileMainNavigator: React.FC = () => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
@@ -32,6 +33,7 @@ export const MobileMainNavigator: React.FC = () => {
     home: true,
     search: false,
     playlists: false,
+    posts: false,
     my_lib: false,
   });
   const [myLibRefreshTrigger, setMyLibRefreshTrigger] = useState(0);
@@ -47,6 +49,9 @@ export const MobileMainNavigator: React.FC = () => {
 
   const playlistsOpacity = useRef(new Animated.Value(0)).current;
   const playlistsTranslateY = useRef(new Animated.Value(8)).current;
+
+  const postsOpacity = useRef(new Animated.Value(0)).current;
+  const postsTranslateY = useRef(new Animated.Value(8)).current;
 
   const myLibOpacity = useRef(new Animated.Value(0)).current;
   const myLibTranslateY = useRef(new Animated.Value(8)).current;
@@ -94,12 +99,14 @@ export const MobileMainNavigator: React.FC = () => {
     if (activeTab === 'home') animateScreenOut(homeOpacity);
     if (activeTab === 'search') animateScreenOut(searchOpacity);
     if (activeTab === 'playlists') animateScreenOut(playlistsOpacity);
+    if (activeTab === 'posts') animateScreenOut(postsOpacity);
     if (activeTab === 'my_lib') animateScreenOut(myLibOpacity);
 
     // Incoming animation
     if (tab === 'home') animateScreenIn(homeOpacity, homeTranslateY);
     if (tab === 'search') animateScreenIn(searchOpacity, searchTranslateY);
     if (tab === 'playlists') animateScreenIn(playlistsOpacity, playlistsTranslateY);
+    if (tab === 'posts') animateScreenIn(postsOpacity, postsTranslateY);
     if (tab === 'my_lib') animateScreenIn(myLibOpacity, myLibTranslateY);
 
     setActiveTab(tab);
@@ -183,7 +190,24 @@ export const MobileMainNavigator: React.FC = () => {
           )}
         </Animated.View>
 
-        {/* Layer 4: My Lib (User created playlists + history) */}
+        {/* Layer 4: Posts (YouTube Community Feed) */}
+        <Animated.View
+          style={[
+            styles.tabPane,
+            {
+              opacity: postsOpacity,
+              transform: [{ translateY: postsTranslateY }],
+              zIndex: activeTab === 'posts' ? 10 : 1,
+            },
+          ]}
+          pointerEvents={activeTab === 'posts' ? 'auto' : 'none'}
+        >
+          {visitedTabs.posts && (
+            <MobilePostsScreen onNavigateHome={() => handleSelectTab('home')} />
+          )}
+        </Animated.View>
+
+        {/* Layer 5: My Lib (User created playlists + history) */}
         <Animated.View
           style={[
             styles.tabPane,
@@ -270,7 +294,7 @@ export const MobileMainNavigator: React.FC = () => {
         >
           <Ionicons
             name={activeTab === 'playlists' ? 'albums' : 'albums-outline'}
-            size={23}
+            size={22}
             color={activeTab === 'playlists' ? accent.hex : '#999999'}
           />
           <Text
@@ -283,7 +307,28 @@ export const MobileMainNavigator: React.FC = () => {
           </Text>
         </TouchableOpacity>
 
-        {/* 4. My Lib (Personal library) */}
+        {/* 4. Posts (Community Feed) */}
+        <TouchableOpacity
+          style={styles.tabButton}
+          onPress={() => handleSelectTab('posts')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={activeTab === 'posts' ? 'newspaper' : 'newspaper-outline'}
+            size={22}
+            color={activeTab === 'posts' ? accent.hex : '#999999'}
+          />
+          <Text
+            style={[
+              styles.tabLabel,
+              activeTab === 'posts' && { color: accent.hex, fontWeight: '800' },
+            ]}
+          >
+            Posts
+          </Text>
+        </TouchableOpacity>
+
+        {/* 5. My Lib (Personal library) */}
         <TouchableOpacity
           style={styles.tabButton}
           onPress={() => handleSelectTab('my_lib')}
@@ -291,7 +336,7 @@ export const MobileMainNavigator: React.FC = () => {
         >
           <Ionicons
             name={activeTab === 'my_lib' ? 'library' : 'library-outline'}
-            size={23}
+            size={22}
             color={activeTab === 'my_lib' ? accent.hex : '#999999'}
           />
           <Text
