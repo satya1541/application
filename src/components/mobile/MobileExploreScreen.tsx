@@ -799,7 +799,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   );
                 }
 
-                // If this is a Music Videos shelf ("Music videos", etc.) -> 2 Cards in a Row Grid
+                // If this is a Music Videos shelf ("Music videos", etc.)
                 if (shelf.isVideosShelf || shelf.title.toLowerCase().includes('video')) {
                   return (
                     <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
@@ -816,8 +816,12 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                         <Text style={styles.sectionBadge}>{shelf.items.length} videos</Text>
                       </View>
 
-                      {/* 2-Column Vertical Grid of 16:9 Music Video Cards */}
-                      <View style={styles.gridContainer}>
+                      {/* 16:9 Widescreen Music Video Horizontal Sliding Carousel */}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.horizontalScroll}
+                      >
                         {shelf.items.map((videoItem) => {
                           const isCurrent =
                             currentSong?.id === videoItem.id ||
@@ -828,28 +832,28 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                             <TouchableOpacity
                               key={videoItem.id}
                               style={[
-                                styles.gridVideoCard,
+                                styles.videoCard,
                                 { backgroundColor: surfaceHex },
                                 isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
                               ]}
                               activeOpacity={0.8}
                               onPress={() => handlePlayCategorySong(videoItem, shelf.items)}
                             >
-                              <View style={styles.gridVideoThumbWrapper}>
+                              <View style={styles.videoThumbWrapper}>
                                 <ExpoImage
                                   source={{ uri: videoItem.thumbnail }}
-                                  style={styles.gridVideoThumb}
+                                  style={styles.videoThumb}
                                   contentFit="cover"
                                 />
                                 <View
                                   style={[
-                                    styles.gridCenterPlayBtn,
+                                    styles.videoCenterPlayBtn,
                                     isCurrent && isPlaying && { backgroundColor: accent.hex },
                                   ]}
                                 >
                                   <Ionicons
                                     name={isCurrent && isPlaying ? 'pause' : 'play'}
-                                    size={18}
+                                    size={20}
                                     color="#FFFFFF"
                                     style={{ marginLeft: isCurrent && isPlaying ? 0 : 2 }}
                                   />
@@ -857,14 +861,14 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                                 <View style={styles.videoTagBadge}>
                                   <Ionicons
                                     name="videocam"
-                                    size={9}
+                                    size={10}
                                     color="#FFFFFF"
-                                    style={{ marginRight: 2 }}
+                                    style={{ marginRight: 3 }}
                                   />
-                                  <Text style={styles.videoTagText}>VIDEO</Text>
+                                  <Text style={styles.videoTagText}>MUSIC VIDEO</Text>
                                 </View>
                               </View>
-                              <View style={styles.gridCardInfo}>
+                              <View style={styles.videoInfo}>
                                 <Text
                                   style={[styles.videoTitle, isCurrent && { color: accent.hex }]}
                                   numberOfLines={1}
@@ -878,68 +882,12 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                             </TouchableOpacity>
                           );
                         })}
-                      </View>
+                      </ScrollView>
                     </View>
                   );
                 }
 
-                // If this is an Albums shelf ("Albums", "New releases", etc.) -> 2 Cards in a Row Grid
-                if (shelf.title.toLowerCase().includes('album') || shelf.title.toLowerCase().includes('release')) {
-                  return (
-                    <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
-                      <View style={styles.shelfHeaderRow}>
-                        <View style={styles.sectionTitleWithIcon}>
-                          <Ionicons
-                            name="disc"
-                            size={17}
-                            color="#4CAF50"
-                            style={{ marginRight: 6 }}
-                          />
-                          <Text style={styles.shelfTitle}>{shelf.title}</Text>
-                        </View>
-                        <Text style={styles.sectionBadge}>{shelf.items.length} albums</Text>
-                      </View>
-
-                      <View style={styles.gridContainer}>
-                        {shelf.items.map((item) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[styles.gridAlbumCard, { backgroundColor: surfaceHex }]}
-                            activeOpacity={0.8}
-                            onPress={() => {
-                              if (item.isSong || item.isVideo || !item.isPlaylist) {
-                                handlePlayCategorySong(item, shelf.items);
-                              } else {
-                                handleOpenPlaylist(item.id, item.title, item.thumbnail);
-                              }
-                            }}
-                          >
-                            <View style={styles.gridAlbumCoverWrapper}>
-                              <ExpoImage
-                                source={{ uri: item.thumbnail }}
-                                style={styles.gridAlbumCover}
-                                contentFit="cover"
-                              />
-                              <View style={styles.albumTypeBadge}>
-                                <Text style={styles.albumTypeBadgeText}>ALBUM</Text>
-                              </View>
-                            </View>
-                            <View style={styles.gridCardInfo}>
-                              <Text style={styles.albumTitle} numberOfLines={1}>
-                                {item.title}
-                              </Text>
-                              <Text style={styles.albumArtist} numberOfLines={1}>
-                                {item.subtitle}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    </View>
-                  );
-                }
-
-                // Otherwise, this is a Playlists shelf ("Featured playlists", "Community playlists", etc.)
+                // Otherwise, this is a Playlists or Albums shelf ("Featured playlists", "Community playlists", "Albums", etc.)
                 return (
                   <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
                     <View style={styles.shelfHeaderRow}>
