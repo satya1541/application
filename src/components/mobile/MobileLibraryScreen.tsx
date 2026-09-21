@@ -58,8 +58,13 @@ function matchPlaylistItem(p: YouTubePlaylistItem, query: string): boolean {
   if (fullText.includes(cleanQ)) return true;
 
   // 2. Tokenized multi-word matching
-  const tokens = cleanQ.split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return true;
+  const rawTokens = cleanQ.split(/\s+/).filter(Boolean);
+  if (rawTokens.length === 0) return true;
+
+  // Strip common stopwords so queries like "Arijit Singh playlist" still match
+  const stopwords = new Set(['playlist', 'playlists', 'song', 'songs', 'music', 'mix']);
+  const meaningfulTokens = rawTokens.filter((t) => !stopwords.has(t));
+  const tokens = meaningfulTokens.length > 0 ? meaningfulTokens : rawTokens;
 
   const allTokensMatch = tokens.every((token) => fullText.includes(token));
   if (allTokensMatch) return true;
@@ -153,7 +158,33 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
     })
   ).current;
 
-  // Query live YouTube playlist search when search term is >= 2 chars
+  // Execute live YouTube playlist search
+  const executeLiveSearch = useCallback(async (query: string) => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setLiveSearchResults([]);
+      setIsSearchingLive(false);
+      return;
+    }
+
+    const searchId = ++activeSearchIdRef.current;
+    setIsSearchingLive(true);
+
+    try {
+      const live = await searchLiveYouTubePlaylists(trimmed, 20);
+      if (activeSearchIdRef.current === searchId) {
+        setLiveSearchResults(live || []);
+      }
+    } catch (err) {
+      console.warn('[searchLiveYouTubePlaylists] Error during live search:', err);
+    } finally {
+      if (activeSearchIdRef.current === searchId) {
+        setIsSearchingLive(false);
+      }
+    }
+  }, []);
+
+  // Query live YouTube playlist search when search term is >= 2 chars (with 350ms debounce)
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (searchDebounceRef.current) {
@@ -166,22 +197,10 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
       return;
     }
 
-    const searchId = ++activeSearchIdRef.current;
     setIsSearchingLive(true);
 
-    searchDebounceRef.current = setTimeout(async () => {
-      try {
-        const live = await searchLiveYouTubePlaylists(trimmed, 20);
-        if (activeSearchIdRef.current === searchId) {
-          setLiveSearchResults(live || []);
-        }
-      } catch (err) {
-        console.warn('[searchLiveYouTubePlaylists] Error during live search:', err);
-      } finally {
-        if (activeSearchIdRef.current === searchId) {
-          setIsSearchingLive(false);
-        }
-      }
+    searchDebounceRef.current = setTimeout(() => {
+      executeLiveSearch(trimmed);
     }, 350);
 
     return () => {
@@ -189,7 +208,7 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
         clearTimeout(searchDebounceRef.current);
       }
     };
-  }, [searchQuery]);
+  }, [searchQuery, executeLiveSearch]);
 
   // Combined candidate playlists (local catalog matching first, merged with live YouTube playlists)
   const allMatchingPlaylists = useMemo(() => {
@@ -328,11 +347,13 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
   }, [searchQuery, activeCategory, isSearchingLive, filteredPlaylists.length]);
 
   const renderEmpty = useCallback(() => {
-    if (isLoadingPlaylists) {
+    if (isLoadingPlaylists || isSearchingLive) {
       return (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#1DB954" />
-          <Text style={styles.loadingText}>Loading Playlists...</Text>
+          <ActivityIndicator size="large" color={accent.hex || '#1DB954'} />
+          <Text style={styles.loadingText}>
+            {isSearchingLive ? 'Searching YouTube Playlists...' : 'Loading Playlists...'}
+          </Text>
         </View>
       );
     }
@@ -440,13 +461,24 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
             placeholder="Search playlists, artists, genres, moods..."
             placeholderTextColor="#808080"
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (text.trim() && activeCategory !== 'All') {
+                setActiveCategory('All');
+              }
+            }}
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             autoCorrect={false}
             autoCapitalize="none"
             returnKeyType="search"
-            onSubmitEditing={() => Keyboard.dismiss()}
+            onSubmitEditing={() => {
+              Keyboard.dismiss();
+              if (searchDebounceRef.current) {
+                clearTimeout(searchDebounceRef.current);
+              }
+              executeLiveSearch(searchQuery);
+            }}
           />
           {isSearchingLive && (
             <ActivityIndicator size="small" color={accent.hex} style={styles.searchSpinner} />

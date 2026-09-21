@@ -770,6 +770,7 @@ const SEARCH_CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache
 /**
  * Searches live YouTube playlists matching any query (artist, genre, mood, chart).
  * Automatically categorizes and tags results into Deluxe Songs playlist format.
+ * Uses official YouTube InnerTube Search API for maximum reliability, with resilient web scrape fallback.
  */
 export async function searchLiveYouTubePlaylists(
   query: string,
@@ -784,38 +785,25 @@ export async function searchLiveYouTubePlaylists(
     return cached.playlists.slice(0, limit);
   }
 
-  // Use YouTube search with playlist filter sp=EgIQAw%253D%253D
-  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQ)}&sp=EgIQAw%253D%253D`;
+  const results: YouTubePlaylistItem[] = [];
+  const seenIds = new Set<string>();
 
-  try {
-    const res = await fetch(searchUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    });
-
-    if (!res.ok) return [];
-
-    const html = await res.text();
-    const match = html.match(/ytInitialData\s*=\s*({.+?});<\/script>/);
-    if (!match) return [];
-
-    const data = JSON.parse(match[1]);
-    const contents =
-      data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents?.[0]?.itemSectionRenderer?.contents || [];
-
-    const results: YouTubePlaylistItem[] = [];
-    const seenIds = new Set<string>();
-
+  function parsePlaylistSectionItems(contents: any[]) {
     for (const c of contents) {
       const lvm = c.lockupViewModel;
       const pr = c.playlistRenderer;
 
       if (lvm && lvm.contentId) {
         const id = lvm.contentId;
-        if (!seenIds.has(id) && (id.startsWith('PL') || id.startsWith('RDCLAK') || id.startsWith('OLAK') || id.startsWith('UU'))) {
+        const isValidId =
+          id.startsWith('PL') ||
+          id.startsWith('RD') ||
+          id.startsWith('OLAK') ||
+          id.startsWith('UU') ||
+          id.startsWith('VL') ||
+          id.length >= 10;
+
+        if (!seenIds.has(id) && isValidId) {
           seenIds.add(id);
           const rawTitle = lvm.metadata?.lockupMetadataViewModel?.title?.content || 'Official Playlist';
           const metaRows =
@@ -871,16 +859,89 @@ export async function searchLiveYouTubePlaylists(
         }
       }
     }
-
-    if (results.length > 0) {
-      livePlaylistSearchCache.set(cacheKey, { timestamp: Date.now(), playlists: results });
-    }
-
-    return results;
-  } catch (err) {
-    console.warn('[searchLiveYouTubePlaylists] Error searching playlists:', err);
-    return [];
   }
+
+  // 1. Primary Strategy: YouTube InnerTube Search API (JSON response, immune to HTML changes and consent redirects)
+  try {
+    const itRes = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'X-YouTube-Client-Name': '1',
+        'X-YouTube-Client-Version': '2.20240101.00.00',
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: '2.20240101.00.00',
+            hl: 'en',
+            gl: 'US',
+          },
+        },
+        query: cleanQ,
+        params: 'EgIQAw%3D%3D', // YouTube filter token for Playlists
+      }),
+    });
+
+    if (itRes.ok) {
+      const data = await itRes.json();
+      const sectionList =
+        data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+      for (const section of sectionList) {
+        const contents = section.itemSectionRenderer?.contents || [];
+        parsePlaylistSectionItems(contents);
+        if (results.length >= limit) break;
+      }
+    }
+  } catch (err) {
+    console.warn('[searchLiveYouTubePlaylists] InnerTube search failed, attempting scrape fallback:', err);
+  }
+
+  // 2. Secondary Fallback: YouTube Search Web Scraper
+  if (results.length === 0) {
+    try {
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQ)}&sp=EgIQAw%253D%253D`;
+      const res = await fetch(searchUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      });
+
+      if (res.ok) {
+        const html = await res.text();
+        const match =
+          html.match(/ytInitialData\s*=\s*({.+?});<\/script>/) ||
+          html.match(/var ytInitialData = ({.*?});<\/script>/) ||
+          html.match(/ytInitialData\s*=\s*({.*?});/);
+
+        if (match) {
+          const data = JSON.parse(match[1]);
+          const sectionList =
+            data.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+
+          for (const section of sectionList) {
+            const contents = section.itemSectionRenderer?.contents || [];
+            parsePlaylistSectionItems(contents);
+            if (results.length >= limit) break;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[searchLiveYouTubePlaylists] Web scrape fallback failed:', err);
+    }
+  }
+
+  if (results.length > 0) {
+    livePlaylistSearchCache.set(cacheKey, { timestamp: Date.now(), playlists: results });
+  }
+
+  return results;
 }
 
 
