@@ -46,6 +46,8 @@ const CARD_PADDING = 16;
 const ALBUM_CARD_WIDTH = 145;
 const VIDEO_CARD_WIDTH = 220;
 const PLAYLIST_CARD_WIDTH = 150;
+const GRID_GAP = 12;
+const GRID_CARD_WIDTH = Math.floor((SCREEN_WIDTH - CARD_PADDING * 2 - GRID_GAP) / 2);
 
 type FilterChip = 'all' | 'trending' | 'moods' | 'genres' | 'albums' | 'videos';
 
@@ -487,7 +489,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             </View>
           )}
 
-          {/* 3. New Releases & Albums (Tapping opens Album/Playlist screen) */}
+          {/* 3. New Releases & Albums (2 Cards in a Row Grid) */}
           {(activeChip === 'all' || activeChip === 'albums') && newAlbums.length > 0 && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
@@ -498,41 +500,39 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 <Text style={styles.sectionBadge}>{newAlbums.length} Releases</Text>
               </View>
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScroll}
-              >
+              <View style={styles.gridContainer}>
                 {newAlbums.map((album) => (
                   <TouchableOpacity
                     key={album.id}
-                    style={[styles.albumCard, { backgroundColor: surfaceHex }]}
+                    style={[styles.gridAlbumCard, { backgroundColor: surfaceHex }]}
                     activeOpacity={0.8}
                     onPress={() => handleOpenPlaylist(album.id, album.title, album.thumbnail)}
                   >
-                    <View style={styles.albumCoverWrapper}>
+                    <View style={styles.gridAlbumCoverWrapper}>
                       <ExpoImage
                         source={{ uri: album.thumbnail }}
-                        style={styles.albumCover}
+                        style={styles.gridAlbumCover}
                         contentFit="cover"
                       />
                       <View style={styles.albumTypeBadge}>
                         <Text style={styles.albumTypeBadgeText}>{album.type}</Text>
                       </View>
                     </View>
-                    <Text style={styles.albumTitle} numberOfLines={1}>
-                      {album.title}
-                    </Text>
-                    <Text style={styles.albumArtist} numberOfLines={1}>
-                      {album.artist}
-                    </Text>
+                    <View style={styles.gridCardInfo}>
+                      <Text style={styles.albumTitle} numberOfLines={1}>
+                        {album.title}
+                      </Text>
+                      <Text style={styles.albumArtist} numberOfLines={1}>
+                        {album.artist}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
             </View>
           )}
 
-          {/* 4. New Music Videos */}
+          {/* 4. New Music Videos (2 Cards in a Row Grid) */}
           {(activeChip === 'all' || activeChip === 'videos') && newMusicVideos.length > 0 && (
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
@@ -540,14 +540,10 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   <Ionicons name="videocam" size={18} color="#FF0000" style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>New Music Videos</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{newMusicVideos.length}</Text>
+                <Text style={styles.sectionBadge}>{newMusicVideos.length} Videos</Text>
               </View>
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.horizontalScroll}
-              >
+              <View style={styles.gridContainer}>
                 {newMusicVideos.map((vid) => {
                   const isCurrent =
                     currentSong?.id === `yt_${vid.videoId}` ||
@@ -557,7 +553,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                     <TouchableOpacity
                       key={vid.videoId}
                       style={[
-                        styles.videoCard,
+                        styles.gridVideoCard,
                         { backgroundColor: surfaceHex },
                         isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
                       ]}
@@ -572,21 +568,21 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                         })
                       }
                     >
-                      <View style={styles.videoThumbWrapper}>
+                      <View style={styles.gridVideoThumbWrapper}>
                         <ExpoImage
                           source={{ uri: vid.thumbnail }}
-                          style={styles.videoThumb}
+                          style={styles.gridVideoThumb}
                           contentFit="cover"
                         />
                         <View
                           style={[
-                            styles.videoCenterPlayBtn,
+                            styles.gridCenterPlayBtn,
                             isCurrent && isPlaying && { backgroundColor: accent.hex },
                           ]}
                         >
                           <Ionicons
                             name={isCurrent && isPlaying ? 'pause' : 'play'}
-                            size={20}
+                            size={18}
                             color="#FFFFFF"
                             style={{ marginLeft: isCurrent && isPlaying ? 0 : 2 }}
                           />
@@ -594,28 +590,28 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                         <View style={styles.videoTagBadge}>
                           <Ionicons
                             name="videocam"
-                            size={10}
+                            size={9}
                             color="#FFFFFF"
-                            style={{ marginRight: 3 }}
+                            style={{ marginRight: 2 }}
                           />
-                          <Text style={styles.videoTagText}>MUSIC VIDEO</Text>
+                          <Text style={styles.videoTagText}>VIDEO</Text>
                         </View>
                       </View>
-                      <View style={styles.videoInfo}>
+                      <View style={styles.gridCardInfo}>
                         <Text
                           style={[styles.videoTitle, isCurrent && { color: accent.hex }]}
                           numberOfLines={1}
                         >
                           {vid.title}
                         </Text>
-                        <Text style={styles.videoArtist} numberOfLines={1}>
+                        <Text style={styles.videoArtist} numberOfLines={2}>
                           {vid.artist} {vid.views ? `• ${vid.views}` : ''}
                         </Text>
                       </View>
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           )}
 
@@ -803,7 +799,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   );
                 }
 
-                // If this is a Music Videos shelf ("Music videos", etc.)
+                // If this is a Music Videos shelf ("Music videos", etc.) -> 2 Cards in a Row Grid
                 if (shelf.isVideosShelf || shelf.title.toLowerCase().includes('video')) {
                   return (
                     <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
@@ -820,12 +816,8 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                         <Text style={styles.sectionBadge}>{shelf.items.length} videos</Text>
                       </View>
 
-                      {/* 16:9 Widescreen Music Video Cards */}
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.horizontalScroll}
-                      >
+                      {/* 2-Column Vertical Grid of 16:9 Music Video Cards */}
+                      <View style={styles.gridContainer}>
                         {shelf.items.map((videoItem) => {
                           const isCurrent =
                             currentSong?.id === videoItem.id ||
@@ -836,47 +828,43 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                             <TouchableOpacity
                               key={videoItem.id}
                               style={[
-                                styles.videoCard,
+                                styles.gridVideoCard,
                                 { backgroundColor: surfaceHex },
                                 isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
                               ]}
                               activeOpacity={0.8}
                               onPress={() => handlePlayCategorySong(videoItem, shelf.items)}
                             >
-                              <View style={styles.videoThumbWrapper}>
+                              <View style={styles.gridVideoThumbWrapper}>
                                 <ExpoImage
                                   source={{ uri: videoItem.thumbnail }}
-                                  style={styles.videoThumb}
+                                  style={styles.gridVideoThumb}
                                   contentFit="cover"
                                 />
-                                {/* YouTube Music Center Play Button Overlay */}
                                 <View
                                   style={[
-                                    styles.videoCenterPlayBtn,
+                                    styles.gridCenterPlayBtn,
                                     isCurrent && isPlaying && { backgroundColor: accent.hex },
                                   ]}
                                 >
                                   <Ionicons
                                     name={isCurrent && isPlaying ? 'pause' : 'play'}
-                                    size={22}
+                                    size={18}
                                     color="#FFFFFF"
                                     style={{ marginLeft: isCurrent && isPlaying ? 0 : 2 }}
                                   />
                                 </View>
-
-                                {/* Video Badge */}
                                 <View style={styles.videoTagBadge}>
                                   <Ionicons
                                     name="videocam"
-                                    size={10}
+                                    size={9}
                                     color="#FFFFFF"
-                                    style={{ marginRight: 3 }}
+                                    style={{ marginRight: 2 }}
                                   />
-                                  <Text style={styles.videoTagText}>MUSIC VIDEO</Text>
+                                  <Text style={styles.videoTagText}>VIDEO</Text>
                                 </View>
                               </View>
-
-                              <View style={styles.videoInfo}>
+                              <View style={styles.gridCardInfo}>
                                 <Text
                                   style={[styles.videoTitle, isCurrent && { color: accent.hex }]}
                                   numberOfLines={1}
@@ -890,12 +878,68 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                             </TouchableOpacity>
                           );
                         })}
-                      </ScrollView>
+                      </View>
                     </View>
                   );
                 }
 
-                // Otherwise, this is a Playlists or Albums shelf ("Featured playlists", "Community playlists", "Albums", etc.)
+                // If this is an Albums shelf ("Albums", "New releases", etc.) -> 2 Cards in a Row Grid
+                if (shelf.title.toLowerCase().includes('album') || shelf.title.toLowerCase().includes('release')) {
+                  return (
+                    <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
+                      <View style={styles.shelfHeaderRow}>
+                        <View style={styles.sectionTitleWithIcon}>
+                          <Ionicons
+                            name="disc"
+                            size={17}
+                            color="#4CAF50"
+                            style={{ marginRight: 6 }}
+                          />
+                          <Text style={styles.shelfTitle}>{shelf.title}</Text>
+                        </View>
+                        <Text style={styles.sectionBadge}>{shelf.items.length} albums</Text>
+                      </View>
+
+                      <View style={styles.gridContainer}>
+                        {shelf.items.map((item) => (
+                          <TouchableOpacity
+                            key={item.id}
+                            style={[styles.gridAlbumCard, { backgroundColor: surfaceHex }]}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              if (item.isSong || item.isVideo || !item.isPlaylist) {
+                                handlePlayCategorySong(item, shelf.items);
+                              } else {
+                                handleOpenPlaylist(item.id, item.title, item.thumbnail);
+                              }
+                            }}
+                          >
+                            <View style={styles.gridAlbumCoverWrapper}>
+                              <ExpoImage
+                                source={{ uri: item.thumbnail }}
+                                style={styles.gridAlbumCover}
+                                contentFit="cover"
+                              />
+                              <View style={styles.albumTypeBadge}>
+                                <Text style={styles.albumTypeBadgeText}>ALBUM</Text>
+                              </View>
+                            </View>
+                            <View style={styles.gridCardInfo}>
+                              <Text style={styles.albumTitle} numberOfLines={1}>
+                                {item.title}
+                              </Text>
+                              <Text style={styles.albumArtist} numberOfLines={1}>
+                                {item.subtitle}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  );
+                }
+
+                // Otherwise, this is a Playlists shelf ("Featured playlists", "Community playlists", etc.)
                 return (
                   <View key={`${shelf.title}_${sIdx}`} style={styles.shelfBlock}>
                     <View style={styles.shelfHeaderRow}>
@@ -1496,6 +1540,63 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontSize: 11,
     fontWeight: '500',
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
+  },
+  gridAlbumCard: {
+    width: GRID_CARD_WIDTH,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  gridAlbumCoverWrapper: {
+    width: '100%',
+    height: GRID_CARD_WIDTH,
+    position: 'relative',
+    backgroundColor: '#1E1E1E',
+  },
+  gridAlbumCover: {
+    width: '100%',
+    height: '100%',
+  },
+  gridVideoCard: {
+    width: GRID_CARD_WIDTH,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  gridVideoThumbWrapper: {
+    width: '100%',
+    height: Math.floor((GRID_CARD_WIDTH * 9) / 16),
+    position: 'relative',
+    backgroundColor: '#1E1E1E',
+  },
+  gridVideoThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  gridCenterPlayBtn: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -17,
+    marginLeft: -17,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  gridCardInfo: {
+    padding: 8,
   },
   genresGrid: {
     flexDirection: 'row',
