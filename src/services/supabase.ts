@@ -1,5 +1,9 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { SafeStorage } from './storage';
+
+// In Node.js SSR / prerender environments on web, window does not exist.
+const isNodeServer = Platform.OS === 'web' && typeof window === 'undefined';
 
 // Project default Supabase credentials (public anon client)
 const DEFAULT_SUPABASE_URL = 'https://zdutzfrojytvjxpdffsv.supabase.co';
@@ -33,9 +37,9 @@ export const supabase: SupabaseClient = createClient(
   isSupabaseConfigured() ? SUPABASE_ANON_KEY : fallbackKey,
   {
     auth: {
-      storage: AsyncStorage,
-      autoRefreshToken: true,
-      persistSession: true,
+      storage: SafeStorage,
+      autoRefreshToken: !isNodeServer,
+      persistSession: !isNodeServer,
       detectSessionInUrl: false,
       flowType: 'pkce',
     },
