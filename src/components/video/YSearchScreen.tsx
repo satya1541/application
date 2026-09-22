@@ -26,6 +26,7 @@ import { useAudio } from '@/contexts/AudioContext';
 import {
   searchYouTubeVideos,
   resolveYouTubeStandaloneVideoStream,
+  getCachedVideoStream,
   fetchYouTubeSearchSuggestions,
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
@@ -116,21 +117,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [showWatchControls, resetWatchControlsTimer]);
 
-  // Setup standalone video player with expo-video
-  // Stays active in background when phone is locked
-  const videoSource = React.useMemo(() => {
-    if (!videoStream?.hlsUrl) return null;
-    return {
-      uri: videoStream.hlsUrl,
-      metadata: {
-        title: activeVideo?.title || 'YouTube Video',
-        artist: activeVideo?.author || 'YouTube',
-        artwork: activeVideo?.thumbnail,
-      },
-    };
-  }, [videoStream?.hlsUrl, activeVideo?.title, activeVideo?.author, activeVideo?.thumbnail]);
+  // Ref to handle auto-advancing to the next video
+  const handleNextVideoRef = useRef<() => void>(() => {});
 
-  const player = useVideoPlayer(videoSource, (p) => {
+  // Setup standalone video player with expo-video
+  // Initialized with null so useVideoPlayer maintains a SINGLE, persistent native ExoPlayer instance.
+  // This eliminates the 3-4s freeze caused by destroying and rebuilding native hardware decoders on every video switch.
+  const player = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.muted = false;
     p.audioMixingMode = 'doNotMix';
@@ -139,13 +132,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     p.timeUpdateEventInterval = 0.5; // 500ms interval for smooth progression with low battery/CPU usage
     try {
       p.bufferOptions = {
-        preferredForwardBufferDuration: 15, // 15 seconds forward buffer reduces aggressive radio awake time
-        minBufferForPlayback: 1.5,
+        preferredForwardBufferDuration: 15, // 15 seconds forward buffer
+        minBufferForPlayback: 0.1, // 100ms ultra-low start buffer for INSTANT playback!
+        waitsToMinimizeStalling: false, // Start playing immediately without delaying
         prioritizeTimeOverSizeThreshold: true,
-        maxBufferBytes: 20 * 1024 * 1024, // 20MB lightweight buffer prevents memory & thermal pressure
+        maxBufferBytes: 20 * 1024 * 1024, // 20MB lightweight buffer prevents memory pressure
       };
     } catch {}
-    p.play();
   });
 
   // Ensure background play stays active on player instance
@@ -155,6 +148,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       player.timeUpdateEventInterval = 0.5;
       player.staysActiveInBackground = true;
       player.showNowPlayingNotification = true;
+      player.bufferOptions = {
+        preferredForwardBufferDuration: 15,
+        minBufferForPlayback: 0.1,
+        waitsToMinimizeStalling: false,
+        prioritizeTimeOverSizeThreshold: true,
+        maxBufferBytes: 20 * 1024 * 1024,
+      };
     } catch {}
   }, [player]);
 
@@ -193,6 +193,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (payload.status === 'readyToPlay') {
         const dur = player.duration || activeVideo?.durationSeconds || 0;
         if (dur > 0) setDuration(dur);
+        // Guarantee playback starts as soon as ready
+        if (!isScrubbingRef.current) {
+          player.play();
+        }
       }
     });
 
@@ -200,10 +204,14 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (payload.duration > 0) {
         setDuration(payload.duration);
       }
+      if (!isScrubbingRef.current) {
+        player.play();
+      }
     });
 
     const subEnded = player.addListener('playToEnd', () => {
       setIsVideoPlaying(false);
+      handleNextVideoRef.current();
     });
 
     return () => {
@@ -238,6 +246,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     try {
       const results = await searchYouTubeVideos(clean, 35);
       setVideos(results);
+      // Pre-warm top 2 search results in background so tapping them plays INSTANTLY
+      if (results[0]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
+      }
+      if (results[1]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
+      }
     } catch (err) {
       console.warn('YSearch performSearch failed:', err);
     } finally {
@@ -295,6 +310,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     [handleQueryChange]
   );
 
+  // Memoize Up Next queue to avoid re-filtering 35 items on every time update
+  const upNextVideos: YouTubeVideoSearchResult[] = useMemo(() => {
+    if (!activeVideo || videos.length === 0) return [];
+    return videos.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
+  }, [videos, activeVideo?.videoId]);
+
   // Play a video in the standalone player
   const handleSelectVideo = useCallback(
     async (item: YouTubeVideoSearchResult) => {
@@ -318,17 +339,68 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       setPlayerMode('full'); // Opens in Full Watch View (Screenshot 1)
       setShowWatchControls(true);
       resetWatchControlsTimer();
-      setVideoStream(null);
-      setIsLoadingStream(true);
       setCurrentTime(0);
       setDuration(item.durationSeconds || 0);
 
+      // 1. Instant playback from cache (0ms lookup)
+      const cached = getCachedVideoStream(item.videoId);
+      if (cached) {
+        setVideoStream(cached);
+        if (cached.durationSeconds > 0) {
+          setDuration(cached.durationSeconds);
+        }
+        setIsLoadingStream(false);
+        if (player) {
+          try {
+            player.bufferOptions = {
+              preferredForwardBufferDuration: 15,
+              minBufferForPlayback: 0.1,
+              waitsToMinimizeStalling: false,
+              prioritizeTimeOverSizeThreshold: true,
+              maxBufferBytes: 20 * 1024 * 1024,
+            };
+          } catch {}
+          player.replace({
+            uri: cached.hlsUrl,
+            metadata: {
+              title: item.title,
+              artist: item.author,
+              artwork: item.thumbnail,
+            },
+          });
+          player.play();
+        }
+        return;
+      }
+
+      // 2. Resolve stream if not yet cached
+      setIsLoadingStream(true);
       try {
         const streamDetails = await resolveYouTubeStandaloneVideoStream(item.videoId);
         if (streamDetails) {
           setVideoStream(streamDetails);
           if (streamDetails.durationSeconds > 0) {
             setDuration(streamDetails.durationSeconds);
+          }
+          if (player) {
+            try {
+              player.bufferOptions = {
+                preferredForwardBufferDuration: 15,
+                minBufferForPlayback: 0.1,
+                waitsToMinimizeStalling: false,
+                prioritizeTimeOverSizeThreshold: true,
+                maxBufferBytes: 20 * 1024 * 1024,
+              };
+            } catch {}
+            player.replace({
+              uri: streamDetails.hlsUrl,
+              metadata: {
+                title: item.title,
+                artist: item.author,
+                artwork: item.thumbnail,
+              },
+            });
+            player.play();
           }
         }
       } catch (err) {
@@ -346,8 +418,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
     if (currentIndex >= 0 && currentIndex < videos.length - 1) {
       handleSelectVideo(videos[currentIndex + 1]);
+    } else if (upNextVideos.length > 0) {
+      handleSelectVideo(upNextVideos[0]);
     }
-  }, [activeVideo, videos, handleSelectVideo]);
+  }, [activeVideo, videos, upNextVideos, handleSelectVideo]);
 
   const handlePrevVideo = useCallback(() => {
     if (!activeVideo || videos.length === 0) return;
@@ -412,11 +486,26 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return () => unsubscribe();
   }, [activeVideo, isFullscreen, playerMode, handleExitFullscreen]);
 
-  // Memoize Up Next queue to avoid re-filtering 35 items on every time update
-  const upNextVideos: YouTubeVideoSearchResult[] = useMemo(() => {
-    if (!activeVideo || videos.length === 0) return [];
-    return videos.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
-  }, [videos, activeVideo?.videoId]);
+  // Keep handleNextVideoRef updated for automatic playToEnd transition
+  useEffect(() => {
+    handleNextVideoRef.current = handleNextVideo;
+  }, [handleNextVideo]);
+
+  // Pre-fetch next video in queue in background for INSTANT next video playback (0ms wait)
+  useEffect(() => {
+    if (!activeVideo || videos.length === 0) return;
+    const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
+    const nextVideo =
+      currentIndex >= 0 && currentIndex < videos.length - 1
+        ? videos[currentIndex + 1]
+        : upNextVideos.length > 0
+        ? upNextVideos[0]
+        : null;
+
+    if (nextVideo?.videoId) {
+      resolveYouTubeStandaloneVideoStream(nextVideo.videoId).catch(() => {});
+    }
+  }, [activeVideo?.videoId, videos, upNextVideos]);
 
   // Android Back Button handling:
   // 1. If in landscape fullscreen -> exit landscape fullscreen

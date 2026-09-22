@@ -29,6 +29,22 @@ export interface StandaloneVideoStreamDetails {
 }
 
 const videoStreamCache = new Map<string, { details: StandaloneVideoStreamDetails; expiresAt: number }>();
+const inFlightStreamPromises = new Map<string, Promise<StandaloneVideoStreamDetails | null>>();
+
+// Eagerly pre-warm visitorData in background so initial player handshakes are instant
+getYouTubeVisitorData().catch(() => {});
+
+/**
+ * Returns cached video stream details immediately if present and valid (0ms lookup).
+ */
+export function getCachedVideoStream(videoId: string): StandaloneVideoStreamDetails | null {
+  const cleanId = videoId.replace(/^yt_/, '').trim();
+  const cached = videoStreamCache.get(cleanId);
+  if (cached && Date.now() < cached.expiresAt - 300000) {
+    return cached.details;
+  }
+  return null;
+}
 
 function parseDurationSeconds(str: string): number {
   if (!str) return 0;
@@ -205,16 +221,23 @@ export async function resolveYouTubeStandaloneVideoStream(
     return null;
   }
 
-  // Check cache
-  const cached = videoStreamCache.get(cleanId);
-  if (cached && Date.now() < cached.expiresAt - 300000) {
-    return cached.details;
+  // 1. Instant return from cache (0ms)
+  const cached = getCachedVideoStream(cleanId);
+  if (cached) {
+    return cached;
   }
 
-  try {
-    const visitorData = await getYouTubeVisitorData();
+  // 2. Return existing in-flight promise to prevent duplicate requests
+  const existingPromise = inFlightStreamPromises.get(cleanId);
+  if (existingPromise) {
+    return existingPromise;
+  }
 
-    const payload = {
+  const fetchPromise = (async (): Promise<StandaloneVideoStreamDetails | null> => {
+    try {
+      const visitorData = await getYouTubeVisitorData();
+
+      const payload = {
       context: {
         client: {
           clientName: 'VISIONOS',
@@ -342,5 +365,11 @@ export async function resolveYouTubeStandaloneVideoStream(
       console.warn('resolveYouTubeStandaloneVideoStream error:', err);
     }
     return null;
+  } finally {
+    inFlightStreamPromises.delete(cleanId);
   }
+  })();
+
+  inFlightStreamPromises.set(cleanId, fetchPromise);
+  return fetchPromise;
 }
