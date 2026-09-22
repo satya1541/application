@@ -25,6 +25,7 @@ import { useAudio } from '@/contexts/AudioContext';
 import { Song } from '@/types/music';
 import { ArtistProfileModal } from '../explore/ArtistProfileModal';
 import { AlbumModal } from '../explore/AlbumModal';
+import { YSearchScreen } from '../video/YSearchScreen';
 import { NoInternetView } from '../common/NoInternetView';
 import { useNetwork } from '@/contexts/NetworkContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
@@ -153,6 +154,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
   const [searchResult, setSearchResult] = useState<ExploreSearchResult | null>(null);
   const [suggestions, setSuggestions] = useState<GroupedSuggestions | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showYSearch, setShowYSearch] = useState(false);
 
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
@@ -208,6 +210,11 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
 
   // Unified Back Handler (Handles edge-swipe gesture, hardware back button, and in-screen swipe)
   const handleBack = useCallback(() => {
+    // 0. If YSearch screen is active, close it and return to standard search
+    if (showYSearch) {
+      setShowYSearch(false);
+      return true;
+    }
     // 1. If artist profile modal is open, close it
     if (selectedArtist) {
       setSelectedArtist(null);
@@ -237,7 +244,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
       return true;
     }
     return false;
-  }, [selectedArtist, selectedAlbumId, selectedCategory, query, searchResult, onNavigateHome]);
+  }, [showYSearch, selectedArtist, selectedAlbumId, selectedCategory, query, searchResult, onNavigateHome]);
 
   // Android System Back & Edge-Swipe Navigation Handler
   useEffect(() => {
@@ -542,12 +549,25 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
     }
   };
 
+  if (showYSearch) {
+    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
       <View style={styles.content}>
         {/* Top Header Row */}
         <View style={styles.headerRow}>
           <Text style={styles.header}>Search</Text>
+          <TouchableOpacity
+            style={styles.ySearchHeaderBtn}
+            onPress={() => setShowYSearch(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="logo-youtube" size={18} color="#FF0000" style={{ marginRight: 6 }} />
+            <Text style={styles.ySearchHeaderText}>YSearch</Text>
+            <Ionicons name="sparkles" size={12} color="#f59e0b" style={{ marginLeft: 5 }} />
+          </TouchableOpacity>
         </View>
 
         {/* Capsule Search Bar Input */}
@@ -990,6 +1010,22 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: '800',
     letterSpacing: -0.5,
+  },
+  ySearchHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 0, 0.45)',
+  },
+  ySearchHeaderText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.2,
   },
   profileBtn: {
     padding: 2,

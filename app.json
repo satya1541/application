@@ -2,7 +2,7 @@
   "expo": {
     "name": "Shorty",
     "slug": "satya",
-    "version": "4.0.6",
+    "version": "4.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shorty",
@@ -74,7 +74,13 @@
       "./plugins/withFilteredFonts.js",
       "expo-web-browser",
       "expo-image",
-      "expo-video",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true,
+          "supportsPictureInPicture": true
+        }
+      ],
       "expo-screen-orientation"
     ],
     "experiments": {

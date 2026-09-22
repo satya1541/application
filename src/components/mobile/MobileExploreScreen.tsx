@@ -40,6 +40,7 @@ import {
   normalizeExploreUrl,
 } from '@/services/youtubeExploreService';
 import { Song } from '@/types/music';
+import { YSearchScreen } from '../video/YSearchScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
@@ -87,8 +88,15 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   const [playlistDetail, setPlaylistDetail] = useState<ExplorePlaylistDetail | null>(null);
   const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
 
-  // Back handling (Stacked: Playlist Modal -> Category Modal -> Home Tab)
+  // YSearch Screen State
+  const [showYSearch, setShowYSearch] = useState(false);
+
+  // Back handling (Stacked: YSearch -> Playlist Modal -> Category Modal -> Home Tab)
   const handleBack = useCallback(() => {
+    if (showYSearch) {
+      setShowYSearch(false);
+      return true;
+    }
     if (selectedPlaylistId) {
       setSelectedPlaylistId(null);
       setPlaylistDetail(null);
@@ -104,7 +112,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       return true;
     }
     return false;
-  }, [selectedPlaylistId, selectedCategory, onNavigateHome]);
+  }, [showYSearch, selectedPlaylistId, selectedCategory, onNavigateHome]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
@@ -294,6 +302,10 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     { id: 'videos', label: 'Music Videos', icon: 'videocam-outline' },
   ];
 
+  if (showYSearch) {
+    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
+  }
+
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: bgHex }]}
@@ -307,13 +319,24 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <Text style={styles.screenTitle}>YT Music Explore</Text>
             <View style={[styles.liveDot, { backgroundColor: '#FF0000' }]} />
           </View>
-          <TouchableOpacity
-            style={[styles.refreshBtn, { backgroundColor: surfaceHex }]}
-            onPress={() => loadExplore(true)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="refresh" size={17} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity
+              style={styles.ySearchHeaderBtn}
+              onPress={() => setShowYSearch(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="logo-youtube" size={16} color="#FF0000" style={{ marginRight: 5 }} />
+              <Text style={styles.ySearchHeaderText}>YSearch</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.refreshBtn, { backgroundColor: surfaceHex }]}
+              onPress={() => loadExplore(true)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh" size={17} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.screenSubtitle}>Trending Hits, Songs, Genres & Official Playlists</Text>
       </View>
@@ -540,7 +563,17 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                   <Ionicons name="videocam" size={18} color="#FF0000" style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>New Music Videos</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{newMusicVideos.length} Videos</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <TouchableOpacity
+                    style={styles.ySearchExploreBadge}
+                    onPress={() => setShowYSearch(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="logo-youtube" size={13} color="#FF0000" style={{ marginRight: 4 }} />
+                    <Text style={styles.ySearchExploreText}>YSearch</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.sectionBadge}>{newMusicVideos.length} Videos</Text>
+                </View>
               </View>
 
               <View style={styles.gridContainer}>
@@ -1948,5 +1981,35 @@ const styles = StyleSheet.create({
   },
   trackPlayBtn: {
     padding: 6,
+  },
+  ySearchHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 0, 0.4)',
+  },
+  ySearchHeaderText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  ySearchExploreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 0, 0, 0.35)',
+  },
+  ySearchExploreText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

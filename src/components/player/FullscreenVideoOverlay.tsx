@@ -26,12 +26,24 @@ interface FullscreenVideoOverlayProps {
   isVisible: boolean;
   qualityBadge?: string;
   onExitFullscreen: () => void;
+  // Optional standalone player props (for independent players like YSearch)
+  title?: string;
+  artist?: string;
+  isPlaying?: boolean;
+  position?: number;
+  duration?: number;
+  onTogglePlay?: () => void;
+  onSeekTo?: (seconds: number) => void;
 }
 
 const formatTime = (seconds: number): string => {
   if (isNaN(seconds) || seconds < 0) return '0:00';
-  const mins = Math.floor(seconds / 60);
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
+  if (hrs > 0) {
+    return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  }
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
@@ -40,10 +52,26 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   isVisible,
   qualityBadge = '1080p',
   onExitFullscreen,
+  title: overrideTitle,
+  artist: overrideArtist,
+  isPlaying: overrideIsPlaying,
+  position: overridePosition,
+  duration: overrideDuration,
+  onTogglePlay: overrideTogglePlay,
+  onSeekTo: overrideSeekTo,
 }) => {
   const insets = useSafeAreaInsets();
-  const { currentSong, isPlaying, togglePlay, seekTo } = useAudio();
-  const { position, duration } = useAudioProgress();
+  const { currentSong, isPlaying: audioIsPlaying, togglePlay: audioTogglePlay, seekTo: audioSeekTo } = useAudio();
+  const { position: audioPosition, duration: audioDuration } = useAudioProgress();
+
+  const isPlaying = overrideIsPlaying !== undefined ? overrideIsPlaying : audioIsPlaying;
+  const position = overridePosition !== undefined ? overridePosition : audioPosition;
+  const duration = overrideDuration !== undefined ? overrideDuration : audioDuration;
+  const togglePlay = overrideTogglePlay || audioTogglePlay;
+  const seekTo = overrideSeekTo || audioSeekTo;
+  const displayTitle = overrideTitle || currentSong?.name || 'Now Playing';
+  const displayArtist = overrideArtist || currentSong?.artist || 'Unknown Artist';
+
 
   // Prevent screen auto-sleep while watching fullscreen video
   useEffect(() => {
@@ -61,7 +89,22 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const [contentFit, setContentFit] = useState<'contain' | 'cover'>('cover');
   const [isVivid, setIsVivid] = useState<boolean>(true);
   const [isScrubbing, setIsScrubbing] = useState(false);
-  const [scrubValue, setScrubValue] = useState(0);
+  const [scrubValue, setScrubValue] = useState<number | null>(null);
+  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Ensure player emits timeUpdate events
+  useEffect(() => {
+    if (!player) return;
+    try {
+      player.timeUpdateEventInterval = 0.25;
+    } catch {}
+  }, [player]);
+
+  useEffect(() => {
+    return () => {
+      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    };
+  }, []);
 
   // Ripple feedback states for double-tap seek
   const [seekFeedback, setSeekFeedback] = useState<'-10' | '+10' | null>(null);
@@ -112,6 +155,31 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
       showControls();
     }
   }, [controlsVisible, controlsOpacity, showControls]);
+
+  // Handle slider scrubbing gestures with rubber-band protection
+  const handleSlidingStart = useCallback((val?: number) => {
+    if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    setIsScrubbing(true);
+    setScrubValue(val !== undefined ? val : position);
+  }, [position]);
+
+  const handleValueChange = useCallback((val: number) => {
+    setScrubValue(val);
+  }, []);
+
+  const handleSlidingComplete = useCallback(async (val: number) => {
+    setScrubValue(val);
+    try {
+      await seekTo(val);
+    } catch {}
+    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
+    seekTimeoutRef.current = setTimeout(() => {
+      setIsScrubbing(false);
+      setScrubValue(null);
+    }, 400);
+    resetHideTimer();
+  }, [seekTo, resetHideTimer]);
 
   // Handle Double-Tap Seek (YouTube behavior: left side -10s, right side +10s)
   const handleTouch = (evt: any) => {
@@ -205,7 +273,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
 
   if (!isVisible || !player) return null;
 
-  const currentDisplayTime = isScrubbing ? scrubValue : position;
+  const currentDisplayTime = isScrubbing && scrubValue !== null ? scrubValue : position;
 
   return (
     <Modal
@@ -224,7 +292,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
           player={player}
           contentFit={contentFit}
           nativeControls={false}
-          surfaceType={Platform.OS === 'android' ? 'surfaceView' : undefined}
+          surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
         />
 
         {/* Vivid / HDR Color Boost Layer: Micro-contrast enhancer and warm color saturation pop */}
@@ -297,10 +365,10 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
 
             <View style={styles.headerInfo}>
               <Text style={styles.headerTitle} numberOfLines={1}>
-                {currentSong?.name || 'Now Playing'}
+                {displayTitle}
               </Text>
               <Text style={styles.headerArtist} numberOfLines={1}>
-                {currentSong?.artist || 'Unknown Artist'}
+                {displayArtist}
               </Text>
             </View>
 
@@ -396,16 +464,9 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
               minimumTrackTintColor="#38bdf8"
               maximumTrackTintColor="rgba(255, 255, 255, 0.28)"
               thumbTintColor="#38bdf8"
-              onSlidingStart={() => {
-                setIsScrubbing(true);
-                if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
-              }}
-              onValueChange={(val) => setScrubValue(val)}
-              onSlidingComplete={async (val) => {
-                setIsScrubbing(false);
-                await seekTo(val);
-                resetHideTimer();
-              }}
+              onSlidingStart={handleSlidingStart}
+              onValueChange={handleValueChange}
+              onSlidingComplete={handleSlidingComplete}
             />
 
             <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>

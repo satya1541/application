@@ -18,6 +18,7 @@ import {
     RefreshControl,
     StyleSheet,
     View,
+    BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoInternetView } from '../common/NoInternetView';
@@ -25,6 +26,7 @@ import { GreetingHeader } from '../feed/GreetingHeader';
 import { QuickAccessGrid } from '../feed/QuickAccessGrid';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { YSearchScreen } from '../video/YSearchScreen';
 
 interface MobileHomeScreenProps {
   onOpenSettings?: () => void;
@@ -125,14 +127,15 @@ const ChartSectionItem = React.memo<ChartSectionItemProps>(
 // Memoized header component to prevent FlatList unmounting / remounting glitches
 interface HomeHeaderProps {
   onOpenSettings?: () => void;
+  onOpenYSearch?: () => void;
   fallbackSongs?: Song[];
 }
 
 const HomeHeader = React.memo<HomeHeaderProps>(
-  ({ onOpenSettings, fallbackSongs }) => {
+  ({ onOpenSettings, onOpenYSearch, fallbackSongs }) => {
     return (
       <View>
-        <GreetingHeader onPressSettings={onOpenSettings} />
+        <GreetingHeader onPressSettings={onOpenSettings} onPressYSearch={onOpenYSearch} />
         <QuickAccessGrid songs={fallbackSongs} />
       </View>
     );
@@ -322,10 +325,35 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ o
     sectionSongs['english_lossless']?.length,
   ]);
 
+  const [showYSearch, setShowYSearch] = useState(false);
+
+  useEffect(() => {
+    if (!showYSearch) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowYSearch(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [showYSearch]);
+
+  const handleOpenYSearch = useCallback(() => {
+    setShowYSearch(true);
+  }, []);
+
   const listHeader = useMemo(
-    () => <HomeHeader onOpenSettings={onOpenSettings} fallbackSongs={fallbackSongs} />,
-    [onOpenSettings, fallbackSongs]
+    () => (
+      <HomeHeader
+        onOpenSettings={onOpenSettings}
+        onOpenYSearch={handleOpenYSearch}
+        fallbackSongs={fallbackSongs}
+      />
+    ),
+    [onOpenSettings, handleOpenYSearch, fallbackSongs]
   );
+
+  if (showYSearch) {
+    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
+  }
 
   return (
     <SafeAreaView style={[styles.screenWrapper, { backgroundColor: bgHex }]} edges={['top']}>

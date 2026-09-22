@@ -9,6 +9,7 @@ interface GreetingHeaderProps {
   onPressNotifications?: () => void;
   onPressSettings?: () => void;
   onPressProfile?: () => void;
+  onPressYSearch?: () => void;
 }
 
 export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
@@ -16,6 +17,7 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
   onPressNotifications,
   onPressSettings,
   onPressProfile,
+  onPressYSearch,
 }) => {
   const { accent, bgHex } = useAppTheme();
   const { profile, isGuest, openProfileModal, openAuthModal } = useAuth();
@@ -77,6 +79,18 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
               </View>
             )}
           </TouchableOpacity>
+
+          {onPressYSearch && (
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={onPressYSearch}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityLabel="YSearch Videos"
+            >
+              <Ionicons name="logo-youtube" size={21} color="#FF0000" />
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.iconButton}
