@@ -10,13 +10,14 @@ import {
   ActivityIndicator,
   Dimensions,
   Platform,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio } from '@/contexts/AudioContext';
 import { SongItemRow } from '../common/SongItemRow';
-import { ArtistProfileSkeleton } from '../common/SkeletonLoader';
+import { ArtistProfileSkeleton, AlbumModalSkeleton } from '../common/SkeletonLoader';
 import { MiniPlayer } from '../player/MiniPlayer';
 import { NoInternetView } from '../common/NoInternetView';
 import { OfflineBanner } from '../common/OfflineBanner';
@@ -24,10 +25,12 @@ import { useNetwork } from '@/contexts/NetworkContext';
 
 import {
   getSaavnArtistDetails,
+  getSaavnAlbumDetails,
   SaavnArtistFullDetails,
 } from '@/services/saavnStream';
 import {
   fetchYouTubeArtistDetails,
+  fetchPlaylistDetails,
   YouTubeArtistDetails,
 } from '@/services/youtubeExploreService';
 import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
@@ -68,6 +71,34 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
   const [showAllPopular, setShowAllPopular] = useState<boolean>(false);
   const [showFullBio, setShowFullBio] = useState<boolean>(false);
 
+  // Sub-view state for deep-dive Album & Single viewing within the modal
+  const [selectedRelease, setSelectedRelease] = useState<{
+    id: string;
+    name: string;
+    image?: string;
+    year?: string;
+    releaseType?: string;
+  } | null>(null);
+  const [releaseDetails, setReleaseDetails] = useState<{
+    id: string;
+    name: string;
+    artist: string;
+    year: string;
+    cover: string;
+    songs: Song[];
+  } | null>(null);
+  const [isReleaseLoading, setIsReleaseLoading] = useState<boolean>(false);
+
+  const parseDurationToSeconds = (dur?: string | number): number => {
+    if (typeof dur === 'number') return dur;
+    if (!dur || typeof dur !== 'string') return 0;
+    const parts = dur.trim().split(':').map((p) => parseInt(p, 10));
+    if (parts.some((n) => isNaN(n))) return 0;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
+  };
+
   // Sync state whenever props change from parent
   useEffect(() => {
     setCurrentArtistId(artistId);
@@ -76,7 +107,111 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
     setShowAllPopular(false);
     setShowFullBio(false);
     setDiscoFilter('all');
+    setSelectedRelease(null);
+    setReleaseDetails(null);
   }, [artistId, artistName, artistImage, visible]);
+
+  // Hardware Back Handler: Pops the release view first before closing the artist modal
+  useEffect(() => {
+    if (!visible) return;
+    const backAction = () => {
+      if (selectedRelease) {
+        setSelectedRelease(null);
+        return true;
+      }
+      onClose();
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [visible, selectedRelease, onClose]);
+
+  // Fetch full tracklist for selected Album or Single
+  useEffect(() => {
+    if (!selectedRelease) {
+      setReleaseDetails(null);
+      return;
+    }
+
+    setIsReleaseLoading(true);
+    const cleanId = selectedRelease.id.trim();
+    const isYouTube =
+      cleanId.startsWith('MPRE') ||
+      cleanId.startsWith('VL') ||
+      cleanId.startsWith('PL') ||
+      cleanId.length > 15;
+
+    if (isYouTube) {
+      fetchPlaylistDetails(cleanId)
+        .then((pl) => {
+          if (pl) {
+            setReleaseDetails({
+              id: pl.id,
+              name: pl.title || selectedRelease.name,
+              artist: pl.subtitle || details?.name || currentArtistName || 'Artist',
+              year: pl.secondSubtitle || selectedRelease.year || '',
+              cover: pl.thumbnail || selectedRelease.image || '',
+              songs: (pl.tracks || []).map((t) => ({
+                id: t.videoId,
+                name: t.title,
+                artist: t.artist || pl.subtitle || details?.name || currentArtistName || 'Artist',
+                album: t.album || pl.title || selectedRelease.name || 'Album',
+                duration: parseDurationToSeconds(t.duration),
+                cover: t.thumbnail || pl.thumbnail || selectedRelease.image || '',
+                streamUrl: '',
+                quality: 'Opus',
+                source: 'youtube' as const,
+                sourceBadge: YOUTUBE_OPUS_BADGE,
+              })) as unknown as Song[],
+            });
+          }
+        })
+        .catch((err) => console.warn('Failed to load release tracks:', err))
+        .finally(() => setIsReleaseLoading(false));
+    } else {
+      getSaavnAlbumDetails(cleanId)
+        .then((data) => {
+          if (data) {
+            setReleaseDetails({
+              id: data.id,
+              name: data.name || selectedRelease.name,
+              artist: data.artist || currentArtistName || 'Artist',
+              year: data.year || selectedRelease.year || '',
+              cover: data.cover || selectedRelease.image || '',
+              songs: (data.songs || []).map((s) => ({
+                id: s.id,
+                name: s.name,
+                artist: s.artist,
+                album: s.album || data.name,
+                duration: s.duration || 0,
+                cover: s.cover,
+                streamUrl: s.streamUrl || '',
+                quality: s.quality || '320kbps',
+                source: 'jiosaavn' as const,
+                sourceBadge: s.sourceBadge,
+              })) as unknown as Song[],
+            });
+          }
+        })
+        .catch((err) => console.warn('Failed to load album tracks:', err))
+        .finally(() => setIsReleaseLoading(false));
+    }
+  }, [selectedRelease, details?.name, currentArtistName]);
+
+  const handleOpenRelease = (item: {
+    id: string;
+    name: string;
+    image?: string;
+    year?: string;
+    releaseType?: string;
+  }) => {
+    setSelectedRelease(item);
+    if (onOpenAlbum) {
+      try {
+        onOpenAlbum(item.id);
+      } catch {}
+    }
+  };
 
   useEffect(() => {
     if (!visible || !currentArtistId) return;
@@ -188,295 +323,407 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        {/* Floating Top Back Button */}
+        {/* Floating Top Back / Return Button */}
         <SafeAreaView style={styles.floatingHeader}>
-          <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
-            <Ionicons name="chevron-down" size={26} color="#ffffff" />
+          <TouchableOpacity
+            onPress={() => {
+              if (selectedRelease) {
+                setSelectedRelease(null);
+              } else {
+                onClose();
+              }
+            }}
+            style={styles.backBtn}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name={selectedRelease ? 'chevron-back' : 'chevron-down'}
+              size={26}
+              color="#ffffff"
+            />
           </TouchableOpacity>
         </SafeAreaView>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          {/* Hero Artist Banner */}
-          <View style={styles.heroContainer}>
-            <Image source={{ uri: heroImage }} style={styles.heroImage} />
+        {selectedRelease ? (
+          /* 💿 Dedicated Sub-View: Album & Single Full Tracklist Exploration */
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
             <LinearGradient
-              colors={['transparent', 'rgba(18, 18, 18, 0.7)', '#121212']}
-              locations={[0.2, 0.75, 1]}
-              style={styles.heroGradient}
+              colors={['#193725', '#121212']}
+              style={styles.releaseHeaderGradient}
             >
-              <View style={styles.verifiedRow}>
-                <Ionicons name="checkmark-circle" size={18} color="#1DB954" />
-                <Text style={styles.verifiedText}>Verified Artist</Text>
-              </View>
-              <Text style={styles.artistHeroName} numberOfLines={2}>
-                {details?.name || currentArtistName}
+              <Image
+                source={{
+                  uri:
+                    releaseDetails?.cover ||
+                    selectedRelease.image ||
+                    'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800&auto=format&fit=crop&q=80',
+                }}
+                style={styles.releaseCoverArt}
+              />
+              <Text style={styles.releaseTitle} numberOfLines={2}>
+                {releaseDetails?.name || selectedRelease.name}
               </Text>
-              <Text style={styles.monthlyListeners}>
-                {details?.followerCount || '2,450,890 monthly listeners'}
+              <Text style={styles.releaseSubtitle} numberOfLines={1}>
+                {releaseDetails?.artist || currentArtistName} • {releaseDetails?.year || selectedRelease.year || '2024'}
               </Text>
-            </LinearGradient>
-          </View>
-
-          {/* Action Row (Play, Shuffle, Follow) */}
-          <View style={styles.actionRow}>
-            <View style={styles.leftActions}>
-              <TouchableOpacity
-                style={[styles.followBtn, isFollowing && styles.followingBtn]}
-                onPress={toggleFollow}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>
-                  {isFollowing ? 'Following' : 'Follow'}
+              <View style={styles.releaseBadgeWrapper}>
+                <Text style={styles.releaseTypeBadge}>
+                  {selectedRelease.releaseType === 'album' ? 'Full Studio Album' : 'Single / EP'}
                 </Text>
-              </TouchableOpacity>
-            </View>
+              </View>
 
-            <View style={styles.rightActions}>
-              <TouchableOpacity
-                style={styles.shuffleBtn}
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (topSongs.length > 0) {
-                    const shuffled = [...topSongs].sort(() => Math.random() - 0.5);
-                    playSong(shuffled[0], shuffled);
-                  }
-                }}
+              <View style={styles.releaseActionRow}>
+                <TouchableOpacity
+                  style={styles.shuffleBtn}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const songs = releaseDetails?.songs || [];
+                    if (songs.length > 0) {
+                      const shuffled = [...songs].sort(() => Math.random() - 0.5);
+                      playSong(shuffled[0], shuffled);
+                    }
+                  }}
+                >
+                  <Ionicons name="shuffle" size={24} color="#1DB954" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.playFab}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    const songs = releaseDetails?.songs || [];
+                    if (songs.length > 0) {
+                      playSong(songs[0], songs);
+                    }
+                  }}
+                >
+                  <Ionicons name="play" size={28} color="#000000" />
+                </TouchableOpacity>
+              </View>
+            </LinearGradient>
+
+            {isReleaseLoading ? (
+              <View style={{ paddingTop: 20 }}>
+                <AlbumModalSkeleton />
+              </View>
+            ) : releaseDetails?.songs && releaseDetails.songs.length > 0 ? (
+              <View style={styles.releaseTracksContainer}>
+                <Text style={styles.releaseTracksCount}>
+                  {releaseDetails.songs.length} Tracks • High Quality Opus Audio
+                </Text>
+                {releaseDetails.songs.map((song, idx) => (
+                  <SongItemRow
+                    key={`${song.id}-${idx}`}
+                    song={song}
+                    index={idx}
+                    showTrackNumber={true}
+                    playlistContext={releaseDetails.songs}
+                  />
+                ))}
+              </View>
+            ) : isOffline && !releaseDetails ? (
+              <NoInternetView onRetry={refreshNetwork} style={{ minHeight: 260 }} />
+            ) : (
+              <View style={styles.releaseEmptyState}>
+                <Ionicons name="musical-notes-outline" size={44} color="#666666" />
+                <Text style={styles.releaseEmptyText}>No tracks available for this release</Text>
+              </View>
+            )}
+          </ScrollView>
+        ) : (
+          /* 🎤 Canonical Artist Profile View */
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {/* Hero Artist Banner */}
+            <View style={styles.heroContainer}>
+              <Image source={{ uri: heroImage }} style={styles.heroImage} />
+              <LinearGradient
+                colors={['transparent', 'rgba(18, 18, 18, 0.7)', '#121212']}
+                locations={[0.2, 0.75, 1]}
+                style={styles.heroGradient}
               >
-                <Ionicons name="shuffle" size={24} color="#1DB954" />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.playFab}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (topSongs.length > 0) {
-                    playSong(topSongs[0], topSongs);
-                  }
-                }}
-              >
-                <Ionicons name="play" size={26} color="#000000" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {isLoading ? (
-            <ArtistProfileSkeleton />
-          ) : isOffline && !details ? (
-            <NoInternetView onRetry={refreshNetwork} style={{ minHeight: 320 }} />
-          ) : (
-            <View style={styles.bodyContent}>
-              {/* 🌟 Latest Release Spotlight Card */}
-              {details?.latestRelease && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>Latest Release</Text>
-                  <TouchableOpacity
-                    style={styles.spotlightCard}
-                    activeOpacity={0.85}
-                    onPress={() => {
-                      if (onOpenAlbum) onOpenAlbum(details.latestRelease!.id);
-                    }}
-                  >
-                    <Image
-                      source={{ uri: details.latestRelease.image }}
-                      style={styles.spotlightImage}
-                    />
-                    <View style={styles.spotlightMeta}>
-                      <Text style={styles.spotlightTag}>LATEST • {details.latestRelease.year}</Text>
-                      <Text style={styles.spotlightTitle} numberOfLines={1}>
-                        {details.latestRelease.name}
-                      </Text>
-                      <Text style={styles.spotlightSub}>
-                        {details.latestRelease.type === 'album' ? 'Full Studio Album' : 'Single / EP'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                <View style={styles.verifiedRow}>
+                  <Ionicons name="checkmark-circle" size={18} color="#1DB954" />
+                  <Text style={styles.verifiedText}>Verified Artist</Text>
                 </View>
-              )}
+                <Text style={styles.artistHeroName} numberOfLines={2}>
+                  {details?.name || currentArtistName}
+                </Text>
+                <Text style={styles.monthlyListeners}>
+                  {details?.followerCount || '2,450,890 monthly listeners'}
+                </Text>
+              </LinearGradient>
+            </View>
 
-              {/* 🔥 Popular Tracks */}
-              {topSongs.length > 0 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>Popular</Text>
-                  {displayedTopSongs.map((song, idx) => (
-                    <SongItemRow
-                      key={`${song.id}-${idx}`}
-                      song={song}
-                      index={idx}
-                      playlistContext={topSongs}
-                      showTrackNumber={true}
-                    />
-                  ))}
+            {/* Action Row (Play, Shuffle, Follow) */}
+            <View style={styles.actionRow}>
+              <View style={styles.leftActions}>
+                <TouchableOpacity
+                  style={[styles.followBtn, isFollowing && styles.followingBtn]}
+                  onPress={toggleFollow}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-                  {topSongs.length > 5 && (
+              <View style={styles.rightActions}>
+                <TouchableOpacity
+                  style={styles.shuffleBtn}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (topSongs.length > 0) {
+                      const shuffled = [...topSongs].sort(() => Math.random() - 0.5);
+                      playSong(shuffled[0], shuffled);
+                    }
+                  }}
+                >
+                  <Ionicons name="shuffle" size={24} color="#1DB954" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.playFab}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    if (topSongs.length > 0) {
+                      playSong(topSongs[0], topSongs);
+                    }
+                  }}
+                >
+                  <Ionicons name="play" size={26} color="#000000" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {isLoading ? (
+              <ArtistProfileSkeleton />
+            ) : isOffline && !details ? (
+              <NoInternetView onRetry={refreshNetwork} style={{ minHeight: 320 }} />
+            ) : (
+              <View style={styles.bodyContent}>
+                {/* 🌟 Latest Release Spotlight Card */}
+                {details?.latestRelease && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>Latest Release</Text>
                     <TouchableOpacity
-                      style={styles.seeMoreBtn}
-                      activeOpacity={0.7}
-                      onPress={() => setShowAllPopular((prev) => !prev)}
+                      style={styles.spotlightCard}
+                      activeOpacity={0.85}
+                      onPress={() => {
+                        handleOpenRelease({
+                          id: details.latestRelease!.id,
+                          name: details.latestRelease!.name,
+                          image: details.latestRelease!.image,
+                          year: details.latestRelease!.year,
+                          releaseType: details.latestRelease!.type,
+                        });
+                      }}
                     >
-                      <Text style={styles.seeMoreText}>
-                        {showAllPopular ? 'Show Less' : `See more (${topSongs.length} tracks)`}
-                      </Text>
+                      <Image
+                        source={{ uri: details.latestRelease.image }}
+                        style={styles.spotlightImage}
+                      />
+                      <View style={styles.spotlightMeta}>
+                        <Text style={styles.spotlightTag}>LATEST • {details.latestRelease.year}</Text>
+                        <Text style={styles.spotlightTitle} numberOfLines={1}>
+                          {details.latestRelease.name}
+                        </Text>
+                        <Text style={styles.spotlightSub}>
+                          {details.latestRelease.type === 'album' ? 'Full Studio Album' : 'Single / EP'}
+                        </Text>
+                      </View>
                     </TouchableOpacity>
-                  )}
-                </View>
-              )}
+                  </View>
+                )}
 
-              {/* 💿 Discography Filters */}
-              {displayedReleases.length > 0 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>Discography</Text>
-                  <View style={styles.filterChipsRow}>
-                    {(['all', 'albums', 'singles'] as const).map((filter) => {
-                      const isActive = discoFilter === filter;
-                      const label =
-                        filter === 'all'
-                          ? 'All Releases'
-                          : filter === 'albums'
-                          ? `Albums (${details?.albums.length || 0})`
-                          : `Singles & EPs (${details?.singles.length || 0})`;
-                      return (
+                {/* 🔥 Popular Tracks */}
+                {topSongs.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>Popular</Text>
+                    {displayedTopSongs.map((song, idx) => (
+                      <SongItemRow
+                        key={`${song.id}-${idx}`}
+                        song={song}
+                        index={idx}
+                        playlistContext={topSongs}
+                        showTrackNumber={true}
+                      />
+                    ))}
+
+                    {topSongs.length > 5 && (
+                      <TouchableOpacity
+                        style={styles.seeMoreBtn}
+                        activeOpacity={0.7}
+                        onPress={() => setShowAllPopular((prev) => !prev)}
+                      >
+                        <Text style={styles.seeMoreText}>
+                          {showAllPopular ? 'Show Less' : `See more (${topSongs.length} tracks)`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+
+                {/* 💿 Discography Filters */}
+                {displayedReleases.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>Discography</Text>
+                    <View style={styles.filterChipsRow}>
+                      {(['all', 'albums', 'singles'] as const).map((filter) => {
+                        const isActive = discoFilter === filter;
+                        const label =
+                          filter === 'all'
+                            ? 'All Releases'
+                            : filter === 'albums'
+                            ? `Albums (${details?.albums.length || 0})`
+                            : `Singles & EPs (${details?.singles.length || 0})`;
+                        return (
+                          <TouchableOpacity
+                            key={filter}
+                            style={[styles.discoChip, isActive && styles.activeDiscoChip]}
+                            onPress={() => setDiscoFilter(filter)}
+                          >
+                            <Text style={[styles.discoChipText, isActive && styles.activeDiscoChipText]}>
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.albumsScroll}
+                    >
+                      {displayedReleases.map((item) => (
                         <TouchableOpacity
-                          key={filter}
-                          style={[styles.discoChip, isActive && styles.activeDiscoChip]}
-                          onPress={() => setDiscoFilter(filter)}
+                          key={item.id}
+                          style={styles.albumCard}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            handleOpenRelease(item);
+                          }}
                         >
-                          <Text style={[styles.discoChipText, isActive && styles.activeDiscoChipText]}>
-                            {label}
+                          <Image source={{ uri: item.image }} style={styles.albumCover} />
+                          <Text style={styles.albumTitle} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.albumYear}>
+                            {item.year} • {item.releaseType === 'album' ? `${item.songCount} songs` : 'Single'}
                           </Text>
                         </TouchableOpacity>
-                      );
-                    })}
+                      ))}
+                    </ScrollView>
                   </View>
+                )}
 
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.albumsScroll}
-                  >
-                    {displayedReleases.map((item) => (
-                      <TouchableOpacity
-                        key={item.id}
-                        style={styles.albumCard}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          if (onOpenAlbum) onOpenAlbum(item.id);
-                        }}
-                      >
-                        <Image source={{ uri: item.image }} style={styles.albumCover} />
-                        <Text style={styles.albumTitle} numberOfLines={1}>
-                          {item.name}
-                        </Text>
-                        <Text style={styles.albumYear}>
-                          {item.year} • {item.releaseType === 'album' ? `${item.songCount} songs` : 'Single'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* 🎬 Music Videos Section */}
-              {ytDetails?.videos && ytDetails.videos.length > 0 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>Music Videos</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.videosScroll}
-                  >
-                    {ytDetails.videos.map((vid) => (
-                      <TouchableOpacity
-                        key={vid.id}
-                        style={styles.videoCard}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          playSong({
-                            id: vid.id,
-                            name: vid.title,
-                            artist: vid.artist || details?.name || 'Artist',
-                            album: 'Music Video',
-                            cover: vid.artwork,
-                            streamUrl: '',
-                            duration: 0,
-                            quality: 'Opus',
-                            source: 'youtube',
-                            sourceBadge: YOUTUBE_OPUS_BADGE,
-                          } as unknown as Song);
-                        }}
-                      >
-                        <View style={styles.videoThumbWrapper}>
-                          <Image source={{ uri: vid.artwork }} style={styles.videoCover} />
-                          <View style={styles.videoPlayOverlay}>
-                            <Ionicons name="play" size={16} color="#ffffff" />
+                {/* 🎬 Music Videos Section */}
+                {ytDetails?.videos && ytDetails.videos.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>Music Videos</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.videosScroll}
+                    >
+                      {ytDetails.videos.map((vid) => (
+                        <TouchableOpacity
+                          key={vid.id}
+                          style={styles.videoCard}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            playSong({
+                              id: vid.id,
+                              name: vid.title,
+                              artist: vid.artist || details?.name || 'Artist',
+                              album: 'Music Video',
+                              cover: vid.artwork,
+                              streamUrl: '',
+                              duration: 0,
+                              quality: 'Opus',
+                              source: 'youtube',
+                              sourceBadge: YOUTUBE_OPUS_BADGE,
+                            } as unknown as Song);
+                          }}
+                        >
+                          <View style={styles.videoThumbWrapper}>
+                            <Image source={{ uri: vid.artwork }} style={styles.videoCover} />
+                            <View style={styles.videoPlayOverlay}>
+                              <Ionicons name="play" size={16} color="#ffffff" />
+                            </View>
                           </View>
-                        </View>
-                        <Text style={styles.videoTitle} numberOfLines={2}>
-                          {vid.title}
-                        </Text>
-                        {vid.views ? <Text style={styles.videoViews}>{vid.views}</Text> : null}
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
+                          <Text style={styles.videoTitle} numberOfLines={2}>
+                            {vid.title}
+                          </Text>
+                          {vid.views ? <Text style={styles.videoViews}>{vid.views}</Text> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
 
-              {/* 👥 Fans Also Like (Related Artists) */}
-              {ytDetails?.relatedArtists && ytDetails.relatedArtists.length > 0 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>Fans Also Like</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.artistsScroll}
-                  >
-                    {ytDetails.relatedArtists.map((rel) => (
-                      <TouchableOpacity
-                        key={rel.id}
-                        style={styles.relatedArtistCard}
-                        activeOpacity={0.8}
-                        onPress={() => {
-                          setCurrentArtistId(rel.id);
-                          setCurrentArtistName(rel.name);
-                          setCurrentArtistImage(rel.image);
-                        }}
-                      >
-                        <Image source={{ uri: rel.image }} style={styles.relatedArtistAvatar} />
-                        <Text style={styles.relatedArtistName} numberOfLines={1}>
-                          {rel.name}
-                        </Text>
-                        <Text style={styles.relatedArtistSubs} numberOfLines={1}>
-                          {rel.subscribers || 'Artist'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
+                {/* 👥 Fans Also Like (Related Artists) */}
+                {ytDetails?.relatedArtists && ytDetails.relatedArtists.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>Fans Also Like</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.artistsScroll}
+                    >
+                      {ytDetails.relatedArtists.map((rel) => (
+                        <TouchableOpacity
+                          key={rel.id}
+                          style={styles.relatedArtistCard}
+                          activeOpacity={0.8}
+                          onPress={() => {
+                            setCurrentArtistId(rel.id);
+                            setCurrentArtistName(rel.name);
+                            setCurrentArtistImage(rel.image);
+                          }}
+                        >
+                          <Image source={{ uri: rel.image }} style={styles.relatedArtistAvatar} />
+                          <Text style={styles.relatedArtistName} numberOfLines={1}>
+                            {rel.name}
+                          </Text>
+                          <Text style={styles.relatedArtistSubs} numberOfLines={1}>
+                            {rel.subscribers || 'Artist'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
 
-              {/* 📖 About / Bio Section */}
-              {ytDetails?.bio && ytDetails.bio.trim().length > 0 && (
-                <View style={styles.sectionBlock}>
-                  <Text style={styles.sectionHeader}>About</Text>
-                  <TouchableOpacity
-                    style={styles.bioCard}
-                    activeOpacity={0.85}
-                    onPress={() => setShowFullBio((prev) => !prev)}
-                  >
-                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 4}>
-                      {ytDetails.bio}
-                    </Text>
-                    <Text style={styles.bioToggleText}>
-                      {showFullBio ? 'Read Less' : 'Read More'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+                {/* 📖 About / Bio Section */}
+                {ytDetails?.bio && ytDetails.bio.trim().length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <Text style={styles.sectionHeader}>About</Text>
+                    <TouchableOpacity
+                      style={styles.bioCard}
+                      activeOpacity={0.85}
+                      onPress={() => setShowFullBio((prev) => !prev)}
+                    >
+                      <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 4}>
+                        {ytDetails.bio}
+                      </Text>
+                      <Text style={styles.bioToggleText}>
+                        {showFullBio ? 'Read Less' : 'Read More'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+        )}
 
         {/* Floating MiniPlayer inside Artist Modal */}
         <MiniPlayer
@@ -807,5 +1054,83 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 8,
+  },
+  /* Release (Album / Single) Exploration Sub-View */
+  releaseHeaderGradient: {
+    paddingTop: 68,
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  releaseCoverArt: {
+    width: 180,
+    height: 180,
+    borderRadius: 8,
+    marginBottom: 16,
+    backgroundColor: '#242424',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  releaseTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: -0.3,
+  },
+  releaseSubtitle: {
+    color: '#b3b3b3',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  releaseBadgeWrapper: {
+    backgroundColor: 'rgba(29, 185, 84, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  releaseTypeBadge: {
+    color: '#1DB954',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  releaseActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 24,
+    marginTop: 4,
+  },
+  releaseTracksContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 140,
+  },
+  releaseTracksCount: {
+    color: '#888888',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 16,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  releaseEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  releaseEmptyText: {
+    color: '#888888',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

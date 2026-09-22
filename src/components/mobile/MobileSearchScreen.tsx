@@ -957,6 +957,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
         artistName={selectedArtist?.name || ''}
         artistImage={selectedArtist?.image}
         onClose={() => setSelectedArtist(null)}
+        onOpenAlbum={(albumId) => setSelectedAlbumId(albumId)}
       />
 
       <AlbumModal

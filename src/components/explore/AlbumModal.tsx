@@ -71,18 +71,28 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
               artist: pl.subtitle || 'Various Artists',
               year: pl.secondSubtitle || 'Album',
               cover: pl.thumbnail || albumCover || '',
-              songs: (pl.tracks || []).map((t) => ({
-                id: t.videoId,
-                name: t.title,
-                artist: t.artist || pl.subtitle || 'Artist',
-                album: t.album || pl.title || 'Album',
-                duration: 0,
-                cover: t.thumbnail,
-                streamUrl: '',
-                quality: 'Opus',
-                source: 'youtube',
-                sourceBadge: YOUTUBE_OPUS_BADGE,
-              })) as unknown as Song[],
+              songs: (pl.tracks || []).map((t) => {
+                const parseDuration = (dur?: string): number => {
+                  if (!dur) return 0;
+                  const parts = dur.split(':').map((p) => parseInt(p, 10));
+                  if (parts.some((n) => isNaN(n))) return 0;
+                  if (parts.length === 2) return parts[0] * 60 + parts[1];
+                  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+                  return 0;
+                };
+                return {
+                  id: t.videoId,
+                  name: t.title,
+                  artist: t.artist || pl.subtitle || 'Artist',
+                  album: t.album || pl.title || 'Album',
+                  duration: parseDuration(t.duration),
+                  cover: t.thumbnail,
+                  streamUrl: '',
+                  quality: 'Opus',
+                  source: 'youtube',
+                  sourceBadge: YOUTUBE_OPUS_BADGE,
+                };
+              }) as unknown as Song[],
             });
           }
         })
