@@ -14,6 +14,7 @@ import {
   BackHandler,
   Platform,
   Share,
+  AppState,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -117,35 +118,66 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [showWatchControls, resetWatchControlsTimer]);
 
-  // Ref to handle auto-advancing to the next video
+  // AppState tracking: freeze React UI re-renders while phone is locked or in background
+  const appStateRef = useRef(AppState.currentState);
+
+  // Auto-advance guard to prevent duplicate triggers
+  const hasAdvancedRef = useRef(false);
   const handleNextVideoRef = useRef<() => void>(() => {});
+
+  // Reset advance guard whenever active video changes
+  useEffect(() => {
+    hasAdvancedRef.current = false;
+  }, [activeVideo?.videoId]);
+
+  const advanceToNextVideo = useCallback(() => {
+    if (hasAdvancedRef.current) return;
+    hasAdvancedRef.current = true;
+    handleNextVideoRef.current();
+  }, []);
 
   // Setup standalone video player with expo-video
   // Initialized with null so useVideoPlayer maintains a SINGLE, persistent native ExoPlayer instance.
-  // This eliminates the 3-4s freeze caused by destroying and rebuilding native hardware decoders on every video switch.
+  // timeUpdateEventInterval = 1.0s cuts JS wakeups and re-renders by 75% compared to 0.25s, keeping device cool.
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.muted = false;
     p.audioMixingMode = 'doNotMix';
     p.staysActiveInBackground = true; // Enables background playback when screen locks
     p.showNowPlayingNotification = true; // Shows system media notification
-    p.timeUpdateEventInterval = 0.5; // 500ms interval for smooth progression with low battery/CPU usage
+    p.timeUpdateEventInterval = 1.0; // 1 second interval: stops high-frequency thermal re-rendering
     try {
       p.bufferOptions = {
-        preferredForwardBufferDuration: 15, // 15 seconds forward buffer
-        minBufferForPlayback: 0.1, // 100ms ultra-low start buffer for INSTANT playback!
-        waitsToMinimizeStalling: false, // Start playing immediately without delaying
+        preferredForwardBufferDuration: 15,
+        minBufferForPlayback: 0.1, // 100ms start buffer for instant playback
+        waitsToMinimizeStalling: false,
         prioritizeTimeOverSizeThreshold: true,
-        maxBufferBytes: 20 * 1024 * 1024, // 20MB lightweight buffer prevents memory pressure
+        maxBufferBytes: 20 * 1024 * 1024,
       };
     } catch {}
   });
 
-  // Ensure background play stays active on player instance
+  // Track AppState to freeze UI updates when screen is locked
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      appStateRef.current = nextState;
+      // Resync timeline once on screen unlock
+      if (nextState === 'active' && player) {
+        try {
+          if (!isScrubbingRef.current) {
+            setCurrentTime(player.currentTime);
+          }
+        } catch {}
+      }
+    });
+    return () => sub.remove();
+  }, [player]);
+
+  // Ensure background play & thermal interval stay active on player instance
   useEffect(() => {
     if (!player) return;
     try {
-      player.timeUpdateEventInterval = 0.5;
+      player.timeUpdateEventInterval = 1.0;
       player.staysActiveInBackground = true;
       player.showNowPlayingNotification = true;
       player.bufferOptions = {
@@ -172,7 +204,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     };
   }, [player]);
 
-  // Track video player events
+  // Track video player events with triple-redundant auto-advance & thermal protection
   useEffect(() => {
     if (!player) return;
 
@@ -180,12 +212,18 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       setIsVideoPlaying(payload.isPlaying);
     });
 
+    // Time update: only trigger React state updates when screen is active
     const subTime = player.addListener('timeUpdate', (payload) => {
-      if (!isScrubbingRef.current) {
+      if (appStateRef.current === 'active' && !isScrubbingRef.current) {
         setCurrentTime(payload.currentTime);
       }
-      if (player.duration > 0) {
-        setDuration(player.duration);
+      const dur = player.duration || activeVideo?.durationSeconds || 0;
+      if (dur > 0) {
+        setDuration(dur);
+        // Safety auto-advance: if within 0.75s of duration, auto-advance
+        if (dur > 3 && payload.currentTime >= dur - 0.75) {
+          advanceToNextVideo();
+        }
       }
     });
 
@@ -193,9 +231,15 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (payload.status === 'readyToPlay') {
         const dur = player.duration || activeVideo?.durationSeconds || 0;
         if (dur > 0) setDuration(dur);
-        // Guarantee playback starts as soon as ready
         if (!isScrubbingRef.current) {
           player.play();
+        }
+      } else if (payload.status === 'idle') {
+        // Redundancy: if player transitions to idle near the end, auto-advance
+        const cur = player.currentTime;
+        const dur = player.duration || activeVideo?.durationSeconds || 0;
+        if (dur > 3 && cur >= dur - 2.0) {
+          advanceToNextVideo();
         }
       }
     });
@@ -209,9 +253,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       }
     });
 
+    // Primary auto-advance: fires when stream reaches end
     const subEnded = player.addListener('playToEnd', () => {
       setIsVideoPlaying(false);
-      handleNextVideoRef.current();
+      advanceToNextVideo();
     });
 
     return () => {
@@ -221,7 +266,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       subSourceLoad.remove();
       subEnded.remove();
     };
-  }, [player, activeVideo]);
+  }, [player, activeVideo, advanceToNextVideo]);
 
   // Sync duration once stream metadata loads
   useEffect(() => {
@@ -414,10 +459,22 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
   // Next & Previous Video in playlist/results
   const handleNextVideo = useCallback(() => {
-    if (!activeVideo || videos.length === 0) return;
-    const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
-    if (currentIndex >= 0 && currentIndex < videos.length - 1) {
-      handleSelectVideo(videos[currentIndex + 1]);
+    if (!activeVideo) return;
+    if (videos.length > 0) {
+      const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
+      if (currentIndex >= 0 && currentIndex < videos.length - 1) {
+        handleSelectVideo(videos[currentIndex + 1]);
+        return;
+      }
+      if (upNextVideos.length > 0) {
+        handleSelectVideo(upNextVideos[0]);
+        return;
+      }
+      // Loop back to beginning if at the end of the queue
+      if (currentIndex >= videos.length - 1 && videos[0]) {
+        handleSelectVideo(videos[0]);
+        return;
+      }
     } else if (upNextVideos.length > 0) {
       handleSelectVideo(upNextVideos[0]);
     }

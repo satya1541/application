@@ -92,11 +92,11 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const [scrubValue, setScrubValue] = useState<number | null>(null);
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Ensure player emits timeUpdate events
+  // Ensure player emits timeUpdate events at 1.0s interval for smooth UI with low CPU/thermal usage
   useEffect(() => {
     if (!player) return;
     try {
-      player.timeUpdateEventInterval = 0.25;
+      player.timeUpdateEventInterval = 1.0;
     } catch {}
   }, [player]);
 
