@@ -35,6 +35,12 @@ import {
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
+import {
+  fetchUserSubscriptionsFeed,
+  fetchUserLikedVideos,
+  UserFeedResult,
+} from '@/services/youtubeUserFeedService';
+import { useAuth } from '@/contexts/AuthContext';
 import { FullscreenVideoOverlay } from '../player/FullscreenVideoOverlay';
 import {
   lockLandscapeAsync,
@@ -67,6 +73,21 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { bgHex, surfaceHex, themeMode } = useAppTheme();
   const { isPlaying: isAudioPlaying, pause: pauseBackgroundAudio } = useAudio();
+  const { isYouTubeLinked, isGuest, connectYouTubeAccount, openAuthModal } = useAuth();
+
+  // YouTube user feed category IDs
+  const USER_FEED_CATEGORIES = useMemo(() => [
+    { id: 'my_feed', name: 'My Feed', icon: 'person-circle-outline' as const },
+    { id: 'liked', name: 'Liked', icon: 'heart' as const },
+  ], []);
+
+  // Merge trending + user feed categories into one chip list
+  const allCategories = useMemo(() => {
+    if (isYouTubeLinked && !isGuest) {
+      return [...USER_FEED_CATEGORIES, ...TRENDING_CATEGORIES];
+    }
+    return TRENDING_CATEGORIES;
+  }, [isYouTubeLinked, isGuest, USER_FEED_CATEGORIES]);
 
   // Search query, suggestions & results state
   const [query, setQuery] = useState(initialQuery);
@@ -81,6 +102,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('trending');
   const [trendingVideos, setTrendingVideos] = useState<YouTubeVideoSearchResult[]>([]);
   const [isLoadingTrending, setIsLoadingTrending] = useState(false);
+  const [userFeedNeedsReauth, setUserFeedNeedsReauth] = useState(false);
+  const [userFeedNotConnected, setUserFeedNotConnected] = useState(false);
+  const [userFeedError, setUserFeedError] = useState<string | null>(null);
+  const [userFeedEmpty, setUserFeedEmpty] = useState(false);
   const watchVideoViewRef = useRef<VideoView>(null);
 
   // Active playing video state
@@ -320,20 +345,62 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [performSearch, initialQuery]);
 
-  // Load Trending videos from official InnerTube Charts
+  // Load Trending videos from official InnerTube Charts or User Feed
   const loadTrending = useCallback(async (catId: string) => {
     setIsLoadingTrending(true);
+    setUserFeedNeedsReauth(false);
+    setUserFeedNotConnected(false);
+    setUserFeedError(null);
+    setUserFeedEmpty(false);
     try {
-      const results = await fetchTrendingYouTubeVideos(catId, 30);
-      setTrendingVideos(results);
-      if (results[0]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
+      // Handle user feed categories
+      if (catId === 'my_feed' || catId === 'liked') {
+        let feedResult: UserFeedResult;
+        if (catId === 'my_feed') {
+          feedResult = await fetchUserSubscriptionsFeed(30);
+        } else {
+          feedResult = await fetchUserLikedVideos(30);
+        }
+
+        if (feedResult.notConnected) {
+          setUserFeedNotConnected(true);
+          setTrendingVideos([]);
+        } else if (feedResult.requiresReauth) {
+          setUserFeedNeedsReauth(true);
+          setUserFeedError(feedResult.error || null);
+          setTrendingVideos([]);
+        } else if (feedResult.error) {
+          setUserFeedError(feedResult.error);
+          setTrendingVideos([]);
+        } else if (feedResult.emptyFeed || feedResult.videos.length === 0) {
+          setUserFeedEmpty(true);
+          setTrendingVideos([]);
+        } else {
+          setTrendingVideos(feedResult.videos);
+          // Pre-warm top 2
+          if (feedResult.videos[0]?.videoId) {
+            resolveYouTubeStandaloneVideoStream(feedResult.videos[0].videoId).catch(() => {});
+          }
+          if (feedResult.videos[1]?.videoId) {
+            resolveYouTubeStandaloneVideoStream(feedResult.videos[1].videoId).catch(() => {});
+          }
+        }
+      } else {
+        const results = await fetchTrendingYouTubeVideos(catId, 30);
+        setTrendingVideos(results);
+        if (results[0]?.videoId) {
+          resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
+        }
+        if (results[1]?.videoId) {
+          resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
+        }
       }
-      if (results[1]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
-      }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('loadTrending failed:', err);
+      if (catId === 'my_feed' || catId === 'liked') {
+        setUserFeedError(err?.message || 'Failed to load personal feed');
+        setTrendingVideos([]);
+      }
     } finally {
       setIsLoadingTrending(false);
     }
@@ -848,8 +915,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
   // Active Category Object
   const currentCategoryObj = useMemo(() => {
-    return TRENDING_CATEGORIES.find((c) => c.id === selectedCategory) || TRENDING_CATEGORIES[0];
-  }, [selectedCategory]);
+    const allCats = [...(isYouTubeLinked ? USER_FEED_CATEGORIES : []), ...TRENDING_CATEGORIES];
+    return allCats.find((c) => c.id === selectedCategory) || TRENDING_CATEGORIES[0];
+  }, [selectedCategory, isYouTubeLinked, USER_FEED_CATEGORIES]);
 
   // Render Trending Carousel Card (Horizontal)
   const renderTrendingCard = ({ item }: { item: YouTubeVideoSearchResult }) => {
@@ -1076,8 +1144,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoryBarScroll}
         >
-          {TRENDING_CATEGORIES.map((cat) => {
+          {allCategories.map((cat) => {
             const isSelected = selectedCategory === cat.id && !query.trim();
+            const isUserFeedChip = cat.id === 'my_feed' || cat.id === 'liked';
             return (
               <TouchableOpacity
                 key={cat.id}
@@ -1086,10 +1155,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   isSelected && styles.categoryChipActive,
                   {
                     backgroundColor: isSelected
-                      ? '#FF0000'
+                      ? isUserFeedChip ? '#1a73e8' : '#FF0000'
                       : themeMode === 'oled'
                       ? '#181818'
                       : '#282828',
+                  },
+                  isUserFeedChip && !isSelected && {
+                    borderColor: 'rgba(26, 115, 232, 0.4)',
                   },
                 ]}
                 onPress={() => handleSelectCategory(cat.id)}
@@ -1098,13 +1170,14 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                 <Ionicons
                   name={cat.icon as any}
                   size={14}
-                  color={isSelected ? '#ffffff' : '#aaaaaa'}
+                  color={isSelected ? '#ffffff' : isUserFeedChip ? '#8ab4f8' : '#aaaaaa'}
                   style={{ marginRight: 6 }}
                 />
                 <Text
                   style={[
                     styles.categoryChipText,
                     isSelected && styles.categoryChipTextActive,
+                    isUserFeedChip && !isSelected && { color: '#8ab4f8' },
                   ]}
                 >
                   {cat.name}
@@ -1112,6 +1185,30 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               </TouchableOpacity>
             );
           })}
+
+          {/* Connect YouTube chip shown when NOT linked and NOT guest */}
+          {!isYouTubeLinked && !isGuest && (
+            <TouchableOpacity
+              style={[
+                styles.categoryChip,
+                {
+                  backgroundColor: themeMode === 'oled' ? '#181818' : '#282828',
+                  borderColor: 'rgba(26, 115, 232, 0.5)',
+                  borderStyle: 'dashed' as any,
+                },
+              ]}
+              onPress={async () => {
+                const result = await connectYouTubeAccount();
+                if (result.error) {
+                  console.warn('[YSearch] Connect YouTube error:', result.error);
+                }
+              }}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="logo-youtube" size={14} color="#FF0000" style={{ marginRight: 6 }} />
+              <Text style={[styles.categoryChipText, { color: '#8ab4f8' }]}>Connect YouTube</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
 
@@ -1178,14 +1275,33 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   <View style={styles.carouselSection}>
                     <View style={styles.carouselHeaderRow}>
                       <View style={styles.carouselTitleBox}>
-                        <Ionicons name={currentCategoryObj.icon as any} size={18} color="#FF0000" />
+                        <Ionicons
+                          name={currentCategoryObj.icon as any}
+                          size={18}
+                          color={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '#1a73e8' : '#FF0000'}
+                        />
                         <Text style={styles.carouselTitle}>
-                          {currentCategoryObj.name} Highlights
+                          {currentCategoryObj.name}{(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '' : ' Highlights'}
                         </Text>
                       </View>
-                      <View style={styles.carouselBadge}>
-                        <Ionicons name="musical-notes" size={10} color="#FF0000" />
-                        <Text style={styles.carouselBadgeText}>Official Charts</Text>
+                      <View style={[
+                        styles.carouselBadge,
+                        (selectedCategory === 'my_feed' || selectedCategory === 'liked') && {
+                          backgroundColor: 'rgba(26, 115, 232, 0.15)',
+                          borderColor: 'rgba(26, 115, 232, 0.4)',
+                        },
+                      ]}>
+                        <Ionicons
+                          name={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? 'logo-google' : 'musical-notes'}
+                          size={10}
+                          color={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '#1a73e8' : '#FF0000'}
+                        />
+                        <Text style={[
+                          styles.carouselBadgeText,
+                          (selectedCategory === 'my_feed' || selectedCategory === 'liked') && { color: '#1a73e8' },
+                        ]}>
+                          {(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? 'Your Account' : 'Official Charts'}
+                        </Text>
                       </View>
                     </View>
 
@@ -1202,7 +1318,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   {/* Section Title for Full Chart List */}
                   <View style={styles.trendingListHeader}>
                     <Text style={styles.trendingListTitle}>
-                      Top 30 {currentCategoryObj.name} Videos
+                      {selectedCategory === 'my_feed'
+                        ? 'Latest from Subscriptions'
+                        : selectedCategory === 'liked'
+                        ? 'Your Liked Videos'
+                        : `Top 30 ${currentCategoryObj.name} Videos`}
                     </Text>
                   </View>
                 </View>
@@ -1211,11 +1331,128 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ListEmptyComponent={
               isLoadingTrending ? (
                 <View style={styles.centerLoadingContainer}>
-                  <ActivityIndicator size="large" color="#FF0000" />
+                  <ActivityIndicator size="large" color={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '#1a73e8' : '#FF0000'} />
                   <Text style={styles.searchingText}>
-                    Loading {currentCategoryObj.name} on YouTube Charts...
+                    {selectedCategory === 'my_feed'
+                      ? 'Loading your subscriptions feed...'
+                      : selectedCategory === 'liked'
+                      ? 'Loading your liked videos...'
+                      : `Loading ${currentCategoryObj.name} on YouTube Charts...`}
                   </Text>
                 </View>
+              ) : (selectedCategory === 'my_feed' || selectedCategory === 'liked') ? (
+                userFeedNeedsReauth ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="key-outline" size={48} color="#FFA726" />
+                    <Text style={styles.emptyTitle}>YouTube Authorization Required</Text>
+                    <Text style={styles.emptySubtitle}>
+                      {userFeedError || 'Your YouTube access token expired or needs read permission. Connect your YouTube account to view your feed.'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.exploreTrendingBtn, { backgroundColor: '#1a73e8' }]}
+                      onPress={async () => {
+                        const result = await connectYouTubeAccount();
+                        if (!result.error) loadTrending(selectedCategory);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="logo-google" size={16} color="#ffffff" />
+                      <Text style={styles.exploreTrendingBtnText}>Grant YouTube Access</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : userFeedNotConnected ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="logo-youtube" size={48} color="#FF0000" />
+                    <Text style={styles.emptyTitle}>YouTube Not Connected</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Connect your Google account to see your subscriptions and liked videos here.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.exploreTrendingBtn, { backgroundColor: '#1a73e8' }]}
+                      onPress={async () => {
+                        if (isGuest) {
+                          openAuthModal('signin');
+                        } else {
+                          const result = await connectYouTubeAccount();
+                          if (!result.error) loadTrending(selectedCategory);
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="logo-google" size={16} color="#ffffff" />
+                      <Text style={styles.exploreTrendingBtnText}>
+                        {isGuest ? 'Sign In First' : 'Connect YouTube'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : userFeedEmpty ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons
+                      name={selectedCategory === 'my_feed' ? 'albums-outline' : 'heart-dislike-outline'}
+                      size={48}
+                      color="#8ab4f8"
+                    />
+                    <Text style={styles.emptyTitle}>
+                      {selectedCategory === 'my_feed' ? 'No Subscriptions Found' : 'No Liked Videos'}
+                    </Text>
+                    <Text style={styles.emptySubtitle}>
+                      {selectedCategory === 'my_feed'
+                        ? 'Subscribe to channels on YouTube to see their latest uploads here.'
+                        : 'Like videos on YouTube to see them in this collection.'}
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.exploreTrendingBtn, { backgroundColor: '#1a73e8' }]}
+                      onPress={() => loadTrending(selectedCategory)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="refresh" size={16} color="#ffffff" />
+                      <Text style={styles.exploreTrendingBtnText}>Refresh Feed</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : userFeedError ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="alert-circle-outline" size={48} color="#FFA726" />
+                    <Text style={styles.emptyTitle}>Feed Unavailable</Text>
+                    <Text style={styles.emptySubtitle}>{userFeedError}</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                      <TouchableOpacity
+                        style={[styles.exploreTrendingBtn, { backgroundColor: '#1a73e8', flex: 1 }]}
+                        onPress={async () => {
+                          const result = await connectYouTubeAccount();
+                          if (!result.error) loadTrending(selectedCategory);
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="logo-google" size={16} color="#ffffff" />
+                        <Text style={styles.exploreTrendingBtnText}>Reconnect</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.exploreTrendingBtn, { backgroundColor: '#333333', flex: 1 }]}
+                        onPress={() => loadTrending(selectedCategory)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="refresh" size={16} color="#ffffff" />
+                        <Text style={styles.exploreTrendingBtnText}>Retry</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="videocam-outline" size={48} color="#888888" />
+                    <Text style={styles.emptyTitle}>No Videos in Feed</Text>
+                    <Text style={styles.emptySubtitle}>
+                      No recent videos found. Tap below to reload.
+                    </Text>
+                    <TouchableOpacity
+                      style={[styles.exploreTrendingBtn, { backgroundColor: '#1a73e8' }]}
+                      onPress={() => loadTrending(selectedCategory)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="refresh" size={16} color="#ffffff" />
+                      <Text style={styles.exploreTrendingBtnText}>Reload Feed</Text>
+                    </TouchableOpacity>
+                  </View>
+                )
               ) : (
                 <View style={styles.emptyContainer}>
                   <Ionicons name="alert-circle-outline" size={48} color="#888888" />

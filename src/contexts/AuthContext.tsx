@@ -14,13 +14,18 @@ import * as Linking from 'expo-linking';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import {
-  supabase,
-  isSupabaseConfigured,
   UserProfile,
   SoundStats,
+  supabase,
+  isSupabaseConfigured,
 } from '@/services/supabase';
 import { SafeStorage } from '@/services/storage';
 import { getSoundStats } from '@/services/cloudSyncService';
+import {
+  saveGoogleYouTubeTokens,
+  clearGoogleYouTubeTokens,
+  getGoogleYouTubeToken,
+} from '@/services/youtubeUserFeedService';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -36,6 +41,8 @@ interface AuthContextType {
   isAuthModalVisible: boolean;
   isProfileModalVisible: boolean;
   authModalTab: 'signin' | 'signup' | 'forgot';
+  googleYoutubeToken: string | null;
+  isYouTubeLinked: boolean;
   openAuthModal: (tab?: 'signin' | 'signup' | 'forgot') => void;
   closeAuthModal: () => void;
   openProfileModal: () => void;
@@ -43,6 +50,8 @@ interface AuthContextType {
   signIn: (email: string, pass: string) => Promise<{ error?: string }>;
   signUp: (email: string, pass: string, displayName: string) => Promise<{ error?: string }>;
   signInWithGoogle: () => Promise<{ error?: string }>;
+  connectYouTubeAccount: () => Promise<{ error?: string }>;
+  disconnectYouTubeAccount: () => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error?: string }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error?: string }>;
@@ -69,8 +78,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isAuthModalVisible, setIsAuthModalVisible] = useState<boolean>(false);
   const [isProfileModalVisible, setIsProfileModalVisible] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup' | 'forgot'>('signin');
+  const [googleYoutubeToken, setGoogleYoutubeToken] = useState<string | null>(null);
 
   const isGuest = useMemo(() => !user, [user]);
+  const isYouTubeLinked = useMemo(() => !!googleYoutubeToken, [googleYoutubeToken]);
 
   // Load guest profile from local storage if not logged in
   const loadLocalGuestProfile = useCallback(async () => {
@@ -149,6 +160,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUser(data.session.user);
           }
           await fetchUserProfile(data.session.user.id, data.session.user.email);
+          // Restore YouTube token from storage on startup
+          const storedYtToken = await getGoogleYouTubeToken();
+          if (storedYtToken && isMounted) {
+            setGoogleYoutubeToken(storedYtToken);
+          }
         } else {
           await loadLocalGuestProfile();
         }
@@ -172,8 +188,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
           if (newSession?.user) {
             await fetchUserProfile(newSession.user.id, newSession.user.email);
+            // Capture provider_token (Google access token) when available
+            if (newSession.provider_token) {
+              console.log('[Auth] Captured Google provider_token via auth state change');
+              await saveGoogleYouTubeTokens(
+                newSession.provider_token,
+                newSession.provider_refresh_token || null
+              );
+              if (isMounted) setGoogleYoutubeToken(newSession.provider_token);
+            }
           } else {
             await loadLocalGuestProfile();
+            await clearGoogleYouTubeTokens();
+            if (isMounted) setGoogleYoutubeToken(null);
           }
           await refreshStats();
         }
@@ -308,6 +335,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         options: {
           redirectTo: redirectUrl,
           skipBrowserRedirect: true,
+          scopes: 'https://www.googleapis.com/auth/youtube.readonly',
+          queryParams: {
+            prompt: 'consent',
+            access_type: 'offline',
+          },
         },
       });
 
@@ -428,6 +460,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       let authUser: User | null = null;
 
+      // Direct capture from deep link parameters (if provided in URL fragment)
+      if (params.provider_token) {
+        console.log('[Auth] Captured Google provider_token directly from callback parameters');
+        await saveGoogleYouTubeTokens(
+          params.provider_token,
+          params.provider_refresh_token || null
+        );
+        setGoogleYoutubeToken(params.provider_token);
+      }
+
       // 7. Exchange code for session (PKCE) or set tokens (Implicit)
       if (params.code) {
         const { data: exchangeData, error: exchangeError } =
@@ -436,6 +478,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return { error: exchangeError.message };
         }
         authUser = exchangeData.user;
+        // Capture Google provider_token from the PKCE exchange response
+        if (exchangeData.session?.provider_token) {
+          console.log('[Auth] Captured Google provider_token from PKCE exchange');
+          await saveGoogleYouTubeTokens(
+            exchangeData.session.provider_token,
+            exchangeData.session.provider_refresh_token || null
+          );
+          setGoogleYoutubeToken(exchangeData.session.provider_token);
+        }
       } else if (params.access_token && params.refresh_token) {
         const { data: sessionData, error: sessionError } =
           await supabase.auth.setSession({
@@ -446,6 +497,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           return { error: sessionError.message };
         }
         authUser = sessionData.user;
+        // Capture Google provider_token from implicit flow
+        if (sessionData.session?.provider_token) {
+          console.log('[Auth] Captured Google provider_token from implicit flow');
+          await saveGoogleYouTubeTokens(
+            sessionData.session.provider_token,
+            sessionData.session.provider_refresh_token || null
+          );
+          setGoogleYoutubeToken(sessionData.session.provider_token);
+        }
       } else {
         const { data: currentSession } = await supabase.auth.getSession();
         if (currentSession?.session?.user) {
@@ -467,12 +527,134 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [syncGoogleUserProfile]);
 
+  // Connect YouTube account: re-initiates Google OAuth with youtube.readonly scope
+  const connectYouTubeAccount = useCallback(async (): Promise<{ error?: string }> => {
+    if (!isSupabaseConfigured() || !user) {
+      return { error: 'You must be signed in to connect your YouTube account.' };
+    }
+
+    try {
+      const redirectUrl = makeRedirectUri();
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: redirectUrl,
+          skipBrowserRedirect: true,
+          scopes: 'https://www.googleapis.com/auth/youtube.readonly',
+          queryParams: {
+            prompt: 'consent',
+            access_type: 'offline',
+          },
+        },
+      });
+
+      if (error || !data?.url) {
+        return { error: error?.message || 'Failed to start YouTube connection.' };
+      }
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      if (result.type === 'success' && result.url) {
+        // Parse callback parameters from query or hash
+        const callbackUrl = result.url;
+        const parseParams = (urlStr: string) => {
+          const hashIndex = urlStr.indexOf('#');
+          const queryIndex = urlStr.indexOf('?');
+          const p: Record<string, string> = {};
+          if (queryIndex !== -1) {
+            const q =
+              hashIndex !== -1 && hashIndex > queryIndex
+                ? urlStr.substring(queryIndex + 1, hashIndex)
+                : urlStr.substring(queryIndex + 1);
+            q.split('&').forEach((item) => {
+              const [k, v] = item.split('=');
+              if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+            });
+          }
+          if (hashIndex !== -1) {
+            const h = urlStr.substring(hashIndex + 1);
+            h.split('&').forEach((item) => {
+              const [k, v] = item.split('=');
+              if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+            });
+          }
+          return p;
+        };
+
+        const params = parseParams(callbackUrl);
+        if (params.error || params.error_description) {
+          return { error: params.error_description || params.error };
+        }
+
+        // 1. Direct provider_token in URL
+        if (params.provider_token) {
+          await saveGoogleYouTubeTokens(
+            params.provider_token,
+            params.provider_refresh_token || null
+          );
+          setGoogleYoutubeToken(params.provider_token);
+          console.log('[Auth] YouTube account connected via provider_token in URL');
+          return {};
+        }
+
+        // 2. PKCE code exchange
+        if (params.code) {
+          const { data: exchangeData, error: exchangeError } =
+            await supabase.auth.exchangeCodeForSession(params.code);
+          if (exchangeError) return { error: exchangeError.message };
+          if (exchangeData.session?.provider_token) {
+            await saveGoogleYouTubeTokens(
+              exchangeData.session.provider_token,
+              exchangeData.session.provider_refresh_token || null
+            );
+            setGoogleYoutubeToken(exchangeData.session.provider_token);
+            console.log('[Auth] YouTube account connected via PKCE exchange');
+            return {};
+          }
+        } else if (params.access_token && params.refresh_token) {
+          // 3. Implicit flow session
+          const { data: sessionData, error: sessionError } =
+            await supabase.auth.setSession({
+              access_token: params.access_token,
+              refresh_token: params.refresh_token,
+            });
+          if (sessionError) return { error: sessionError.message };
+          if (sessionData.session?.provider_token) {
+            await saveGoogleYouTubeTokens(
+              sessionData.session.provider_token,
+              sessionData.session.provider_refresh_token || null
+            );
+            setGoogleYoutubeToken(sessionData.session.provider_token);
+            console.log('[Auth] YouTube account connected via implicit session');
+            return {};
+          }
+        }
+
+        return {
+          error:
+            'YouTube permission was not returned. Please make sure to check and approve YouTube permissions on the Google consent screen.',
+        };
+      }
+      return { error: 'YouTube connection was cancelled.' };
+    } catch (err: any) {
+      return { error: err?.message || 'Failed to connect YouTube account.' };
+    }
+  }, [user]);
+
+  // Disconnect YouTube: clear tokens but keep Google sign-in active
+  const disconnectYouTubeAccount = useCallback(async (): Promise<void> => {
+    await clearGoogleYouTubeTokens();
+    setGoogleYoutubeToken(null);
+    console.log('[Auth] YouTube account disconnected');
+  }, []);
+
   const signOut = useCallback(async () => {
     if (isSupabaseConfigured()) {
       await supabase.auth.signOut().catch(() => {});
     }
     setSession(null);
     setUser(null);
+    setGoogleYoutubeToken(null);
+    await clearGoogleYouTubeTokens();
     await loadLocalGuestProfile();
     await refreshStats();
     setIsProfileModalVisible(false);
@@ -546,6 +728,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthModalVisible,
       isProfileModalVisible,
       authModalTab,
+      googleYoutubeToken,
+      isYouTubeLinked,
       openAuthModal,
       closeAuthModal,
       openProfileModal,
@@ -553,6 +737,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       signIn,
       signUp,
       signInWithGoogle,
+      connectYouTubeAccount,
+      disconnectYouTubeAccount,
       signOut,
       resetPassword,
       updateProfile,
@@ -568,6 +754,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isAuthModalVisible,
       isProfileModalVisible,
       authModalTab,
+      googleYoutubeToken,
+      isYouTubeLinked,
       openAuthModal,
       closeAuthModal,
       openProfileModal,
@@ -575,6 +763,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       signIn,
       signUp,
       signInWithGoogle,
+      connectYouTubeAccount,
+      disconnectYouTubeAccount,
       signOut,
       resetPassword,
       updateProfile,
