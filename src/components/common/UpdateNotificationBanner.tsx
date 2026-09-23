@@ -68,9 +68,9 @@ export const UpdateNotificationBanner: React.FC = () => {
             <Ionicons name="checkmark-circle" size={18} color="#22c55e" />
           </View>
           <View style={styles.textCol}>
-            <Text style={styles.titleText}>Shorty Updated to v{status.displayVersion || '4.0.1'}!</Text>
+            <Text style={styles.titleText}>Shorty Updated to v{status.displayVersion || '5.0.1'}!</Text>
             <Text style={styles.subText}>
-              {status.releaseName || '2K/4K Ultra HD & Vivid Colors'}
+              {status.releaseName || 'Native PiP & Trending Discover'}
             </Text>
           </View>
         </View>
@@ -97,7 +97,7 @@ export const UpdateNotificationBanner: React.FC = () => {
           </View>
 
           <View style={styles.textCol}>
-            <Text style={styles.titleText}>New Update v{status.displayVersion || '4.0.1'} Received!</Text>
+            <Text style={styles.titleText}>New Update v{status.displayVersion || '5.0.1'} Received!</Text>
             <Text style={styles.subText}>Restart to apply {status.releaseName || 'latest improvements'}</Text>
           </View>
 

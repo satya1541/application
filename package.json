@@ -1,7 +1,7 @@
 {
   "name": "shorty",
   "main": "expo-router/entry",
-  "version": "4.0",
+  "version": "5.0",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",

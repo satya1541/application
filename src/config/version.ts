@@ -4,10 +4,10 @@
  */
 export const APP_CONFIG = {
   name: 'Shorty',
-  baseVersion: '4.0',
-  otaVersion: '4.0.7',
-  releaseTag: 'v4.0.7',
-  releaseName: 'YSearch Trending Carousel, Discover Tabs & Picture-in-Picture',
+  baseVersion: '5.0',
+  otaVersion: '5.0.1',
+  releaseTag: 'v5.0.1',
+  releaseName: 'Shorty v5.0: Native PiP & Trending Discover',
   releaseDate: '2026-09-23',
   channel: 'preview',
 };

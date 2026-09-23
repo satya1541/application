@@ -2,7 +2,7 @@
   "expo": {
     "name": "Shorty",
     "slug": "satya",
-    "version": "4.0",
+    "version": "5.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "shorty",

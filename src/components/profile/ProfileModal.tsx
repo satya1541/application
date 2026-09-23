@@ -880,7 +880,7 @@ export const ProfileModal: React.FC = () => {
                 <Text style={styles.sectionTitle}>App Version & Updates</Text>
               </View>
               <View style={styles.activeChannelPill}>
-                <Text style={styles.activeChannelText}>v{updateStatus?.displayVersion || '4.0.1'}</Text>
+                <Text style={styles.activeChannelText}>v{updateStatus?.displayVersion || '5.0.1'}</Text>
               </View>
             </View>
 
@@ -889,7 +889,7 @@ export const ProfileModal: React.FC = () => {
                 <View style={styles.updateInfoCol}>
                   <Text style={styles.updateInfoLabel}>Current Version</Text>
                   <Text style={styles.updateInfoValue}>
-                    v{updateStatus?.displayVersion || '4.0.1'} ({updateStatus?.releaseName || '2K/4K & Vivid'})
+                    v{updateStatus?.displayVersion || '5.0.1'} ({updateStatus?.releaseName || 'Native PiP & Trending Discover'})
                   </Text>
                 </View>
 
