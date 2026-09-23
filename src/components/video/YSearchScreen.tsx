@@ -29,6 +29,9 @@ import {
   resolveYouTubeStandaloneVideoStream,
   getCachedVideoStream,
   fetchYouTubeSearchSuggestions,
+  fetchTrendingYouTubeVideos,
+  TRENDING_CATEGORIES,
+  TrendingCategory,
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
@@ -73,6 +76,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const suggestionsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Trending / Discover category & video list state
+  const [selectedCategory, setSelectedCategory] = useState<string>('trending');
+  const [trendingVideos, setTrendingVideos] = useState<YouTubeVideoSearchResult[]>([]);
+  const [isLoadingTrending, setIsLoadingTrending] = useState(false);
+  const watchVideoViewRef = useRef<VideoView>(null);
 
   // Active playing video state
   const [activeVideo, setActiveVideo] = useState<YouTubeVideoSearchResult | null>(null);
@@ -311,6 +320,51 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [performSearch, initialQuery]);
 
+  // Load Trending videos from official InnerTube Charts
+  const loadTrending = useCallback(async (catId: string) => {
+    setIsLoadingTrending(true);
+    try {
+      const results = await fetchTrendingYouTubeVideos(catId, 30);
+      setTrendingVideos(results);
+      if (results[0]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
+      }
+      if (results[1]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
+      }
+    } catch (err) {
+      console.warn('loadTrending failed:', err);
+    } finally {
+      setIsLoadingTrending(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTrending(selectedCategory);
+  }, [loadTrending, selectedCategory]);
+
+  const handleSelectCategory = useCallback(
+    (catId: string) => {
+      setSelectedCategory(catId);
+      if (query.trim()) {
+        setQuery('');
+        setVideos([]);
+      }
+      loadTrending(catId);
+    },
+    [query, loadTrending]
+  );
+
+  const handleTriggerPiP = useCallback(async () => {
+    try {
+      if (watchVideoViewRef.current) {
+        await watchVideoViewRef.current.startPictureInPicture();
+      }
+    } catch (err) {
+      console.warn('PiP start error in watch view:', err);
+    }
+  }, []);
+
   // Handle typing with real-time YouTube search suggestions
   const handleQueryChange = useCallback((text: string) => {
     setQuery(text);
@@ -355,11 +409,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     [handleQueryChange]
   );
 
-  // Memoize Up Next queue to avoid re-filtering 35 items on every time update
+  // Memoize Up Next queue to avoid re-filtering items on every time update
   const upNextVideos: YouTubeVideoSearchResult[] = useMemo(() => {
-    if (!activeVideo || videos.length === 0) return [];
-    return videos.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
-  }, [videos, activeVideo?.videoId]);
+    const list = videos.length > 0 ? videos : trendingVideos;
+    if (!activeVideo || list.length === 0) return [];
+    return list.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
+  }, [videos, trendingVideos, activeVideo?.videoId]);
 
   // Play a video in the standalone player
   const handleSelectVideo = useCallback(
@@ -460,10 +515,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   // Next & Previous Video in playlist/results
   const handleNextVideo = useCallback(() => {
     if (!activeVideo) return;
-    if (videos.length > 0) {
-      const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
-      if (currentIndex >= 0 && currentIndex < videos.length - 1) {
-        handleSelectVideo(videos[currentIndex + 1]);
+    const currentList = videos.length > 0 ? videos : trendingVideos;
+    if (currentList.length > 0) {
+      const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
+      if (currentIndex >= 0 && currentIndex < currentList.length - 1) {
+        handleSelectVideo(currentList[currentIndex + 1]);
         return;
       }
       if (upNextVideos.length > 0) {
@@ -471,24 +527,29 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         return;
       }
       // Loop back to beginning if at the end of the queue
-      if (currentIndex >= videos.length - 1 && videos[0]) {
-        handleSelectVideo(videos[0]);
+      if (currentIndex >= currentList.length - 1 && currentList[0]) {
+        handleSelectVideo(currentList[0]);
         return;
       }
     } else if (upNextVideos.length > 0) {
       handleSelectVideo(upNextVideos[0]);
     }
-  }, [activeVideo, videos, upNextVideos, handleSelectVideo]);
+  }, [activeVideo, videos, trendingVideos, upNextVideos, handleSelectVideo]);
 
   const handlePrevVideo = useCallback(() => {
-    if (!activeVideo || videos.length === 0) return;
-    const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
+    if (!activeVideo) return;
+    const currentList = videos.length > 0 ? videos : trendingVideos;
+    if (currentList.length === 0) return;
+    const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
     if (currentIndex > 0) {
-      handleSelectVideo(videos[currentIndex - 1]);
+      handleSelectVideo(currentList[currentIndex - 1]);
     } else {
-      handleSeek(0);
+      try {
+        if (player) player.currentTime = 0;
+        setCurrentTime(0);
+      } catch {}
     }
-  }, [activeVideo, videos, handleSelectVideo]);
+  }, [activeVideo, videos, trendingVideos, handleSelectVideo, player]);
 
   // Fullscreen Handlers
   const handleEnterFullscreen = useCallback(async () => {
@@ -550,11 +611,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
   // Pre-fetch next video in queue in background for INSTANT next video playback (0ms wait)
   useEffect(() => {
-    if (!activeVideo || videos.length === 0) return;
-    const currentIndex = videos.findIndex((v) => v.videoId === activeVideo.videoId);
+    if (!activeVideo) return;
+    const currentList = videos.length > 0 ? videos : trendingVideos;
+    if (currentList.length === 0) return;
+    const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
     const nextVideo =
-      currentIndex >= 0 && currentIndex < videos.length - 1
-        ? videos[currentIndex + 1]
+      currentIndex >= 0 && currentIndex < currentList.length - 1
+        ? currentList[currentIndex + 1]
         : upNextVideos.length > 0
         ? upNextVideos[0]
         : null;
@@ -562,7 +625,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     if (nextVideo?.videoId) {
       resolveYouTubeStandaloneVideoStream(nextVideo.videoId).catch(() => {});
     }
-  }, [activeVideo?.videoId, videos, upNextVideos]);
+  }, [activeVideo?.videoId, videos, trendingVideos, upNextVideos]);
 
   // Android Back Button handling:
   // 1. If in landscape fullscreen -> exit landscape fullscreen
@@ -694,6 +757,27 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             </View>
           ) : null}
 
+          {/* Optional Rank Badge for ranked lists */}
+          {item.rank ? (
+            <View
+              style={[
+                styles.rankBadge,
+                item.rank === 1 && styles.rankBadgeGold,
+                item.rank === 2 && styles.rankBadgeSilver,
+                item.rank === 3 && styles.rankBadgeBronze,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.rankBadgeText,
+                  item.rank <= 3 && styles.rankBadgeTextTop,
+                ]}
+              >
+                #{item.rank}
+              </Text>
+            </View>
+          ) : null}
+
           {/* Active Playing Badge */}
           {isThisActive && (
             <View style={styles.nowPlayingIndicator}>
@@ -754,6 +838,97 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               color={isThisActive ? '#FF0000' : '#ffffff'}
             />
           </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  // Active Category Object
+  const currentCategoryObj = useMemo(() => {
+    return TRENDING_CATEGORIES.find((c) => c.id === selectedCategory) || TRENDING_CATEGORIES[0];
+  }, [selectedCategory]);
+
+  // Render Trending Carousel Card (Horizontal)
+  const renderTrendingCard = ({ item }: { item: YouTubeVideoSearchResult }) => {
+    const isThisActive = activeVideo?.videoId === item.videoId;
+    const rank = item.rank || 1;
+    const isTop1 = rank === 1;
+    const isTop2 = rank === 2;
+    const isTop3 = rank === 3;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.trendingCard,
+          { backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex },
+          isThisActive && { borderColor: '#FF0000', borderWidth: 1.5 },
+        ]}
+        onPress={() => handleSelectVideo(item)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.trendingThumbContainer}>
+          <ExpoImage
+            source={{ uri: item.thumbnail }}
+            style={styles.trendingThumb}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+          />
+
+          {/* Rank Badge */}
+          <View
+            style={[
+              styles.rankBadge,
+              isTop1 && styles.rankBadgeGold,
+              isTop2 && styles.rankBadgeSilver,
+              isTop3 && styles.rankBadgeBronze,
+            ]}
+          >
+            <Text
+              style={[
+                styles.rankBadgeText,
+                (isTop1 || isTop2 || isTop3) && styles.rankBadgeTextTop,
+              ]}
+            >
+              #{rank}
+            </Text>
+          </View>
+
+          {/* Duration Badge */}
+          {item.duration ? (
+            <View style={styles.trendingDurationBadge}>
+              <Text style={styles.trendingDurationText}>{item.duration}</Text>
+            </View>
+          ) : null}
+
+          {/* Active Playing Badge */}
+          {isThisActive && (
+            <View style={styles.trendingPlayingOverlay}>
+              <Ionicons
+                name={isVideoPlaying ? 'volume-high' : 'pause'}
+                size={14}
+                color="#ffffff"
+              />
+              <Text style={styles.trendingPlayingText}>
+                {isVideoPlaying ? 'PLAYING' : 'PAUSED'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.trendingMeta}>
+          <Text
+            style={[
+              styles.trendingTitle,
+              isThisActive && { color: '#FF0000', fontWeight: '700' },
+            ]}
+            numberOfLines={2}
+          >
+            {item.title}
+          </Text>
+          <Text style={styles.trendingAuthor} numberOfLines={1}>
+            {item.author}
+          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -891,14 +1066,61 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         )}
       </View>
 
-      {/* Search Results List */}
+      {/* Category Filter Chips Bar */}
+      <View style={[styles.categoryBarContainer, { backgroundColor: bgHex }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryBarScroll}
+        >
+          {TRENDING_CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id && !query.trim();
+            return (
+              <TouchableOpacity
+                key={cat.id}
+                style={[
+                  styles.categoryChip,
+                  isSelected && styles.categoryChipActive,
+                  {
+                    backgroundColor: isSelected
+                      ? '#FF0000'
+                      : themeMode === 'oled'
+                      ? '#181818'
+                      : '#282828',
+                  },
+                ]}
+                onPress={() => handleSelectCategory(cat.id)}
+                activeOpacity={0.75}
+              >
+                <Ionicons
+                  name={cat.icon as any}
+                  size={14}
+                  color={isSelected ? '#ffffff' : '#aaaaaa'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    isSelected && styles.categoryChipTextActive,
+                  ]}
+                >
+                  {cat.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Main Content: Search Results OR Trending / Discover Feed */}
       <View style={styles.content}>
         {isSearching ? (
           <View style={styles.centerLoadingContainer}>
             <ActivityIndicator size="large" color="#FF0000" />
             <Text style={styles.searchingText}>Searching YouTube videos...</Text>
           </View>
-        ) : (
+        ) : query.trim() ? (
+          /* Search Results Mode */
           <FlatList
             data={videos}
             keyExtractor={(item) => item.videoId}
@@ -915,16 +1137,99 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             }}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="logo-youtube" size={56} color="#FF0000" />
-                <Text style={styles.emptyTitle}>
-                  {query.trim() ? 'No videos found' : 'Search YouTube'}
-                </Text>
+                <Ionicons name="search" size={48} color="#666666" />
+                <Text style={styles.emptyTitle}>No videos found</Text>
                 <Text style={styles.emptySubtitle}>
-                  {query.trim()
-                    ? 'Try searching with different keywords or artist names'
-                    : 'Search for songs, music videos, live concerts, and creators'}
+                  We couldn't find matches for "{query}". Try checking your spelling or search terms.
                 </Text>
+                <TouchableOpacity
+                  style={styles.exploreTrendingBtn}
+                  onPress={() => {
+                    setQuery('');
+                    setVideos([]);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="flame" size={16} color="#ffffff" />
+                  <Text style={styles.exploreTrendingBtnText}>Back to Trending</Text>
+                </TouchableOpacity>
               </View>
+            }
+          />
+        ) : (
+          /* Discover / Trending Charts Mode */
+          <FlatList
+            data={trendingVideos}
+            keyExtractor={(item) => `trending-${item.videoId}`}
+            renderItem={renderVideoCard}
+            contentContainerStyle={[
+              styles.videoListContent,
+              { paddingBottom: activeVideo && playerMode === 'mini' ? 170 : 80 },
+            ]}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            ListHeaderComponent={
+              trendingVideos.length > 0 ? (
+                <View>
+                  {/* Horizontal Trending Highlights Carousel */}
+                  <View style={styles.carouselSection}>
+                    <View style={styles.carouselHeaderRow}>
+                      <View style={styles.carouselTitleBox}>
+                        <Ionicons name={currentCategoryObj.icon as any} size={18} color="#FF0000" />
+                        <Text style={styles.carouselTitle}>
+                          {currentCategoryObj.name} Highlights
+                        </Text>
+                      </View>
+                      <View style={styles.carouselBadge}>
+                        <Ionicons name="musical-notes" size={10} color="#FF0000" />
+                        <Text style={styles.carouselBadgeText}>Official Charts</Text>
+                      </View>
+                    </View>
+
+                    <FlatList
+                      data={trendingVideos.slice(0, 10)}
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyExtractor={(item) => `carousel-${item.videoId}`}
+                      renderItem={renderTrendingCard}
+                      contentContainerStyle={styles.carouselScroll}
+                    />
+                  </View>
+
+                  {/* Section Title for Full Chart List */}
+                  <View style={styles.trendingListHeader}>
+                    <Text style={styles.trendingListTitle}>
+                      Top 30 {currentCategoryObj.name} Videos
+                    </Text>
+                  </View>
+                </View>
+              ) : null
+            }
+            ListEmptyComponent={
+              isLoadingTrending ? (
+                <View style={styles.centerLoadingContainer}>
+                  <ActivityIndicator size="large" color="#FF0000" />
+                  <Text style={styles.searchingText}>
+                    Loading {currentCategoryObj.name} on YouTube Charts...
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="alert-circle-outline" size={48} color="#888888" />
+                  <Text style={styles.emptyTitle}>Charts unavailable</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Could not connect to YouTube Charts. Tap below to retry.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.exploreTrendingBtn}
+                    onPress={() => loadTrending(selectedCategory)}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="refresh" size={16} color="#ffffff" />
+                    <Text style={styles.exploreTrendingBtnText}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              )
             }
           />
         )}
@@ -954,6 +1259,8 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                     contentFit="contain"
                     nativeControls={false}
                     surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                    allowsPictureInPicture={true}
+                    startsPictureInPictureAutomatically={true}
                   />
                 </View>
               ) : (
@@ -1054,12 +1361,15 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   {!isFullscreen && (
                     <View style={StyleSheet.absoluteFill} pointerEvents="none">
                       <VideoView
+                        ref={watchVideoViewRef}
                         key={`watch-video-${activeVideo.videoId}-${watchRemountKey}`}
                         style={StyleSheet.absoluteFill}
                         player={player}
                         contentFit="contain"
                         nativeControls={false}
                         surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                        allowsPictureInPicture={true}
+                        startsPictureInPictureAutomatically={true}
                       />
                     </View>
                   )}
@@ -1089,6 +1399,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                           </TouchableOpacity>
 
                         <View style={styles.watchTopRightActions}>
+                          <TouchableOpacity
+                            style={styles.watchTopActionBtn}
+                            onPress={handleTriggerPiP}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <MaterialIcons name="picture-in-picture-alt" size={22} color="#ffffff" />
+                          </TouchableOpacity>
                           <TouchableOpacity
                             style={styles.watchTopActionBtn}
                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -1416,6 +1733,213 @@ const styles = StyleSheet.create({
   suggestionArrowBtn: {
     padding: 4,
   },
+  categoryBarContainer: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  categoryBarScroll: {
+    paddingHorizontal: 12,
+    gap: 8,
+    alignItems: 'center',
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  categoryChipActive: {
+    borderColor: '#FF0000',
+    backgroundColor: '#FF0000',
+    shadowColor: '#FF0000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  categoryChipText: {
+    color: '#cccccc',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  categoryChipTextActive: {
+    color: '#ffffff',
+    fontWeight: '800',
+  },
+
+  // Carousel Styles
+  carouselSection: {
+    paddingTop: 12,
+    paddingBottom: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  carouselHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    marginBottom: 10,
+  },
+  carouselTitleBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  carouselTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  carouselBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 0, 0, 0.15)',
+    borderColor: 'rgba(255, 0, 0, 0.4)',
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  carouselBadgeText: {
+    color: '#FF0000',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  carouselScroll: {
+    paddingHorizontal: 14,
+  },
+  trendingCard: {
+    width: Math.min(SCREEN_WIDTH * 0.68, 250),
+    marginRight: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  trendingThumbContainer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#1a1a1a',
+    position: 'relative',
+  },
+  trendingThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  rankBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  rankBadgeGold: {
+    backgroundColor: '#FFD700',
+    borderColor: '#FFF8DC',
+  },
+  rankBadgeSilver: {
+    backgroundColor: '#C0C0C0',
+    borderColor: '#FFFFFF',
+  },
+  rankBadgeBronze: {
+    backgroundColor: '#CD7F32',
+    borderColor: '#FFA07A',
+  },
+  rankBadgeText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  rankBadgeTextTop: {
+    color: '#000000',
+    fontWeight: '900',
+  },
+  trendingDurationBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.82)',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  trendingDurationText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  trendingPlayingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  trendingPlayingText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  trendingMeta: {
+    padding: 10,
+  },
+  trendingTitle: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+    marginBottom: 4,
+  },
+  trendingAuthor: {
+    color: '#aaaaaa',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  trendingListHeader: {
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  trendingListTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  exploreTrendingBtn: {
+    marginTop: 14,
+    backgroundColor: '#FF0000',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  exploreTrendingBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
   content: {
     flex: 1,
   },

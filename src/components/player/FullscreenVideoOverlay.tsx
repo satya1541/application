@@ -91,6 +91,17 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubValue, setScrubValue] = useState<number | null>(null);
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoViewRef = useRef<VideoView>(null);
+
+  const handleTriggerPiP = useCallback(async () => {
+    try {
+      if (videoViewRef.current) {
+        await videoViewRef.current.startPictureInPicture();
+      }
+    } catch (err) {
+      console.warn('PiP start error in fullscreen:', err);
+    }
+  }, []);
 
   // Ensure player emits timeUpdate events at 1.0s interval for smooth UI with low CPU/thermal usage
   useEffect(() => {
@@ -288,11 +299,14 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
       <View style={styles.container}>
         {/* Fullscreen Video View: Native surfaceView for direct hardware compositor overlay, full 10-bit HDR/DCI-P3 color and maximum sharpness */}
         <VideoView
+          ref={videoViewRef}
           style={StyleSheet.absoluteFill}
           player={player}
           contentFit={contentFit}
           nativeControls={false}
           surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+          allowsPictureInPicture={true}
+          startsPictureInPictureAutomatically={true}
         />
 
         {/* Vivid / HDR Color Boost Layer: Micro-contrast enhancer and warm color saturation pop */}
@@ -408,6 +422,16 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
               <Text style={styles.fitToggleText}>
                 {contentFit === 'cover' ? 'FIT' : 'FILL'}
               </Text>
+            </TouchableOpacity>
+
+            {/* Picture-in-Picture Button */}
+            <TouchableOpacity
+              onPress={handleTriggerPiP}
+              style={styles.pipToggleBtn}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <MaterialIcons name="picture-in-picture-alt" size={18} color="#ffffff" />
             </TouchableOpacity>
           </View>
 
@@ -593,6 +617,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.8,
+  },
+  pipToggleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    marginLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   centerControls: {
     flexDirection: 'row',

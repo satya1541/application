@@ -16,6 +16,7 @@ export interface YouTubeVideoSearchResult {
   viewCount: string;
   publishedTime: string;
   thumbnail: string;
+  rank?: number;
 }
 
 export interface StandaloneVideoStreamDetails {
@@ -373,3 +374,189 @@ export async function resolveYouTubeStandaloneVideoStream(
   inFlightStreamPromises.set(cleanId, fetchPromise);
   return fetchPromise;
 }
+
+export interface TrendingCategory {
+  id: string;
+  name: string;
+  icon: string;
+  chartType: string;
+  chartAttribute?: string;
+  periodType?: 'WEEKLY' | 'DAILY';
+  fallbackQuery: string;
+}
+
+export const TRENDING_CATEGORIES: TrendingCategory[] = [
+  {
+    id: 'trending',
+    name: 'Trending',
+    icon: 'flame',
+    chartType: 'TRENDING_VIDEOS',
+    fallbackQuery: 'trending music videos 2026',
+  },
+  {
+    id: 'daily',
+    name: 'Daily Top',
+    icon: 'musical-notes',
+    chartType: 'VIDEOS',
+    periodType: 'DAILY',
+    fallbackQuery: 'new hindi songs this week',
+  },
+  {
+    id: 'hindi',
+    name: 'Bollywood',
+    icon: 'film',
+    chartType: 'VIDEOS_LOP',
+    chartAttribute: 'hi',
+    periodType: 'WEEKLY',
+    fallbackQuery: 'latest bollywood songs 2026',
+  },
+  {
+    id: 'punjabi',
+    name: 'Punjabi',
+    icon: 'flash',
+    chartType: 'VIDEOS_LOP',
+    chartAttribute: 'pa',
+    periodType: 'WEEKLY',
+    fallbackQuery: 'top punjabi songs 2026',
+  },
+  {
+    id: 'global',
+    name: 'Global Hits',
+    icon: 'globe',
+    chartType: 'VIDEOS_LOP',
+    chartAttribute: 'international',
+    periodType: 'WEEKLY',
+    fallbackQuery: 'top global music videos 2026',
+  },
+];
+
+const trendingCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
+const TRENDING_CACHE_TTL = 15 * 60 * 1000;
+
+/**
+ * Fetches YouTube trending music videos via official InnerTube Charts endpoint
+ * with instant in-memory caching and resilient fallback.
+ */
+export async function fetchTrendingYouTubeVideos(
+  categoryId: string = 'trending',
+  limit: number = 30
+): Promise<YouTubeVideoSearchResult[]> {
+  const cached = trendingCache.get(categoryId);
+  if (cached && Date.now() - cached.timestamp < TRENDING_CACHE_TTL && cached.videos.length > 0) {
+    return cached.videos.slice(0, limit);
+  }
+
+  const category = TRENDING_CATEGORIES.find((c) => c.id === categoryId) || TRENDING_CATEGORIES[0];
+
+  try {
+    const queryObj: Record<string, string> = {
+      perspective: 'CHART_DETAILS',
+      chart_params_country_code: 'IN',
+      chart_params_chart_type: category.chartType,
+      flags: 'MusicCharts__enable_apac_and_shorts_charts_expansion',
+    };
+    if (category.periodType) queryObj.chart_params_period_type = category.periodType;
+    if (category.chartAttribute) queryObj.chart_params_chart_attribute = category.chartAttribute;
+
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB_MUSIC_ANALYTICS',
+          clientVersion: '2.0',
+          hl: 'en-GB',
+          gl: 'IN',
+        },
+      },
+      browseId: 'FEmusic_analytics_charts_home',
+      query: new URLSearchParams(queryObj).toString(),
+    };
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch('https://charts.youtube.com/youtubei/v1/browse?alt=json', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: 'https://charts.youtube.com/',
+        Origin: 'https://charts.youtube.com',
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      const content =
+        data?.contents?.sectionListRenderer?.contents?.[0]?.musicAnalyticsSectionRenderer?.content;
+      const rawItems: any[] =
+        content?.videos?.[0]?.videoViews ||
+        (Array.isArray(content?.videos) && content.videos[0]?.videoViews ? content.videos[0].videoViews : []) ||
+        content?.trackTypes?.[0]?.trackViews ||
+        [];
+
+      if (rawItems.length > 0) {
+        const results: YouTubeVideoSearchResult[] = [];
+        const seenIds = new Set<string>();
+
+        rawItems.forEach((item: any, index: number) => {
+          const videoId = item.id || item.encryptedVideoId;
+          if (!videoId || typeof videoId !== 'string' || seenIds.has(videoId)) return;
+          seenIds.add(videoId);
+
+          const durSec = typeof item.videoDuration === 'number' && item.videoDuration > 0 ? item.videoDuration : 0;
+          const mins = Math.floor(durSec / 60);
+          const secs = durSec % 60;
+          const durStr = durSec > 0 ? `${mins}:${secs < 10 ? '0' : ''}${secs}` : '';
+
+          const thumbs = item.thumbnail?.thumbnails || [];
+          const bestThumb = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+          const rawArtist = Array.isArray(item.artists)
+            ? item.artists.map((a: any) => a.name).join(', ')
+            : item.channelName || 'YouTube Artist';
+
+          const title = item.title || 'Untitled Video';
+          const rank = item.chartEntryMetadata?.currentPosition || index + 1;
+
+          results.push({
+            id: videoId,
+            videoId,
+            title,
+            author: rawArtist,
+            duration: durStr,
+            durationSeconds: durSec,
+            viewCount: `#${rank} on YouTube Charts`,
+            publishedTime: '',
+            thumbnail: bestThumb,
+            rank,
+          });
+        });
+
+        if (results.length > 0) {
+          trendingCache.set(categoryId, { timestamp: Date.now(), videos: results });
+          return results.slice(0, limit);
+        }
+      }
+    }
+  } catch (err: any) {
+    if (err?.name !== 'AbortError') {
+      console.warn(`[Trending] fetch error for ${categoryId}, using search fallback:`, err);
+    }
+  }
+
+  // Fallback to curated search if charts API is unreachable
+  try {
+    const fallbackResults = await searchYouTubeVideos(category.fallbackQuery, limit);
+    if (fallbackResults.length > 0) {
+      const ranked = fallbackResults.map((v, i) => ({ ...v, rank: i + 1 }));
+      trendingCache.set(categoryId, { timestamp: Date.now(), videos: ranked });
+      return ranked;
+    }
+  } catch {}
+
+  return [];
+}
+
