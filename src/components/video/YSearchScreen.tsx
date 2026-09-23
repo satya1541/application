@@ -355,16 +355,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     [query, loadTrending]
   );
 
-  const handleTriggerPiP = useCallback(async () => {
-    try {
-      if (watchVideoViewRef.current) {
-        await watchVideoViewRef.current.startPictureInPicture();
-      }
-    } catch (err) {
-      console.warn('PiP start error in watch view:', err);
-    }
-  }, []);
-
   // Handle typing with real-time YouTube search suggestions
   const handleQueryChange = useCallback((text: string) => {
     setQuery(text);
@@ -576,6 +566,19 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     setPlayerMode('mini');
     setMiniRemountKey((prev) => prev + 1);
   }, []);
+
+  const handleTriggerPiP = useCallback(async () => {
+    try {
+      if (watchVideoViewRef.current) {
+        await watchVideoViewRef.current.startPictureInPicture();
+      } else {
+        handleCollapseToMini();
+      }
+    } catch (err) {
+      console.warn('PiP start error in watch view, falling back to floating miniplayer:', err);
+      handleCollapseToMini();
+    }
+  }, [handleCollapseToMini]);
 
   const handleMaximizeToWatch = useCallback(() => {
     setPlayerMode('full');
