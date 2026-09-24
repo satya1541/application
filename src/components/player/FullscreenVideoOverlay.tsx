@@ -11,6 +11,7 @@ import {
   StatusBar,
   BackHandler,
   Platform,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -247,6 +248,29 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
     onExitFullscreen();
   }, [onExitFullscreen]);
 
+  // Swipe-down gesture to exit fullscreen (matching YouTube mobile)
+  const fullscreenPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Deliberate downward swipe: dy > 20 and predominantly vertical
+        return gestureState.dy > 20 && gestureState.dy > Math.abs(gestureState.dx) * 0.75;
+      },
+      onMoveShouldSetPanResponderCapture: () => false,
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 35 || gestureState.vy > 0.2) {
+          handleExit();
+        }
+      },
+      onPanResponderTerminate: (_, gestureState) => {
+        if (gestureState && (gestureState.dy > 35 || gestureState.vy > 0.2)) {
+          handleExit();
+        }
+      },
+    })
+  ).current;
+
   // Android Back Button handler
   useEffect(() => {
     if (!isVisible) return;
@@ -298,7 +322,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
       onRequestClose={handleExit}
     >
       <StatusBar hidden={!controlsVisible} animated />
-      <View style={styles.container}>
+      <View style={styles.container} {...fullscreenPanResponder.panHandlers}>
         {/* Fullscreen Video View: Native surfaceView for direct hardware compositor overlay, full 10-bit HDR/DCI-P3 color and maximum sharpness */}
         <VideoView
           ref={videoViewRef}
@@ -307,8 +331,8 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
           contentFit={contentFit}
           nativeControls={false}
           surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-          allowsPictureInPicture={true}
-          startsPictureInPictureAutomatically={true}
+          allowsPictureInPicture={Boolean(isPlaying && !audioIsPlaying)}
+          startsPictureInPictureAutomatically={Boolean(isPlaying && !audioIsPlaying)}
         />
 
         {/* Vivid / HDR Color Boost Layer: Micro-contrast enhancer and warm color saturation pop */}

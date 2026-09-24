@@ -15,27 +15,25 @@ import {
   Platform,
   Share,
   AppState,
+  Animated,
 } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Slider from '@react-native-community/slider';
-import { useVideoPlayer, VideoView } from 'expo-video';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
+import { useVideoPlayerContext } from '@/contexts/VideoPlayerContext';
+import splashVideoSource from '@/../assets/videos/ysearch_splash.mp4';
 import {
   searchYouTubeVideosWithContinuation,
   fetchNextYouTubeSearchVideos,
   resolveYouTubeStandaloneVideoStream,
-  getCachedVideoStream,
   fetchYouTubeSearchSuggestions,
   fetchTrendingYouTubeVideos,
   TRENDING_CATEGORIES,
-  TrendingCategory,
   YouTubeVideoSearchResult,
-  StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
 import {
   fetchUserSubscriptionsFeed,
@@ -43,34 +41,8 @@ import {
   UserFeedResult,
 } from '@/services/youtubeUserFeedService';
 import { useAuth } from '@/contexts/AuthContext';
-import { FullscreenVideoOverlay } from '../player/FullscreenVideoOverlay';
-import {
-  lockLandscapeAsync,
-  lockPortraitAsync,
-  addOrientationListener,
-} from '@/services/orientationManager';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const formatTime = (seconds: number): string => {
-  if (isNaN(seconds) || seconds < 0) return '0:00';
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  if (hrs > 0) {
-    return `${hrs}:${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  }
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-};
-
-// Robust video buffer options: prevent stalls and unwanted auto-pausing
-const VIDEO_BUFFER_OPTIONS = {
-  preferredForwardBufferDuration: 60, // 60s forward buffer keeps playback completely uninterrupted
-  minBufferForPlayback: 2.0, // Buffer 2.0s before initial play / resume to absorb network jitter
-  waitsToMinimizeStalling: true, // Tell ExoPlayer/AVPlayer to automatically buffer & resume smoothly
-  prioritizeTimeOverSizeThreshold: false,
-  maxBufferBytes: 0, // 0 = automatic system-managed memory allocation (no artificial 20MB choking)
-};
 
 interface YSearchScreenProps {
   onBack?: () => void;
@@ -116,209 +88,55 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const [userFeedNotConnected, setUserFeedNotConnected] = useState(false);
   const [userFeedError, setUserFeedError] = useState<string | null>(null);
   const [userFeedEmpty, setUserFeedEmpty] = useState(false);
-  const watchVideoViewRef = useRef<VideoView>(null);
+  const {
+    activeVideo,
+    isVideoPlaying,
+    playerMode,
+    playVideo,
+    togglePlay,
+  } = useVideoPlayerContext();
 
-  // Active playing video state
-  const [activeVideo, setActiveVideo] = useState<YouTubeVideoSearchResult | null>(null);
-  const [videoStream, setVideoStream] = useState<StandaloneVideoStreamDetails | null>(null);
-  const [isLoadingStream, setIsLoadingStream] = useState(false);
+  // Intro splash video for YSearch (plays once when opening YSearch, then closes automatically)
+  const [showSplash, setShowSplash] = useState(true);
+  const splashOpacity = useRef(new Animated.Value(1)).current;
+  const splashDismissedRef = useRef(false);
 
-  // Player presentation modes:
-  // 'full': YouTube portrait watch view (Screenshot 1)
-  // 'mini': YouTube floating miniplayer in bottom-right corner (Screenshot 2)
-  const [playerMode, setPlayerMode] = useState<'full' | 'mini'>('full');
-  const [showWatchControls, setShowWatchControls] = useState(true);
-  const watchControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Landscape Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [watchRemountKey, setWatchRemountKey] = useState<number>(0);
-  const [miniRemountKey, setMiniRemountKey] = useState<number>(0);
-
-  // Timeline & scrubbing state
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [isScrubbing, setIsScrubbing] = useState(false);
-  const [scrubValue, setScrubValue] = useState<number | null>(null);
-  const isScrubbingRef = useRef(false);
-  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Auto-hide controls in full watch view after 3.5s
-  const resetWatchControlsTimer = useCallback(() => {
-    if (watchControlsTimerRef.current) clearTimeout(watchControlsTimerRef.current);
-    watchControlsTimerRef.current = setTimeout(() => {
-      setShowWatchControls(false);
-    }, 3500);
-  }, []);
-
-  const toggleWatchControls = useCallback(() => {
-    if (showWatchControls) {
-      if (watchControlsTimerRef.current) clearTimeout(watchControlsTimerRef.current);
-      setShowWatchControls(false);
-    } else {
-      setShowWatchControls(true);
-      resetWatchControlsTimer();
-    }
-  }, [showWatchControls, resetWatchControlsTimer]);
-
-  // AppState tracking: freeze React UI re-renders while phone is locked or in background
-  const appStateRef = useRef(AppState.currentState);
-
-  // Auto-advance guard to prevent duplicate triggers
-  const hasAdvancedRef = useRef(false);
-  const handleNextVideoRef = useRef<() => void>(() => {});
-
-  // Reset advance guard whenever active video changes
-  useEffect(() => {
-    hasAdvancedRef.current = false;
-  }, [activeVideo?.videoId]);
-
-  const advanceToNextVideo = useCallback(() => {
-    if (hasAdvancedRef.current) return;
-    hasAdvancedRef.current = true;
-    handleNextVideoRef.current();
-  }, []);
-
-  // Setup standalone video player with expo-video
-  // Initialized with null so useVideoPlayer maintains a SINGLE, persistent native ExoPlayer instance.
-  // timeUpdateEventInterval = 1.0s cuts JS wakeups and re-renders by 75% compared to 0.25s, keeping device cool.
-  const player = useVideoPlayer(null, (p) => {
+  const splashPlayer = useVideoPlayer(splashVideoSource, (p) => {
     p.loop = false;
     p.muted = false;
-    p.audioMixingMode = 'doNotMix';
-    p.staysActiveInBackground = true; // Enables background playback when screen locks
-    p.showNowPlayingNotification = true; // Shows system media notification
-    p.timeUpdateEventInterval = 1.0; // 1 second interval: stops high-frequency thermal re-rendering
-    try {
-      p.bufferOptions = VIDEO_BUFFER_OPTIONS;
-    } catch {}
+    p.play();
   });
 
-  // Track AppState to freeze UI updates when screen is locked
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
-      appStateRef.current = nextState;
-      // Resync timeline once on screen unlock
-      if (nextState === 'active' && player) {
-        try {
-          if (!isScrubbingRef.current) {
-            setCurrentTime(player.currentTime);
-          }
-        } catch {}
-      }
-    });
-    return () => sub.remove();
-  }, [player]);
-
-  // Ensure background play & thermal interval stay active on player instance
-  useEffect(() => {
-    if (!player) return;
-    try {
-      player.timeUpdateEventInterval = 1.0;
-      player.staysActiveInBackground = true;
-      player.showNowPlayingNotification = true;
-      player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-    } catch {}
-  }, [player]);
-
-  // Clean up player and timeouts on unmount to prevent thermal drain in background
-  useEffect(() => {
-    return () => {
+  const dismissSplash = useCallback(() => {
+    if (splashDismissedRef.current) return;
+    splashDismissedRef.current = true;
+    Animated.timing(splashOpacity, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowSplash(false);
       try {
-        if (player) {
-          player.pause();
-        }
+        splashPlayer.pause();
       } catch {}
-      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-      if (watchControlsTimerRef.current) clearTimeout(watchControlsTimerRef.current);
-      if (suggestionsTimeoutRef.current) clearTimeout(suggestionsTimeoutRef.current);
-    };
-  }, [player]);
+    });
+  }, [splashOpacity, splashPlayer]);
 
-  // Prevent device sleep/lock while video is actively playing in YSearch
   useEffect(() => {
-    if (isVideoPlaying) {
-      activateKeepAwakeAsync('ysearch_video').catch(() => {});
-    } else {
-      deactivateKeepAwake('ysearch_video').catch(() => {});
-    }
-    return () => {
-      deactivateKeepAwake('ysearch_video').catch(() => {});
-    };
-  }, [isVideoPlaying]);
-
-  // Track video player events with triple-redundant auto-advance & thermal protection
-  useEffect(() => {
-    if (!player) return;
-
-    const subPlaying = player.addListener('playingChange', (payload) => {
-      setIsVideoPlaying(payload.isPlaying);
+    if (!splashPlayer) return;
+    const sub = splashPlayer.addListener('playToEnd', () => {
+      dismissSplash();
     });
-
-    // Time update: only trigger React state updates when screen is active
-    const subTime = player.addListener('timeUpdate', (payload) => {
-      if (appStateRef.current === 'active' && !isScrubbingRef.current) {
-        setCurrentTime(payload.currentTime);
-      }
-      const actualDuration =
-        activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
-          ? activeVideo.durationSeconds
-          : player.duration > 0
-          ? player.duration
-          : 0;
-      if (actualDuration > 0) {
-        setDuration(actualDuration);
-      }
-    });
-
-    const subStatus = player.addListener('statusChange', (payload) => {
-      if (payload.status === 'readyToPlay') {
-        const actualDuration =
-          activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
-            ? activeVideo.durationSeconds
-            : player.duration > 0
-            ? player.duration
-            : 0;
-        if (actualDuration > 0) setDuration(actualDuration);
-        if (!isScrubbingRef.current) {
-          player.play();
-        }
-      }
-    });
-
-    const subSourceLoad = player.addListener('sourceLoad', (payload) => {
-      if (payload.duration > 0) {
-        setDuration(payload.duration);
-      }
-      if (!isScrubbingRef.current) {
-        player.play();
-      }
-    });
-
-    // Primary auto-advance: fires when stream reaches end
-    const subEnded = player.addListener('playToEnd', () => {
-      setIsVideoPlaying(false);
-      advanceToNextVideo();
-    });
+    // Safety auto-dismiss fallback timer (4.0s)
+    const fallbackTimer = setTimeout(() => {
+      dismissSplash();
+    }, 4000);
 
     return () => {
-      subPlaying.remove();
-      subTime.remove();
-      subStatus.remove();
-      subSourceLoad.remove();
-      subEnded.remove();
+      sub.remove();
+      clearTimeout(fallbackTimer);
     };
-  }, [player, activeVideo, advanceToNextVideo]);
-
-  // Sync duration once stream metadata loads
-  useEffect(() => {
-    if (player && player.duration > 0) {
-      setDuration(player.duration);
-    } else if (activeVideo?.durationSeconds) {
-      setDuration(activeVideo.durationSeconds);
-    }
-  }, [player, activeVideo]);
+  }, [splashPlayer, dismissSplash]);
 
   // YouTube video search
   const performSearch = useCallback(async (searchQuery: string) => {
@@ -509,261 +327,36 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   );
 
   // Memoize Up Next queue to avoid re-filtering items on every time update
-  const upNextVideos: YouTubeVideoSearchResult[] = useMemo(() => {
-    const list = videos.length > 0 ? videos : trendingVideos;
-    if (!activeVideo || list.length === 0) return [];
-    return list.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
-  }, [videos, trendingVideos, activeVideo?.videoId]);
-
-  // Play a video in the standalone player
+  // Play video via global player context
   const handleSelectVideo = useCallback(
-    async (item: YouTubeVideoSearchResult) => {
-      if (activeVideo?.videoId === item.videoId && videoStream) {
-        setPlayerMode('full');
-        setShowWatchControls(true);
-        resetWatchControlsTimer();
-        if (player && !isVideoPlaying) {
-          if (isAudioPlaying) pauseBackgroundAudio();
-          player.play();
-        }
-        return;
-      }
-
-      // Pause global background music player so it doesn't overlap
-      if (isAudioPlaying) {
-        pauseBackgroundAudio();
-      }
-
-      setActiveVideo(item);
-      setPlayerMode('full'); // Opens in Full Watch View (Screenshot 1)
-      setShowWatchControls(true);
-      resetWatchControlsTimer();
-      setCurrentTime(0);
-      setDuration(item.durationSeconds || 0);
-
-      // 1. Instant playback from cache (0ms lookup)
-      const cached = getCachedVideoStream(item.videoId);
-      if (cached) {
-        setVideoStream(cached);
-        if (cached.durationSeconds > 0) {
-          setDuration(cached.durationSeconds);
-        }
-        setIsLoadingStream(false);
-        if (player) {
-          try {
-            player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-          } catch {}
-          player.replace({
-            uri: cached.hlsUrl,
-            contentType: 'hls',
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
-              Origin: 'https://www.youtube.com',
-              Referer: 'https://www.youtube.com/',
-            },
-            metadata: {
-              title: item.title,
-              artist: item.author,
-              artwork: item.thumbnail,
-            },
-          });
-          player.play();
-        }
-        return;
-      }
-
-      // 2. Resolve stream if not yet cached
-      setIsLoadingStream(true);
-      try {
-        const streamDetails = await resolveYouTubeStandaloneVideoStream(item.videoId);
-        if (streamDetails) {
-          setVideoStream(streamDetails);
-          if (streamDetails.durationSeconds > 0) {
-            setDuration(streamDetails.durationSeconds);
-          }
-          if (player) {
-            try {
-              player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-            } catch {}
-            player.replace({
-              uri: streamDetails.hlsUrl,
-              contentType: 'hls',
-              headers: {
-                'User-Agent':
-                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
-                Origin: 'https://www.youtube.com',
-                Referer: 'https://www.youtube.com/',
-              },
-              metadata: {
-                title: item.title,
-                artist: item.author,
-                artwork: item.thumbnail,
-              },
-            });
-            player.play();
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to resolve video stream:', err);
-      } finally {
-        setIsLoadingStream(false);
-      }
+    (item: YouTubeVideoSearchResult) => {
+      const currentList = videos.length > 0 ? videos : trendingVideos;
+      playVideo(item, currentList);
     },
-    [activeVideo, videoStream, player, isVideoPlaying, isAudioPlaying, pauseBackgroundAudio, resetWatchControlsTimer]
+    [videos, trendingVideos, playVideo]
   );
 
-  // Next & Previous Video in playlist/results
-  const handleNextVideo = useCallback(() => {
-    if (!activeVideo) return;
-    const currentList = videos.length > 0 ? videos : trendingVideos;
-    if (currentList.length > 0) {
-      const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
-      if (currentIndex >= 0 && currentIndex < currentList.length - 1) {
-        handleSelectVideo(currentList[currentIndex + 1]);
-        return;
-      }
-      if (upNextVideos.length > 0) {
-        handleSelectVideo(upNextVideos[0]);
-        return;
-      }
-      // Loop back to beginning if at the end of the queue
-      if (currentIndex >= currentList.length - 1 && currentList[0]) {
-        handleSelectVideo(currentList[0]);
-        return;
-      }
-    } else if (upNextVideos.length > 0) {
-      handleSelectVideo(upNextVideos[0]);
-    }
-  }, [activeVideo, videos, trendingVideos, upNextVideos, handleSelectVideo]);
-
-  const handlePrevVideo = useCallback(() => {
-    if (!activeVideo) return;
-    const currentList = videos.length > 0 ? videos : trendingVideos;
-    if (currentList.length === 0) return;
-    const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
-    if (currentIndex > 0) {
-      handleSelectVideo(currentList[currentIndex - 1]);
-    } else {
-      try {
-        if (player) player.currentTime = 0;
-        setCurrentTime(0);
-      } catch {}
-    }
-  }, [activeVideo, videos, trendingVideos, handleSelectVideo, player]);
-
-  // Fullscreen Handlers
-  const handleEnterFullscreen = useCallback(async () => {
-    await lockLandscapeAsync();
-    setIsFullscreen(true);
-  }, []);
-
-  const handleExitFullscreen = useCallback(async () => {
-    await lockPortraitAsync();
-    setIsFullscreen(false);
-    setWatchRemountKey((prev) => prev + 1);
-    // Ensure smooth playback resumes without freeze when returning to portrait
-    setTimeout(() => {
-      try {
-        if (player && isVideoPlaying) {
-          player.play();
-        }
-      } catch {}
-    }, 120);
-  }, [player, isVideoPlaying]);
-
-  // Player mode transitions
-  const handleCollapseToMini = useCallback(() => {
-    setPlayerMode('mini');
-    setMiniRemountKey((prev) => prev + 1);
-  }, []);
-
-  const handleTriggerPiP = useCallback(async () => {
-    try {
-      if (watchVideoViewRef.current) {
-        await watchVideoViewRef.current.startPictureInPicture();
+  const handleCardPlayPress = useCallback(
+    (item: YouTubeVideoSearchResult) => {
+      if (activeVideo?.videoId === item.videoId) {
+        togglePlay();
       } else {
-        handleCollapseToMini();
+        handleSelectVideo(item);
       }
-    } catch (err) {
-      console.warn('PiP start error in watch view, falling back to floating miniplayer:', err);
-      handleCollapseToMini();
-    }
-  }, [handleCollapseToMini]);
-
-  const handleMaximizeToWatch = useCallback(() => {
-    setPlayerMode('full');
-    setWatchRemountKey((prev) => prev + 1);
-    setShowWatchControls(true);
-    resetWatchControlsTimer();
-    // Ensure player resumes immediately without freeze
-    setTimeout(() => {
-      try {
-        if (player && isVideoPlaying) {
-          player.play();
-        }
-      } catch {}
-    }, 120);
-  }, [player, isVideoPlaying, resetWatchControlsTimer]);
-
-  // Listen for physical device orientation (only auto-enter landscape fullscreen if in full watch view)
-  useEffect(() => {
-    const unsubscribe = addOrientationListener((isLand) => {
-      if (isLand && activeVideo && !isFullscreen && playerMode === 'full') {
-        setIsFullscreen(true);
-      } else if (!isLand && isFullscreen) {
-        handleExitFullscreen();
-      }
-    });
-    return () => unsubscribe();
-  }, [activeVideo, isFullscreen, playerMode, handleExitFullscreen]);
-
-  // Keep handleNextVideoRef updated for automatic playToEnd transition
-  useEffect(() => {
-    handleNextVideoRef.current = handleNextVideo;
-  }, [handleNextVideo]);
-
-  // Pre-fetch next video in queue in background for INSTANT next video playback (0ms wait)
-  useEffect(() => {
-    if (!activeVideo) return;
-    const currentList = videos.length > 0 ? videos : trendingVideos;
-    if (currentList.length === 0) return;
-    const currentIndex = currentList.findIndex((v) => v.videoId === activeVideo.videoId);
-    const nextVideo =
-      currentIndex >= 0 && currentIndex < currentList.length - 1
-        ? currentList[currentIndex + 1]
-        : upNextVideos.length > 0
-        ? upNextVideos[0]
-        : null;
-
-    if (nextVideo?.videoId) {
-      resolveYouTubeStandaloneVideoStream(nextVideo.videoId).catch(() => {});
-    }
-  }, [activeVideo?.videoId, videos, trendingVideos, upNextVideos]);
+    },
+    [activeVideo?.videoId, togglePlay, handleSelectVideo]
+  );
 
   // Android Back Button handling:
-  // 1. If in landscape fullscreen -> exit landscape fullscreen
-  // 2. If in full watch screen -> collapse to miniplayer (Screenshot 2)
-  // 3. If in search suggestions -> close suggestions
-  // 4. Else -> navigate back (onBack)
+  // 1. If in search suggestions -> close suggestions
+  // 2. Else -> navigate back (onBack)
   useEffect(() => {
     const onBackPress = () => {
-      if (isFullscreen) {
-        handleExitFullscreen();
-        return true;
-      }
-      if (playerMode === 'full' && activeVideo) {
-        handleCollapseToMini();
-        return true;
-      }
       if (showSuggestions) {
         setShowSuggestions(false);
         return true;
       }
       if (onBack) {
-        if (player) player.pause();
-        setActiveVideo(null);
-        setVideoStream(null);
         onBack();
         return true;
       }
@@ -772,77 +365,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
-  }, [isFullscreen, playerMode, activeVideo, showSuggestions, player, handleExitFullscreen, handleCollapseToMini, onBack]);
-
-  // Toggle video play/pause
-  const handleTogglePlay = useCallback(() => {
-    if (!player) return;
-    if (isVideoPlaying) {
-      player.pause();
-    } else {
-      if (isAudioPlaying) pauseBackgroundAudio();
-      player.play();
-    }
-  }, [player, isVideoPlaying, isAudioPlaying, pauseBackgroundAudio]);
-
-  const effectiveDuration =
-    duration > 0
-      ? duration
-      : (activeVideo?.durationSeconds || (player?.duration > 0 ? player.duration : 0));
-
-  const currentDisplayTime =
-    isScrubbing && scrubValue !== null ? scrubValue : currentTime;
-
-  // Video seek with safety clamp
-  const handleSeek = useCallback(
-    (seconds: number) => {
-      if (!player) return;
-      try {
-        const maxDur = effectiveDuration > 0 ? effectiveDuration : seconds;
-        const clamped = Math.max(0, Math.min(seconds, maxDur));
-        player.currentTime = clamped;
-        setCurrentTime(clamped);
-      } catch (err) {
-        console.warn('handleSeek error:', err);
-      }
-    },
-    [player, effectiveDuration]
-  );
-
-  // Rubber-band protected slider scrub handlers
-  const handleSlidingStart = useCallback(
-    (val?: number) => {
-      if (watchControlsTimerRef.current) clearTimeout(watchControlsTimerRef.current);
-      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-      isScrubbingRef.current = true;
-      setIsScrubbing(true);
-      setScrubValue(val !== undefined ? val : currentTime);
-    },
-    [currentTime]
-  );
-
-  const handleValueChange = useCallback((val: number) => {
-    setScrubValue(val);
-  }, []);
-
-  const handleSlidingComplete = useCallback(
-    (val: number) => {
-      setScrubValue(val);
-      handleSeek(val);
-      if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-      seekTimeoutRef.current = setTimeout(() => {
-        isScrubbingRef.current = false;
-        setIsScrubbing(false);
-        setScrubValue(null);
-      }, 400);
-      resetWatchControlsTimer();
-    },
-    [handleSeek, resetWatchControlsTimer]
-  );
+  }, [showSuggestions, onBack]);
 
   // Render YouTube Search Result Video Card
   const renderVideoCard = ({ item }: { item: YouTubeVideoSearchResult }) => {
     const isThisActive = activeVideo?.videoId === item.videoId;
+    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+    const fallbackMq = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
 
     return (
       <TouchableOpacity
@@ -857,11 +386,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         {/* 16:9 Video Thumbnail */}
         <View style={styles.thumbnailContainer}>
           <ExpoImage
-            source={{ uri: item.thumbnail }}
+            source={{ uri: thumbUri }}
+            placeholder={{ uri: fallbackMq }}
             style={styles.thumbnailImage}
             contentFit="cover"
-            transition={150}
             cachePolicy="memory-disk"
+            recyclingKey={item.videoId}
           />
 
           {/* YouTube Duration or LIVE Badge */}
@@ -949,7 +479,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           {/* Quick Play Icon */}
           <TouchableOpacity
             style={styles.cardActionBtn}
-            onPress={() => handleSelectVideo(item)}
+            onPress={() => handleCardPlayPress(item)}
           >
             <Ionicons
               name={isThisActive && isVideoPlaying ? 'pause-circle' : 'play-circle'}
@@ -975,6 +505,8 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     const isTop1 = rank === 1;
     const isTop2 = rank === 2;
     const isTop3 = rank === 3;
+    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+    const fallbackMq = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
 
     return (
       <TouchableOpacity
@@ -988,11 +520,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       >
         <View style={styles.trendingThumbContainer}>
           <ExpoImage
-            source={{ uri: item.thumbnail }}
+            source={{ uri: thumbUri }}
+            placeholder={{ uri: fallbackMq }}
             style={styles.trendingThumb}
             contentFit="cover"
-            transition={150}
             cachePolicy="memory-disk"
+            recyclingKey={item.videoId}
           />
 
           {/* Rank Badge */}
@@ -1065,6 +598,30 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       edges={['top']}
     >
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
+
+      {/* Intro Splash Video (Plays once on opening YSearch, then closes automatically) */}
+      {showSplash && (
+        <Animated.View
+          style={[styles.splashContainer, { opacity: splashOpacity }]}
+          pointerEvents={showSplash ? 'auto' : 'none'}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={dismissSplash}
+            style={StyleSheet.absoluteFill}
+          >
+            <VideoView
+              player={splashPlayer}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              nativeControls={false}
+              surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+              allowsPictureInPicture={false}
+              startsPictureInPictureAutomatically={false}
+            />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* YouTube-Styled Search Header */}
       <View style={[styles.headerContainer, { backgroundColor: bgHex }]}>
@@ -1558,438 +1115,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         )}
       </View>
 
-      {/* Floating Miniplayer (matching Screenshot 2: docked in bottom right corner) */}
-      {activeVideo && playerMode === 'mini' && (
-        <View
-          style={[
-            styles.miniplayerContainer,
-            { bottom: Math.max(insets.bottom, 12) + 12 },
-          ]}
-        >
-          {/* Video View Box with separate tap-to-maximize touchable & close button */}
-          <View style={styles.miniplayerVideoBox}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleMaximizeToWatch}
-              style={StyleSheet.absoluteFill}
-            >
-              {videoStream && player ? (
-                <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                  <VideoView
-                    key={`mini-video-${activeVideo.videoId}-${miniRemountKey}`}
-                    style={StyleSheet.absoluteFill}
-                    player={player}
-                    contentFit="contain"
-                    nativeControls={false}
-                    surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-                    allowsPictureInPicture={true}
-                    startsPictureInPictureAutomatically={true}
-                  />
-                </View>
-              ) : (
-                <ExpoImage
-                  source={{ uri: activeVideo.thumbnail }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                />
-              )}
-            </TouchableOpacity>
-
-            {/* LIVE Badge on Floating Miniplayer */}
-            {(activeVideo.isLive || videoStream?.isLive) && (
-              <View style={styles.miniLiveBadge} pointerEvents="none">
-                <View style={styles.liveDot} />
-                <Text style={styles.miniLiveText}>LIVE</Text>
-              </View>
-            )}
-
-            {/* Small Dimmer Overlay for Close Button */}
-            <TouchableOpacity
-              style={styles.miniplayerCloseBtn}
-              onPress={() => {
-                if (player) player.pause();
-                setActiveVideo(null);
-                setVideoStream(null);
-              }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="close" size={15} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Thin Red Progress Bar Indicator (tapping also maximizes) */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={handleMaximizeToWatch}
-            style={styles.miniplayerProgressTrack}
-          >
-            <View
-              style={[
-                styles.miniplayerProgressFill,
-                {
-                  width: `${Math.min(
-                    100,
-                    Math.max(
-                      0,
-                      effectiveDuration > 0
-                        ? (currentDisplayTime / effectiveDuration) * 100
-                        : 0
-                    )
-                  )}%`,
-                },
-              ]}
-            />
-          </TouchableOpacity>
-
-          {/* Mini Control Bar: Replay 10s, Play/Pause, Forward 10s */}
-          <View style={styles.miniplayerControlsBar}>
-            <TouchableOpacity
-              onPress={() => handleSeek(Math.max(0, currentTime - 10))}
-              style={styles.miniControlBtn}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialIcons name="replay-10" size={20} color="#ffffff" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleTogglePlay}
-              style={styles.miniControlBtn}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons
-                name={isVideoPlaying ? 'pause' : 'play'}
-                size={22}
-                color="#ffffff"
-                style={!isVideoPlaying ? { marginLeft: 2 } : undefined}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() =>
-                handleSeek(Math.min(effectiveDuration, currentTime + 10))
-              }
-              style={styles.miniControlBtn}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialIcons name="forward-10" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
-
-      {/* Full Portrait Watch Screen (matching Screenshot 1: full watch page with channel name, no comments/like/dislike) */}
-      {activeVideo && playerMode === 'full' && (
-        <View style={styles.watchScreenOverlay}>
-          <SafeAreaView
-            style={[styles.watchScreenContainer, { backgroundColor: '#0f0f0f' }]}
-            edges={['top', 'bottom']}
-          >
-            {/* 16:9 Video Canvas Frame */}
-            <View style={styles.watchVideoCanvas}>
-              {videoStream && player ? (
-                <View style={StyleSheet.absoluteFill}>
-                  {/* Unmount portrait VideoView while in fullscreen so FullscreenVideoOverlay owns surface without freeze */}
-                  {!isFullscreen && (
-                    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                      <VideoView
-                        ref={watchVideoViewRef}
-                        key={`watch-video-${activeVideo.videoId}-${watchRemountKey}`}
-                        style={StyleSheet.absoluteFill}
-                        player={player}
-                        contentFit="contain"
-                        nativeControls={false}
-                        surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-                        allowsPictureInPicture={true}
-                        startsPictureInPictureAutomatically={true}
-                      />
-                    </View>
-                  )}
-
-                  <TouchableOpacity
-                    activeOpacity={1}
-                    onPress={toggleWatchControls}
-                    style={StyleSheet.absoluteFill}
-                  >
-                    {/* Watch Controls Overlay */}
-                    {showWatchControls && (
-                      <View style={styles.watchControlsOverlay}>
-                        <LinearGradient
-                          colors={['rgba(0,0,0,0.65)', 'transparent', 'rgba(0,0,0,0.7)']}
-                          style={StyleSheet.absoluteFill}
-                          pointerEvents="none"
-                        />
-
-                        {/* Top Bar: Chevron-down (collapse to miniplayer) & Actions */}
-                        <View style={styles.watchTopBar}>
-                          <TouchableOpacity
-                            onPress={handleCollapseToMini}
-                            style={styles.watchChevronBtn}
-                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                          >
-                            <Ionicons name="chevron-down" size={28} color="#ffffff" />
-                          </TouchableOpacity>
-
-                        <View style={styles.watchTopRightActions}>
-                          <TouchableOpacity
-                            style={styles.watchTopActionBtn}
-                            onPress={handleTriggerPiP}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <MaterialIcons name="picture-in-picture-alt" size={22} color="#ffffff" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.watchTopActionBtn}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <MaterialIcons name="cast" size={20} color="#ffffff" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.watchTopActionBtn}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <MaterialIcons name="closed-caption-off" size={22} color="#ffffff" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.watchTopActionBtn}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Ionicons name="settings-outline" size={20} color="#ffffff" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {/* Center Controls: Previous, Big Circular Play/Pause, Next */}
-                      <View style={styles.watchCenterControls}>
-                        <TouchableOpacity
-                          onPress={() => {
-                            handlePrevVideo();
-                            resetWatchControlsTimer();
-                          }}
-                          style={styles.watchPrevNextBtn}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                          <Ionicons name="play-skip-back" size={28} color="#ffffff" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            handleSeek(Math.max(0, currentTime - 10));
-                            resetWatchControlsTimer();
-                          }}
-                          style={styles.watchSecondarySeekBtn}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <MaterialIcons name="replay-10" size={30} color="#ffffff" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            handleTogglePlay();
-                            resetWatchControlsTimer();
-                          }}
-                          style={styles.watchPlayPauseBtn}
-                        >
-                          <Ionicons
-                            name={isVideoPlaying ? 'pause' : 'play'}
-                            size={36}
-                            color="#ffffff"
-                            style={!isVideoPlaying ? { marginLeft: 3 } : undefined}
-                          />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            handleSeek(Math.min(effectiveDuration, currentTime + 10));
-                            resetWatchControlsTimer();
-                          }}
-                          style={styles.watchSecondarySeekBtn}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <MaterialIcons name="forward-10" size={30} color="#ffffff" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => {
-                            handleNextVideo();
-                            resetWatchControlsTimer();
-                          }}
-                          style={styles.watchPrevNextBtn}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                          <Ionicons name="play-skip-forward" size={28} color="#ffffff" />
-                        </TouchableOpacity>
-                      </View>
-
-                      {/* Bottom Row of Video: Time Text & Fullscreen Button */}
-                      <View style={styles.watchBottomBar}>
-                        {activeVideo?.isLive || videoStream?.isLive ? (
-                          <View style={styles.watchLiveIndicator}>
-                            <View style={styles.liveDot} />
-                            <Text style={styles.watchLiveText}>LIVE</Text>
-                          </View>
-                        ) : (
-                          <Text style={styles.watchTimeText}>
-                            {formatTime(currentDisplayTime)} / {formatTime(effectiveDuration)}
-                          </Text>
-                        )}
-
-                        <TouchableOpacity
-                          onPress={handleEnterFullscreen}
-                          style={styles.watchFullscreenBtn}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <MaterialIcons name="fullscreen" size={26} color="#ffffff" />
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-              ) : (
-                <View style={styles.loadingStreamPlaceholder}>
-                  <ExpoImage
-                    source={{ uri: activeVideo.thumbnail }}
-                    style={StyleSheet.absoluteFill}
-                    contentFit="cover"
-                  />
-                  <View style={styles.loadingDimmer}>
-                    <ActivityIndicator size="large" color="#FF0000" />
-                    <Text style={styles.resolvingStreamText}>
-                      {isLoadingStream ? 'Connecting video stream...' : 'Preparing playback...'}
-                    </Text>
-                  </View>
-                </View>
-              )}
-            </View>
-
-            {/* Red Scrub Slider right below Video Canvas */}
-            <View style={styles.watchScrubberContainer}>
-              <Slider
-                style={styles.watchSlider}
-                minimumValue={0}
-                maximumValue={Math.max(1, effectiveDuration)}
-                value={currentDisplayTime}
-                minimumTrackTintColor="#FF0000"
-                maximumTrackTintColor="rgba(255, 255, 255, 0.25)"
-                thumbTintColor="#FF0000"
-                onSlidingStart={handleSlidingStart}
-                onValueChange={handleValueChange}
-                onSlidingComplete={handleSlidingComplete}
-              />
-            </View>
-
-            {/* Watch Details & Up Next ScrollView */}
-            <ScrollView
-              style={styles.watchDetailsScroll}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 40 }}
-            >
-              {/* Video Title */}
-              <Text style={styles.watchVideoTitle} numberOfLines={3}>
-                {activeVideo.title}
-              </Text>
-
-              {/* Video Stats */}
-              <View style={styles.watchStatsRow}>
-                {(activeVideo.isLive || videoStream?.isLive) && (
-                  <View style={styles.livePill}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.livePillText}>LIVE</Text>
-                  </View>
-                )}
-                <Text style={styles.watchVideoStats}>
-                  {activeVideo.viewCount || '10K views'}
-                  {activeVideo.publishedTime ? ` • ${activeVideo.publishedTime}` : ''}
-                </Text>
-              </View>
-
-              {/* Channel Row (Strictly Channel info, NO like/dislike/comments) */}
-              <View style={styles.watchChannelRow}>
-                {activeVideo.channelAvatar ? (
-                  <ExpoImage
-                    source={{ uri: activeVideo.channelAvatar }}
-                    style={styles.watchChannelAvatar}
-                    contentFit="cover"
-                  />
-                ) : (
-                  <View style={styles.watchChannelAvatarPlaceholder}>
-                    <Ionicons name="logo-youtube" size={18} color="#FF0000" />
-                  </View>
-                )}
-
-                <View style={styles.watchChannelTextCol}>
-                  <Text style={styles.watchChannelName} numberOfLines={1}>
-                    {activeVideo.author}
-                  </Text>
-                  <Text style={styles.watchChannelSubBadge}>Official Channel</Text>
-                </View>
-              </View>
-
-              <View style={styles.watchDivider} />
-
-              {/* Up Next / Related Videos Header */}
-              <View style={styles.upNextSectionHeader}>
-                <Text style={styles.upNextSectionTitle}>Up Next</Text>
-              </View>
-
-              {/* Up Next Cards */}
-              {upNextVideos.map((item: YouTubeVideoSearchResult) => (
-                <TouchableOpacity
-                  key={`upnext-${item.videoId}`}
-                  style={styles.upNextCard}
-                  onPress={() => handleSelectVideo(item)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.upNextThumbContainer}>
-                    <ExpoImage
-                      source={{ uri: item.thumbnail }}
-                      style={styles.upNextThumb}
-                      contentFit="cover"
-                    />
-                    {item.isLive ? (
-                      <View style={styles.upNextLiveBadge}>
-                        <View style={styles.liveDot} />
-                        <Text style={styles.liveText}>LIVE</Text>
-                      </View>
-                    ) : item.duration ? (
-                      <View style={styles.upNextDurationBadge}>
-                        <Text style={styles.upNextDurationText}>{item.duration}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={styles.upNextMetaCol}>
-                    <Text style={styles.upNextTitle} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.upNextSubtitle} numberOfLines={1}>
-                      {item.author}
-                      {item.viewCount ? ` • ${item.viewCount}` : ''}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </SafeAreaView>
-        </View>
-      )}
-
-      {/* Shared Fullscreen Video Overlay - Exact same logic, UI, and gestures */}
-      {isFullscreen && player && activeVideo && (
-        <FullscreenVideoOverlay
-          player={player}
-          isVisible={isFullscreen}
-          qualityBadge={videoStream?.qualityBadge || '1080p HD'}
-          title={activeVideo.title}
-          artist={activeVideo.author}
-          isPlaying={isVideoPlaying}
-          position={currentTime}
-          duration={effectiveDuration}
-          onTogglePlay={handleTogglePlay}
-          onSeekTo={handleSeek}
-          onExitFullscreen={handleExitFullscreen}
-          isLive={Boolean(activeVideo.isLive || videoStream?.isLive)}
-        />
-      )}
     </SafeAreaView>
   );
 };
@@ -2479,6 +1604,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     flex: 1,
+  },
+  splashContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#000000',
+    zIndex: 999999,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Floating Miniplayer Styles (Screenshot 2)

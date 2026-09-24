@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.0.7',
-  releaseTag: 'v5.0.7',
-  releaseName: 'Shorty v5.0.7: Live Stream Badge & Real-Time Viewer Indicators',
+  otaVersion: '5.0.9',
+  releaseTag: 'v5.0.9',
+  releaseName: 'Shorty v5.0.9: Glitch-Free Video Transitions & Swipe-Up Fullscreen Gestures',
   releaseDate: '2026-09-24',
   channel: 'preview',
 };

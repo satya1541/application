@@ -16,6 +16,8 @@ import { initCacheLifecycle } from '@/services/cacheManager';
 import { lockPortraitAsync } from '@/services/orientationManager';
 import { initUpdateManager } from '@/services/updateService';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { VideoPlayerProvider } from '@/contexts/VideoPlayerContext';
+import { GlobalVideoPlayer } from '@/components/video/GlobalVideoPlayer';
 import '../global.css';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -41,12 +43,15 @@ export default function RootLayout() {
           <NetworkProvider>
             <AuthProvider>
               <AudioProvider>
-                <StatusBar style="light" />
-                <Slot />
-                <AuthModal />
-                <ProfileModal />
-                <MonthlyReplayController />
-                <UpdateNotificationBanner />
+                <VideoPlayerProvider>
+                  <StatusBar style="light" />
+                  <Slot />
+                  <GlobalVideoPlayer />
+                  <AuthModal />
+                  <ProfileModal />
+                  <MonthlyReplayController />
+                  <UpdateNotificationBanner />
+                </VideoPlayerProvider>
               </AudioProvider>
             </AuthProvider>
           </NetworkProvider>
