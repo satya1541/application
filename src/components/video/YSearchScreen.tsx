@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+  Modal,
   View,
   Text,
   TextInput,
@@ -599,12 +600,17 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     >
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Intro Splash Video (Plays once on opening YSearch, then closes automatically) */}
-      {showSplash && (
-        <Animated.View
-          style={[styles.splashContainer, { opacity: splashOpacity }]}
-          pointerEvents={showSplash ? 'auto' : 'none'}
-        >
+      {/* 100% Edge-to-Edge Fullscreen Intro Splash Video */}
+      <Modal
+        visible={showSplash}
+        transparent={false}
+        statusBarTranslucent
+        hardwareAccelerated
+        animationType="fade"
+        onRequestClose={dismissSplash}
+      >
+        <StatusBar hidden />
+        <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]}>
           <TouchableOpacity
             activeOpacity={1}
             onPress={dismissSplash}
@@ -621,7 +627,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             />
           </TouchableOpacity>
         </Animated.View>
-      )}
+      </Modal>
 
       {/* YouTube-Styled Search Header */}
       <View style={[styles.headerContainer, { backgroundColor: bgHex }]}>
@@ -1606,13 +1612,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   splashContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#000000',
-    zIndex: 999999,
     justifyContent: 'center',
     alignItems: 'center',
   },
