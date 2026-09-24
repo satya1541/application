@@ -137,7 +137,10 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
   const channelThumbnails =
     vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail
       ?.thumbnails || [];
-  const channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
+  let channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
+  if (channelAvatar && channelAvatar.startsWith('//')) {
+    channelAvatar = `https:${channelAvatar}`;
+  }
 
   const duration = isLive ? 'LIVE' : (vr.lengthText?.simpleText || '');
   const durationSeconds = isLive ? 0 : parseDurationSeconds(duration);
@@ -150,7 +153,10 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
   const publishedTime = vr.publishedTimeText?.simpleText || '';
 
   const videoThumbnails = vr.thumbnail?.thumbnails || [];
-  const bestThumb = videoThumbnails[videoThumbnails.length - 1]?.url;
+  let bestThumb = videoThumbnails[videoThumbnails.length - 1]?.url;
+  if (bestThumb && bestThumb.startsWith('//')) {
+    bestThumb = `https:${bestThumb}`;
+  }
   const thumbnail =
     bestThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
@@ -664,7 +670,10 @@ export async function fetchTrendingYouTubeVideos(
           const durStr = durSec > 0 ? `${mins}:${secs < 10 ? '0' : ''}${secs}` : '';
 
           const thumbs = item.thumbnail?.thumbnails || [];
-          const bestThumb = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          let bestThumb = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          if (bestThumb.startsWith('//')) {
+            bestThumb = `https:${bestThumb}`;
+          }
 
           const rawArtist = Array.isArray(item.artists)
             ? item.artists.map((a: any) => a.name).join(', ')

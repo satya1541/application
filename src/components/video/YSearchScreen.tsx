@@ -43,6 +43,10 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 24;
+const CARD_THUMB_HEIGHT = Math.round((CARD_WIDTH * 9) / 16);
+const TRENDING_CARD_WIDTH = Math.round(Math.min(SCREEN_WIDTH * 0.68, 250));
+const TRENDING_THUMB_HEIGHT = Math.round((TRENDING_CARD_WIDTH * 9) / 16);
 
 interface YSearchScreenProps {
   onBack?: () => void;
@@ -663,6 +667,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             data={videos}
             keyExtractor={(item) => item.videoId}
             renderItem={renderVideoCard}
+            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
             contentContainerStyle={[
               styles.videoListContent,
               { paddingBottom: activeVideo && playerMode === 'mini' ? 170 : 80 },
@@ -715,6 +720,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             data={trendingVideos}
             keyExtractor={(item) => `trending-${item.videoId}`}
             renderItem={renderVideoCard}
+            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
             contentContainerStyle={[
               styles.videoListContent,
               { paddingBottom: activeVideo && playerMode === 'mini' ? 170 : 80 },
@@ -770,6 +776,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                       renderItem={renderTrendingCard}
                       contentContainerStyle={styles.carouselScroll}
                       removeClippedSubviews={false}
+                      extraData={`${activeVideo?.videoId}-${isVideoPlaying}`}
                     />
                   </View>
 
@@ -1162,22 +1169,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   trendingCard: {
-    width: Math.min(SCREEN_WIDTH * 0.68, 250),
+    width: TRENDING_CARD_WIDTH,
     marginRight: 12,
     borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1.5,
   },
   trendingThumbContainer: {
-    width: '100%',
-    aspectRatio: 16 / 9,
+    width: TRENDING_CARD_WIDTH,
+    height: TRENDING_THUMB_HEIGHT,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: 'hidden',
     backgroundColor: '#1a1a1a',
     position: 'relative',
   },
   trendingThumb: {
-    width: '100%',
-    height: '100%',
+    width: TRENDING_CARD_WIDTH,
+    height: TRENDING_THUMB_HEIGHT,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   rankBadge: {
     position: 'absolute',
@@ -1295,16 +1305,22 @@ const styles = StyleSheet.create({
   videoCard: {
     borderRadius: 12,
     marginBottom: 16,
-    overflow: 'hidden',
+    borderWidth: 1.5,
   },
   thumbnailContainer: {
-    width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#1f1f1f',
+    width: CARD_WIDTH,
+    height: CARD_THUMB_HEIGHT,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#1c1c1c',
+    position: 'relative',
   },
   thumbnailImage: {
-    width: '100%',
-    height: '100%',
+    width: CARD_WIDTH,
+    height: CARD_THUMB_HEIGHT,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   durationBadge: {
     position: 'absolute',
@@ -1378,6 +1394,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 10,
     alignItems: 'center',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
   },
   channelAvatar: {
     width: 36,
@@ -1834,26 +1852,33 @@ interface VideoCardItemProps {
 
 const VideoCardItem = React.memo<VideoCardItemProps>(
   ({ item, isActive, isPlaying, themeMode, surfaceHex, onSelect, onPlayPress }) => {
-    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+    const [thumbError, setThumbError] = useState(false);
+    const thumbUri = thumbError
+      ? `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
+      : (item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`);
 
     return (
       <TouchableOpacity
         style={[
           styles.videoCard,
-          { backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex },
-          isActive && { borderColor: '#FF0000', borderWidth: 1.5 },
+          {
+            backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex,
+            borderColor: isActive ? '#FF0000' : 'rgba(255, 255, 255, 0.06)',
+          },
         ]}
         onPress={() => onSelect(item)}
         activeOpacity={0.85}
       >
-        {/* 16:9 Video Thumbnail */}
+        {/* 16:9 Video Thumbnail with explicit width & height */}
         <View style={styles.thumbnailContainer}>
           <ExpoImage
+            key={`thumb-${item.videoId}-${thumbError ? 'fb' : 'main'}`}
             source={{ uri: thumbUri }}
             style={styles.thumbnailImage}
             contentFit="cover"
             cachePolicy="memory-disk"
-            transition={150}
+            transition={0}
+            onError={() => setThumbError(true)}
           />
 
           {/* YouTube Duration or LIVE Badge */}
@@ -1905,7 +1930,14 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
         </View>
 
         {/* Video Info Row */}
-        <View style={styles.videoInfoRow}>
+        <View
+          style={[
+            styles.videoInfoRow,
+            {
+              backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex,
+            },
+          ]}
+        >
           {/* Channel Avatar */}
           {item.channelAvatar ? (
             <ExpoImage
@@ -1913,6 +1945,7 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
               style={styles.channelAvatar}
               contentFit="cover"
               cachePolicy="memory-disk"
+              transition={0}
             />
           ) : (
             <View style={styles.channelAvatarPlaceholder}>
@@ -1953,14 +1986,7 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
         </View>
       </TouchableOpacity>
     );
-  },
-  (prev, next) => (
-    prev.item.videoId === next.item.videoId &&
-    prev.isActive === next.isActive &&
-    prev.isPlaying === next.isPlaying &&
-    prev.themeMode === next.themeMode &&
-    prev.surfaceHex === next.surfaceHex
-  )
+  }
 );
 
 interface TrendingCardItemProps {
@@ -1977,25 +2003,32 @@ const TrendingCardItem = React.memo<TrendingCardItemProps>(
     const isTop1 = rank === 1;
     const isTop2 = rank === 2;
     const isTop3 = rank === 3;
-    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+    const [thumbError, setThumbError] = useState(false);
+    const thumbUri = thumbError
+      ? `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
+      : (item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`);
 
     return (
       <TouchableOpacity
         style={[
           styles.trendingCard,
-          { backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex },
-          isActive && { borderColor: '#FF0000', borderWidth: 1.5 },
+          {
+            backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex,
+            borderColor: isActive ? '#FF0000' : 'rgba(255, 255, 255, 0.08)',
+          },
         ]}
         onPress={() => onSelect(item)}
         activeOpacity={0.85}
       >
         <View style={styles.trendingThumbContainer}>
           <ExpoImage
+            key={`trend-${item.videoId}-${thumbError ? 'fb' : 'main'}`}
             source={{ uri: thumbUri }}
             style={styles.trendingThumb}
             contentFit="cover"
             cachePolicy="memory-disk"
-            transition={150}
+            transition={0}
+            onError={() => setThumbError(true)}
           />
 
           {/* Rank Badge */}
@@ -2054,11 +2087,5 @@ const TrendingCardItem = React.memo<TrendingCardItemProps>(
         </View>
       </TouchableOpacity>
     );
-  },
-  (prev, next) => (
-    prev.item.videoId === next.item.videoId &&
-    prev.isActive === next.isActive &&
-    prev.themeMode === next.themeMode &&
-    prev.surfaceHex === next.surfaceHex
-  )
+  }
 );
