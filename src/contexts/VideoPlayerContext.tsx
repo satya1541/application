@@ -26,11 +26,22 @@ import {
 export type VideoPlayerMode = 'hidden' | 'mini' | 'full';
 
 const VIDEO_BUFFER_OPTIONS = {
-  preferredForwardBufferDuration: 60, // 60s forward buffer keeps playback completely uninterrupted
-  minBufferForPlayback: 2.0, // Buffer 2.0s before initial play / resume to absorb network jitter
+  preferredForwardBufferDuration: 18.0, // 18s provides rock-solid buffer against jitter while allowing cellular modem / WiFi to enter low-power sleep states
+  minBufferForPlayback: 1.5, // 1.5s quick initial startup
   waitsToMinimizeStalling: true, // Auto-buffers & resumes smoothly without stalling
-  prioritizeTimeOverSizeThreshold: false,
-  maxBufferBytes: 0, // 0 = automatic system-managed memory allocation
+  prioritizeTimeOverSizeThreshold: true, // Strict time bound prevents memory bloating & thermal accumulation
+  maxBufferBytes: 25 * 1024 * 1024, // 25 MB max buffer ceiling eliminates memory/VPU thermal stress
+};
+
+export interface VideoProgressType {
+  currentTime: number;
+  duration: number;
+}
+
+const VideoProgressContext = createContext<VideoProgressType>({ currentTime: 0, duration: 0 });
+
+export const useVideoProgress = (): VideoProgressType => {
+  return useContext(VideoProgressContext);
 };
 
 interface VideoPlayerContextType {
@@ -39,7 +50,6 @@ interface VideoPlayerContextType {
   videoStream: StandaloneVideoStreamDetails | null;
   playerMode: VideoPlayerMode;
   isVideoPlaying: boolean;
-  currentTime: number;
   duration: number;
   isLoadingStream: boolean;
   isFullscreen: boolean;
@@ -118,9 +128,9 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch {}
   }, [player]);
 
-  // Screen keep-awake when video is playing
+  // Screen keep-awake when video is actively playing in full watch view only
   useEffect(() => {
-    if (isVideoPlaying) {
+    if (isVideoPlaying && playerMode === 'full') {
       activateKeepAwakeAsync('global_video_player').catch(() => {});
     } else {
       deactivateKeepAwake('global_video_player').catch(() => {});
@@ -128,7 +138,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     return () => {
       deactivateKeepAwake('global_video_player').catch(() => {});
     };
-  }, [isVideoPlaying]);
+  }, [isVideoPlaying, playerMode]);
 
   // When audio songs from any other screen start playing, immediately pause video player
   useEffect(() => {
@@ -379,8 +389,10 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (player) {
       try {
         player.pause();
+        player.replace(null); // Release hardware MediaCodec decoder and tear down network streaming
       } catch {}
     }
+    deactivateKeepAwake('global_video_player').catch(() => {});
     if (isFullscreen) {
       setIsFullscreen(false);
       lockPortraitAsync().catch(() => {});
@@ -434,7 +446,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       videoStream,
       playerMode,
       isVideoPlaying,
-      currentTime,
       duration,
       isLoadingStream,
       isFullscreen,
@@ -461,7 +472,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       videoStream,
       playerMode,
       isVideoPlaying,
-      currentTime,
       duration,
       isLoadingStream,
       isFullscreen,
@@ -482,7 +492,18 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     ]
   );
 
-  return <VideoPlayerContext.Provider value={value}>{children}</VideoPlayerContext.Provider>;
+  const progressValue = useMemo(
+    () => ({ currentTime, duration }),
+    [currentTime, duration]
+  );
+
+  return (
+    <VideoPlayerContext.Provider value={value}>
+      <VideoProgressContext.Provider value={progressValue}>
+        {children}
+      </VideoProgressContext.Provider>
+    </VideoPlayerContext.Provider>
+  );
 };
 
 export const useVideoPlayerContext = (): VideoPlayerContextType => {

@@ -18,7 +18,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { VideoView } from 'expo-video';
-import { useVideoPlayerContext, type VideoPlayerMode } from '@/contexts/VideoPlayerContext';
+import { useVideoPlayerContext, useVideoProgress, type VideoPlayerMode } from '@/contexts/VideoPlayerContext';
 import { useAudio } from '@/contexts/AudioContext';
 import { FullscreenVideoOverlay } from '../player/FullscreenVideoOverlay';
 import { YouTubeVideoSearchResult } from '@/services/youtubeVideoSearchService';
@@ -36,6 +36,84 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
+// Isolated Miniplayer Progress Bar (only re-renders this tiny view, not the 15 UpNext cards)
+const MiniplayerProgressBar: React.FC<{
+  onPress: () => void;
+  duration: number;
+}> = React.memo(({ onPress, duration }) => {
+  const { currentTime } = useVideoProgress();
+  const widthPercent =
+    duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={styles.miniplayerProgressTrack}
+    >
+      <View
+        style={[
+          styles.miniplayerProgressFill,
+          { width: `${widthPercent}%` },
+        ]}
+      />
+    </TouchableOpacity>
+  );
+});
+
+// Isolated Watch Time Display (only re-renders time text)
+const WatchTimeDisplay: React.FC<{
+  duration: number;
+  isScrubbing: boolean;
+  scrubValue: number | null;
+}> = React.memo(({ duration, isScrubbing, scrubValue }) => {
+  const { currentTime } = useVideoProgress();
+  const displayTime = isScrubbing && scrubValue !== null ? scrubValue : currentTime;
+
+  return (
+    <Text style={styles.watchTimeText}>
+      {formatTime(displayTime)} / {formatTime(duration)}
+    </Text>
+  );
+});
+
+// Isolated Watch Scrubber Bar (only re-renders slider thumb/track)
+const WatchScrubberBar: React.FC<{
+  duration: number;
+  isScrubbing: boolean;
+  scrubValue: number | null;
+  onSlidingStart: (val?: number) => void;
+  onValueChange: (val: number) => void;
+  onSlidingComplete: (val: number) => void;
+}> = React.memo(({
+  duration,
+  isScrubbing,
+  scrubValue,
+  onSlidingStart,
+  onValueChange,
+  onSlidingComplete,
+}) => {
+  const { currentTime } = useVideoProgress();
+  const displayTime = isScrubbing && scrubValue !== null ? scrubValue : currentTime;
+
+  return (
+    <View style={styles.watchScrubberContainer}>
+      <Slider
+        style={styles.watchSlider}
+        minimumValue={0}
+        maximumValue={Math.max(1, duration)}
+        value={displayTime}
+        minimumTrackTintColor="#FF0000"
+        maximumTrackTintColor="rgba(255, 255, 255, 0.25)"
+        thumbTintColor="#FF0000"
+        onSlidingStart={onSlidingStart}
+        onValueChange={onValueChange}
+        onSlidingComplete={onSlidingComplete}
+      />
+    </View>
+  );
+});
+
 export const GlobalVideoPlayer: React.FC = () => {
   const insets = useSafeAreaInsets();
   const {
@@ -44,7 +122,6 @@ export const GlobalVideoPlayer: React.FC = () => {
     videoStream,
     playerMode,
     isVideoPlaying,
-    currentTime,
     duration,
     isLoadingStream,
     isFullscreen,
@@ -351,9 +428,9 @@ export const GlobalVideoPlayer: React.FC = () => {
       if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
       isScrubbingRef.current = true;
       setIsScrubbing(true);
-      setScrubValue(val !== undefined ? val : currentTime);
+      setScrubValue(val !== undefined ? val : (player?.currentTime ?? 0));
     },
-    [currentTime]
+    [player]
   );
 
   const handleValueChange = useCallback((val: number) => {
@@ -380,7 +457,6 @@ export const GlobalVideoPlayer: React.FC = () => {
   }
 
   const effectiveDuration = duration > 0 ? duration : activeVideo?.durationSeconds || 0;
-  const currentDisplayTime = isScrubbing && scrubValue !== null ? scrubValue : currentTime;
   const isLiveVideo = Boolean(activeVideo?.isLive || videoStream?.isLive);
 
   // Up next videos from current playlist
@@ -457,33 +533,12 @@ export const GlobalVideoPlayer: React.FC = () => {
           </View>
 
           {/* Thin Red Progress Bar Indicator */}
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={handleMaximize}
-            style={styles.miniplayerProgressTrack}
-          >
-            <View
-              style={[
-                styles.miniplayerProgressFill,
-                {
-                  width: `${Math.min(
-                    100,
-                    Math.max(
-                      0,
-                      effectiveDuration > 0
-                        ? (currentDisplayTime / effectiveDuration) * 100
-                        : 0
-                    )
-                  )}%`,
-                },
-              ]}
-            />
-          </TouchableOpacity>
+          <MiniplayerProgressBar onPress={handleMaximize} duration={effectiveDuration} />
 
           {/* Mini Control Bar: Replay 10s, Play/Pause, Forward 10s */}
           <View style={styles.miniplayerControlsBar}>
             <TouchableOpacity
-              onPress={() => seekTo(Math.max(0, currentTime - 10))}
+              onPress={() => seekTo(Math.max(0, (player?.currentTime ?? 0) - 10))}
               style={styles.miniControlBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -504,7 +559,7 @@ export const GlobalVideoPlayer: React.FC = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => seekTo(Math.min(effectiveDuration, currentTime + 10))}
+              onPress={() => seekTo(Math.min(effectiveDuration, (player?.currentTime ?? 0) + 10))}
               style={styles.miniControlBtn}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
@@ -628,7 +683,7 @@ export const GlobalVideoPlayer: React.FC = () => {
 
                           <TouchableOpacity
                             onPress={() => {
-                              seekTo(Math.max(0, currentTime - 10));
+                              seekTo(Math.max(0, (player?.currentTime ?? 0) - 10));
                               resetWatchControlsTimer();
                             }}
                             style={styles.watchSecondarySeekBtn}
@@ -654,7 +709,7 @@ export const GlobalVideoPlayer: React.FC = () => {
 
                           <TouchableOpacity
                             onPress={() => {
-                              seekTo(Math.min(effectiveDuration, currentTime + 10));
+                              seekTo(Math.min(effectiveDuration, (player?.currentTime ?? 0) + 10));
                               resetWatchControlsTimer();
                             }}
                             style={styles.watchSecondarySeekBtn}
@@ -683,9 +738,11 @@ export const GlobalVideoPlayer: React.FC = () => {
                               <Text style={styles.watchLiveText}>LIVE</Text>
                             </View>
                           ) : (
-                            <Text style={styles.watchTimeText}>
-                              {formatTime(currentDisplayTime)} / {formatTime(effectiveDuration)}
-                            </Text>
+                            <WatchTimeDisplay
+                              duration={effectiveDuration}
+                              isScrubbing={isScrubbing}
+                              scrubValue={scrubValue}
+                            />
                           )}
 
                           <TouchableOpacity
@@ -719,20 +776,14 @@ export const GlobalVideoPlayer: React.FC = () => {
           </View>
 
           {/* Red Scrub Slider right below Video Canvas */}
-            <View style={styles.watchScrubberContainer}>
-              <Slider
-                style={styles.watchSlider}
-                minimumValue={0}
-                maximumValue={Math.max(1, effectiveDuration)}
-                value={currentDisplayTime}
-                minimumTrackTintColor="#FF0000"
-                maximumTrackTintColor="rgba(255, 255, 255, 0.25)"
-                thumbTintColor="#FF0000"
-                onSlidingStart={handleSlidingStart}
-                onValueChange={handleValueChange}
-                onSlidingComplete={handleSlidingComplete}
-              />
-            </View>
+          <WatchScrubberBar
+            duration={effectiveDuration}
+            isScrubbing={isScrubbing}
+            scrubValue={scrubValue}
+            onSlidingStart={handleSlidingStart}
+            onValueChange={handleValueChange}
+            onSlidingComplete={handleSlidingComplete}
+          />
 
             {/* Watch Details & Up Next ScrollView */}
             <ScrollView
@@ -842,7 +893,6 @@ export const GlobalVideoPlayer: React.FC = () => {
           title={activeVideo.title}
           artist={activeVideo.author}
           isPlaying={isVideoPlaying}
-          position={currentTime}
           duration={effectiveDuration}
           onTogglePlay={togglePlay}
           onSeekTo={seekTo}

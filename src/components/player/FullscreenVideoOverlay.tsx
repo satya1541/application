@@ -20,6 +20,7 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudio, useAudioProgress } from '@/contexts/AudioContext';
+import { useVideoProgress } from '@/contexts/VideoPlayerContext';
 import { lockPortraitAsync, addOrientationListener } from '@/services/orientationManager';
 
 interface FullscreenVideoOverlayProps {
@@ -66,10 +67,17 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const insets = useSafeAreaInsets();
   const { currentSong, isPlaying: audioIsPlaying, togglePlay: audioTogglePlay, seekTo: audioSeekTo } = useAudio();
   const { position: audioPosition, duration: audioDuration } = useAudioProgress();
+  const { currentTime: videoPosition, duration: videoDuration } = useVideoProgress();
 
   const isPlaying = overrideIsPlaying !== undefined ? overrideIsPlaying : audioIsPlaying;
-  const position = overridePosition !== undefined ? overridePosition : audioPosition;
-  const duration = overrideDuration !== undefined ? overrideDuration : audioDuration;
+  const position =
+    overridePosition !== undefined
+      ? overridePosition
+      : (player ? videoPosition : audioPosition);
+  const duration =
+    overrideDuration !== undefined
+      ? overrideDuration
+      : (player ? (videoDuration || 0) : audioDuration);
   const togglePlay = overrideTogglePlay || audioTogglePlay;
   const seekTo = overrideSeekTo || audioSeekTo;
   const displayTitle = overrideTitle || currentSong?.name || 'Now Playing';

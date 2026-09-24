@@ -131,6 +131,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       setShowSplash(false);
       try {
         splashPlayer.pause();
+        splashPlayer.replace(null); // Free hardware MediaCodec and memory immediately
       } catch {}
     });
   }, [splashOpacity, splashPlayer]);
@@ -167,6 +168,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return () => {
       try {
         splashPlayer.pause();
+        splashPlayer.replace(null); // Free hardware MediaCodec decoder and resources
       } catch {}
     };
   }, [splashPlayer]);
@@ -188,13 +190,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       const page = await searchYouTubeVideosWithContinuation(clean, 35);
       setVideos(page.videos);
       setNextPageToken(page.continuationToken);
-      // Pre-warm top 2 search results in background so tapping them plays INSTANTLY
-      if (page.videos[0]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(page.videos[0].videoId).catch(() => {});
-      }
-      if (page.videos[1]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(page.videos[1].videoId).catch(() => {});
-      }
     } catch (err) {
       console.warn('YSearch performSearch failed:', err);
     } finally {
@@ -257,13 +252,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             setUserFeedNeedsReauth(false);
             setUserFeedError(null);
           }
-          // Pre-warm top 2
-          if (feedResult.videos[0]?.videoId) {
-            resolveYouTubeStandaloneVideoStream(feedResult.videos[0].videoId).catch(() => {});
-          }
-          if (feedResult.videos[1]?.videoId) {
-            resolveYouTubeStandaloneVideoStream(feedResult.videos[1].videoId).catch(() => {});
-          }
         } else {
           setTrendingVideos([]);
           if (feedResult.notConnected) {
@@ -280,12 +268,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       } else {
         const results = await fetchTrendingYouTubeVideos(catId, 30);
         setTrendingVideos(results);
-        if (results[0]?.videoId) {
-          resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
-        }
-        if (results[1]?.videoId) {
-          resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
-        }
       }
     } catch (err: any) {
       console.warn('loadTrending failed:', err);

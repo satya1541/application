@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.1.3',
-  releaseTag: 'v5.1.3',
-  releaseName: 'Shorty v5.1.3: Fix Android Video Card Canvas Clipping & Resilient Thumbnails',
+  otaVersion: '5.1.4',
+  releaseTag: 'v5.1.4',
+  releaseName: 'Shorty v5.1.4: Resolve Heating & Battery Drain via Re-render Isolation & Hardware Decoder Cleanup',
   releaseDate: '2026-09-24',
   channel: 'preview',
 };
