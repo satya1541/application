@@ -396,130 +396,24 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return () => backHandler.remove();
   }, [showSuggestions, onBack]);
 
-  // Render YouTube Search Result Video Card
-  const renderVideoCard = ({ item }: { item: YouTubeVideoSearchResult }) => {
-    const isThisActive = activeVideo?.videoId === item.videoId;
-    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
-    const fallbackMq = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.videoCard,
-          { backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex },
-          isThisActive && { borderColor: '#FF0000', borderWidth: 1.5 },
-        ]}
-        onPress={() => handleSelectVideo(item)}
-        activeOpacity={0.85}
-      >
-        {/* 16:9 Video Thumbnail */}
-        <View style={styles.thumbnailContainer}>
-          <ExpoImage
-            source={{ uri: thumbUri }}
-            placeholder={{ uri: fallbackMq }}
-            style={styles.thumbnailImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.videoId}
-          />
-
-          {/* YouTube Duration or LIVE Badge */}
-          {item.isLive ? (
-            <View style={styles.liveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-          ) : item.duration ? (
-            <View style={styles.durationBadge}>
-              <Text style={styles.durationText}>{item.duration}</Text>
-            </View>
-          ) : null}
-
-          {/* Optional Rank Badge for ranked lists */}
-          {item.rank ? (
-            <View
-              style={[
-                styles.rankBadge,
-                item.rank === 1 && styles.rankBadgeGold,
-                item.rank === 2 && styles.rankBadgeSilver,
-                item.rank === 3 && styles.rankBadgeBronze,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.rankBadgeText,
-                  item.rank <= 3 && styles.rankBadgeTextTop,
-                ]}
-              >
-                #{item.rank}
-              </Text>
-            </View>
-          ) : null}
-
-          {/* Active Playing Badge */}
-          {isThisActive && (
-            <View style={styles.nowPlayingIndicator}>
-              <Ionicons
-                name={isVideoPlaying ? 'volume-high' : 'pause'}
-                size={14}
-                color="#ffffff"
-              />
-              <Text style={styles.nowPlayingText}>
-                {isVideoPlaying ? 'PLAYING' : 'PAUSED'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Video Info Row */}
-        <View style={styles.videoInfoRow}>
-          {/* Channel Avatar */}
-          {item.channelAvatar ? (
-            <ExpoImage
-              source={{ uri: item.channelAvatar }}
-              style={styles.channelAvatar}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-            />
-          ) : (
-            <View style={styles.channelAvatarPlaceholder}>
-              <Ionicons name="logo-youtube" size={16} color="#FF0000" />
-            </View>
-          )}
-
-          {/* Title & Channel Subtitle */}
-          <View style={styles.videoMetaCol}>
-            <Text
-              style={[
-                styles.videoTitle,
-                isThisActive && { color: '#FF0000', fontWeight: '700' },
-              ]}
-              numberOfLines={2}
-            >
-              {item.title}
-            </Text>
-            <Text style={styles.videoSubtitle} numberOfLines={1}>
-              {item.author}
-              {item.viewCount ? ` • ${item.viewCount}` : ''}
-              {item.publishedTime ? ` • ${item.publishedTime}` : ''}
-            </Text>
-          </View>
-
-          {/* Quick Play Icon */}
-          <TouchableOpacity
-            style={styles.cardActionBtn}
-            onPress={() => handleCardPlayPress(item)}
-          >
-            <Ionicons
-              name={isThisActive && isVideoPlaying ? 'pause-circle' : 'play-circle'}
-              size={32}
-              color={isThisActive ? '#FF0000' : '#ffffff'}
-            />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  // Render YouTube Search Result Video Card (delegates to memoized VideoCardItem)
+  const renderVideoCard = useCallback(
+    ({ item }: { item: YouTubeVideoSearchResult }) => {
+      const isThisActive = activeVideo?.videoId === item.videoId;
+      return (
+        <VideoCardItem
+          item={item}
+          isActive={isThisActive}
+          isPlaying={isThisActive && isVideoPlaying}
+          themeMode={themeMode}
+          surfaceHex={surfaceHex}
+          onSelect={handleSelectVideo}
+          onPlayPress={handleCardPlayPress}
+        />
+      );
+    },
+    [activeVideo?.videoId, isVideoPlaying, themeMode, surfaceHex, handleSelectVideo, handleCardPlayPress]
+  );
 
   // Active Category Object
   const currentCategoryObj = useMemo(() => {
@@ -527,99 +421,22 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return allCats.find((c) => c.id === selectedCategory) || TRENDING_CATEGORIES[0];
   }, [selectedCategory, isYouTubeLinked, USER_FEED_CATEGORIES]);
 
-  // Render Trending Carousel Card (Horizontal)
-  const renderTrendingCard = ({ item }: { item: YouTubeVideoSearchResult }) => {
-    const isThisActive = activeVideo?.videoId === item.videoId;
-    const rank = item.rank || 1;
-    const isTop1 = rank === 1;
-    const isTop2 = rank === 2;
-    const isTop3 = rank === 3;
-    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
-    const fallbackMq = `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`;
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.trendingCard,
-          { backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex },
-          isThisActive && { borderColor: '#FF0000', borderWidth: 1.5 },
-        ]}
-        onPress={() => handleSelectVideo(item)}
-        activeOpacity={0.85}
-      >
-        <View style={styles.trendingThumbContainer}>
-          <ExpoImage
-            source={{ uri: thumbUri }}
-            placeholder={{ uri: fallbackMq }}
-            style={styles.trendingThumb}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.videoId}
-          />
-
-          {/* Rank Badge */}
-          <View
-            style={[
-              styles.rankBadge,
-              isTop1 && styles.rankBadgeGold,
-              isTop2 && styles.rankBadgeSilver,
-              isTop3 && styles.rankBadgeBronze,
-            ]}
-          >
-            <Text
-              style={[
-                styles.rankBadgeText,
-                (isTop1 || isTop2 || isTop3) && styles.rankBadgeTextTop,
-              ]}
-            >
-              #{rank}
-            </Text>
-          </View>
-
-          {/* Duration or LIVE Badge */}
-          {item.isLive ? (
-            <View style={styles.trendingLiveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-          ) : item.duration ? (
-            <View style={styles.trendingDurationBadge}>
-              <Text style={styles.trendingDurationText}>{item.duration}</Text>
-            </View>
-          ) : null}
-
-          {/* Active Playing Badge */}
-          {isThisActive && (
-            <View style={styles.trendingPlayingOverlay}>
-              <Ionicons
-                name={isVideoPlaying ? 'volume-high' : 'pause'}
-                size={14}
-                color="#ffffff"
-              />
-              <Text style={styles.trendingPlayingText}>
-                {isVideoPlaying ? 'PLAYING' : 'PAUSED'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.trendingMeta}>
-          <Text
-            style={[
-              styles.trendingTitle,
-              isThisActive && { color: '#FF0000', fontWeight: '700' },
-            ]}
-            numberOfLines={2}
-          >
-            {item.title}
-          </Text>
-          <Text style={styles.trendingAuthor} numberOfLines={1}>
-            {item.author}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  // Render Trending Carousel Card (Horizontal, delegates to memoized TrendingCardItem)
+  const renderTrendingCard = useCallback(
+    ({ item }: { item: YouTubeVideoSearchResult }) => {
+      const isThisActive = activeVideo?.videoId === item.videoId;
+      return (
+        <TrendingCardItem
+          item={item}
+          isActive={isThisActive}
+          themeMode={themeMode}
+          surfaceHex={surfaceHex}
+          onSelect={handleSelectVideo}
+        />
+      );
+    },
+    [activeVideo?.videoId, themeMode, surfaceHex, handleSelectVideo]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: '#000000' }}>
@@ -852,6 +669,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            removeClippedSubviews={false}
+            windowSize={11}
+            maxToRenderPerBatch={10}
+            initialNumToRender={8}
             onScrollBeginDrag={() => {
               setShowSuggestions(false);
               Keyboard.dismiss();
@@ -900,6 +721,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            removeClippedSubviews={false}
+            windowSize={11}
+            maxToRenderPerBatch={10}
+            initialNumToRender={8}
             ListHeaderComponent={
               trendingVideos.length > 0 ? (
                 <View>
@@ -944,6 +769,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                       keyExtractor={(item) => `carousel-${item.videoId}`}
                       renderItem={renderTrendingCard}
                       contentContainerStyle={styles.carouselScroll}
+                      removeClippedSubviews={false}
                     />
                   </View>
 
@@ -1991,3 +1817,248 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+// ============================================================================
+// MEMOIZED VIDEO CARD COMPONENTS (Prevent Android Card/Thumbnail Blanking)
+// ============================================================================
+
+interface VideoCardItemProps {
+  item: YouTubeVideoSearchResult;
+  isActive: boolean;
+  isPlaying: boolean;
+  themeMode: string;
+  surfaceHex: string;
+  onSelect: (item: YouTubeVideoSearchResult) => void;
+  onPlayPress: (item: YouTubeVideoSearchResult) => void;
+}
+
+const VideoCardItem = React.memo<VideoCardItemProps>(
+  ({ item, isActive, isPlaying, themeMode, surfaceHex, onSelect, onPlayPress }) => {
+    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.videoCard,
+          { backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex },
+          isActive && { borderColor: '#FF0000', borderWidth: 1.5 },
+        ]}
+        onPress={() => onSelect(item)}
+        activeOpacity={0.85}
+      >
+        {/* 16:9 Video Thumbnail */}
+        <View style={styles.thumbnailContainer}>
+          <ExpoImage
+            source={{ uri: thumbUri }}
+            style={styles.thumbnailImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={150}
+          />
+
+          {/* YouTube Duration or LIVE Badge */}
+          {item.isLive ? (
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.duration ? (
+            <View style={styles.durationBadge}>
+              <Text style={styles.durationText}>{item.duration}</Text>
+            </View>
+          ) : null}
+
+          {/* Optional Rank Badge for ranked lists */}
+          {item.rank ? (
+            <View
+              style={[
+                styles.rankBadge,
+                item.rank === 1 && styles.rankBadgeGold,
+                item.rank === 2 && styles.rankBadgeSilver,
+                item.rank === 3 && styles.rankBadgeBronze,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.rankBadgeText,
+                  item.rank <= 3 && styles.rankBadgeTextTop,
+                ]}
+              >
+                #{item.rank}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* Active Playing Badge */}
+          {isActive && (
+            <View style={styles.nowPlayingIndicator}>
+              <Ionicons
+                name={isPlaying ? 'volume-high' : 'pause'}
+                size={14}
+                color="#ffffff"
+              />
+              <Text style={styles.nowPlayingText}>
+                {isPlaying ? 'PLAYING' : 'PAUSED'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Video Info Row */}
+        <View style={styles.videoInfoRow}>
+          {/* Channel Avatar */}
+          {item.channelAvatar ? (
+            <ExpoImage
+              source={{ uri: item.channelAvatar }}
+              style={styles.channelAvatar}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+            />
+          ) : (
+            <View style={styles.channelAvatarPlaceholder}>
+              <Ionicons name="logo-youtube" size={16} color="#FF0000" />
+            </View>
+          )}
+
+          {/* Title & Channel Subtitle */}
+          <View style={styles.videoMetaCol}>
+            <Text
+              style={[
+                styles.videoTitle,
+                isActive && { color: '#FF0000', fontWeight: '700' },
+              ]}
+              numberOfLines={2}
+            >
+              {item.title}
+            </Text>
+            <Text style={styles.videoSubtitle} numberOfLines={1}>
+              {item.author}
+              {item.viewCount ? ` • ${item.viewCount}` : ''}
+              {item.publishedTime ? ` • ${item.publishedTime}` : ''}
+            </Text>
+          </View>
+
+          {/* Quick Play Icon */}
+          <TouchableOpacity
+            style={styles.cardActionBtn}
+            onPress={() => onPlayPress(item)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={isActive && isPlaying ? 'pause-circle' : 'play-circle'}
+              size={32}
+              color={isActive ? '#FF0000' : '#ffffff'}
+            />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+  (prev, next) => (
+    prev.item.videoId === next.item.videoId &&
+    prev.isActive === next.isActive &&
+    prev.isPlaying === next.isPlaying &&
+    prev.themeMode === next.themeMode &&
+    prev.surfaceHex === next.surfaceHex
+  )
+);
+
+interface TrendingCardItemProps {
+  item: YouTubeVideoSearchResult;
+  isActive: boolean;
+  themeMode: string;
+  surfaceHex: string;
+  onSelect: (item: YouTubeVideoSearchResult) => void;
+}
+
+const TrendingCardItem = React.memo<TrendingCardItemProps>(
+  ({ item, isActive, themeMode, surfaceHex, onSelect }) => {
+    const rank = item.rank || 1;
+    const isTop1 = rank === 1;
+    const isTop2 = rank === 2;
+    const isTop3 = rank === 3;
+    const thumbUri = item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.trendingCard,
+          { backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex },
+          isActive && { borderColor: '#FF0000', borderWidth: 1.5 },
+        ]}
+        onPress={() => onSelect(item)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.trendingThumbContainer}>
+          <ExpoImage
+            source={{ uri: thumbUri }}
+            style={styles.trendingThumb}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={150}
+          />
+
+          {/* Rank Badge */}
+          <View
+            style={[
+              styles.rankBadge,
+              isTop1 && styles.rankBadgeGold,
+              isTop2 && styles.rankBadgeSilver,
+              isTop3 && styles.rankBadgeBronze,
+            ]}
+          >
+            <Text
+              style={[
+                styles.rankBadgeText,
+                (isTop1 || isTop2 || isTop3) && styles.rankBadgeTextTop,
+              ]}
+            >
+              #{rank}
+            </Text>
+          </View>
+
+          {/* Duration or LIVE Badge */}
+          {item.isLive ? (
+            <View style={styles.trendingLiveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.duration ? (
+            <View style={styles.trendingDurationBadge}>
+              <Text style={styles.trendingDurationText}>{item.duration}</Text>
+            </View>
+          ) : null}
+
+          {/* Active Playing Badge */}
+          {isActive && (
+            <View style={styles.trendingPlayingOverlay}>
+              <Ionicons name="volume-high" size={14} color="#ffffff" />
+              <Text style={styles.trendingPlayingText}>PLAYING</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.trendingMeta}>
+          <Text
+            style={[
+              styles.trendingTitle,
+              isActive && { color: '#FF0000', fontWeight: '700' },
+            ]}
+            numberOfLines={2}
+          >
+            {item.title}
+          </Text>
+          <Text style={styles.trendingAuthor} numberOfLines={1}>
+            {item.author}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  },
+  (prev, next) => (
+    prev.item.videoId === next.item.videoId &&
+    prev.isActive === next.isActive &&
+    prev.themeMode === next.themeMode &&
+    prev.surfaceHex === next.surfaceHex
+  )
+);
