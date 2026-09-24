@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -108,12 +107,21 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     p.play();
   });
 
+  // Pause background audio when splash begins
+  useEffect(() => {
+    if (isAudioPlaying) {
+      try {
+        pauseBackgroundAudio();
+      } catch {}
+    }
+  }, []);
+
   const dismissSplash = useCallback(() => {
     if (splashDismissedRef.current) return;
     splashDismissedRef.current = true;
     Animated.timing(splashOpacity, {
       toValue: 0,
-      duration: 300,
+      duration: 350,
       useNativeDriver: true,
     }).start(() => {
       setShowSplash(false);
@@ -128,16 +136,36 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     const sub = splashPlayer.addListener('playToEnd', () => {
       dismissSplash();
     });
-    // Safety auto-dismiss fallback timer (4.0s)
+    // Safety auto-dismiss fallback timer (9.5s since video duration is 8.0s)
     const fallbackTimer = setTimeout(() => {
       dismissSplash();
-    }, 4000);
+    }, 9500);
 
     return () => {
       sub.remove();
       clearTimeout(fallbackTimer);
     };
   }, [splashPlayer, dismissSplash]);
+
+  // Back handler during splash to dismiss smoothly instead of abruptly exiting
+  useEffect(() => {
+    if (!showSplash) return;
+    const backAction = () => {
+      dismissSplash();
+      return true;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [showSplash, dismissSplash]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      try {
+        splashPlayer.pause();
+      } catch {}
+    };
+  }, [splashPlayer]);
 
   // YouTube video search
   const performSearch = useCallback(async (searchQuery: string) => {
@@ -594,43 +622,19 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   };
 
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: bgHex }]}
-      edges={['top']}
-    >
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+    <View style={{ flex: 1, backgroundColor: '#000000' }}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#000000"
+        translucent={Platform.OS === 'android'}
+      />
 
-      {/* 100% Edge-to-Edge Fullscreen Intro Splash Video */}
-      <Modal
-        visible={showSplash}
-        transparent={false}
-        statusBarTranslucent
-        hardwareAccelerated
-        animationType="fade"
-        onRequestClose={dismissSplash}
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: bgHex }]}
+        edges={['top']}
       >
-        <StatusBar hidden />
-        <Animated.View style={[styles.splashContainer, { opacity: splashOpacity }]}>
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={dismissSplash}
-            style={StyleSheet.absoluteFill}
-          >
-            <VideoView
-              player={splashPlayer}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              nativeControls={false}
-              surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-              allowsPictureInPicture={false}
-              startsPictureInPictureAutomatically={false}
-            />
-          </TouchableOpacity>
-        </Animated.View>
-      </Modal>
-
-      {/* YouTube-Styled Search Header */}
-      <View style={[styles.headerContainer, { backgroundColor: bgHex }]}>
+        {/* YouTube-Styled Search Header */}
+        <View style={[styles.headerContainer, { backgroundColor: bgHex }]}>
         <View style={styles.searchTopRow}>
           {onBack && (
             <TouchableOpacity
@@ -1122,6 +1126,38 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       </View>
 
     </SafeAreaView>
+
+    {/* 100% Edge-to-Edge Fullscreen Intro Splash Video (No Modal, Seamless In-Hierarchy Dissolve) */}
+    {showSplash && (
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#000000',
+            opacity: splashOpacity,
+            zIndex: 999999,
+          },
+        ]}
+        pointerEvents={splashDismissedRef.current ? 'none' : 'auto'}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={dismissSplash}
+          style={StyleSheet.absoluteFill}
+        >
+          <VideoView
+            player={splashPlayer}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+            nativeControls={false}
+            surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+            allowsPictureInPicture={false}
+            startsPictureInPictureAutomatically={false}
+          />
+        </TouchableOpacity>
+      </Animated.View>
+    )}
+  </View>
   );
 };
 
