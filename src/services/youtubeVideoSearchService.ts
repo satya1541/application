@@ -17,6 +17,7 @@ export interface YouTubeVideoSearchResult {
   publishedTime: string;
   thumbnail: string;
   rank?: number;
+  isLive?: boolean;
 }
 
 export interface StandaloneVideoStreamDetails {
@@ -27,6 +28,7 @@ export interface StandaloneVideoStreamDetails {
   durationSeconds: number;
   qualityBadge: string;
   thumbnailUrl: string;
+  isLive?: boolean;
 }
 
 const videoStreamCache = new Map<string, { details: StandaloneVideoStreamDetails; expiresAt: number }>();
@@ -102,6 +104,26 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
   const videoId = vr.videoId;
   if (!videoId || typeof videoId !== 'string') return null;
 
+  const isLive = Boolean(
+    vr.badges?.some(
+      (b: any) =>
+        b.metadataBadgeRenderer?.style?.includes('LIVE') ||
+        b.metadataBadgeRenderer?.label?.toLowerCase() === 'live' ||
+        b.metadataBadgeRenderer?.icon?.iconType === 'LIVE'
+    ) ||
+    vr.thumbnailOverlays?.some(
+      (to: any) =>
+        to.thumbnailOverlayTimeStatusRenderer?.style === 'LIVE' ||
+        to.thumbnailOverlayTimeStatusRenderer?.text?.runs?.some(
+          (r: any) => r.text?.toLowerCase() === 'live'
+        )
+    ) ||
+    (typeof vr.viewCountText?.runs?.[1]?.text === 'string' &&
+      vr.viewCountText.runs[1].text.toLowerCase().includes('watching')) ||
+    (typeof vr.shortViewCountText?.runs?.[1]?.text === 'string' &&
+      vr.shortViewCountText.runs[1].text.toLowerCase().includes('watching'))
+  );
+
   const title =
     vr.title?.runs?.map((r: any) => r.text).join('') ||
     vr.title?.simpleText ||
@@ -117,11 +139,13 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
       ?.thumbnails || [];
   const channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
 
-  const duration = vr.lengthText?.simpleText || '';
-  const durationSeconds = parseDurationSeconds(duration);
+  const duration = isLive ? 'LIVE' : (vr.lengthText?.simpleText || '');
+  const durationSeconds = isLive ? 0 : parseDurationSeconds(duration);
   const viewCount =
     vr.shortViewCountText?.simpleText ||
     vr.viewCountText?.simpleText ||
+    vr.shortViewCountText?.runs?.map((r: any) => r.text).join('') ||
+    vr.viewCountText?.runs?.map((r: any) => r.text).join('') ||
     '';
   const publishedTime = vr.publishedTimeText?.simpleText || '';
 
@@ -141,6 +165,7 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
     viewCount,
     publishedTime,
     thumbnail,
+    isLive,
   };
 }
 
@@ -463,14 +488,20 @@ export async function resolveYouTubeStandaloneVideoStream(
       qualityBadge = '720p HD';
     }
 
+    const isLiveStream = Boolean(
+      data?.videoDetails?.isLive ||
+      data?.videoDetails?.isLiveContent
+    );
+
     const details: StandaloneVideoStreamDetails = {
       videoId: cleanId,
       hlsUrl,
       title,
       author,
-      durationSeconds,
+      durationSeconds: isLiveStream ? 0 : durationSeconds,
       qualityBadge,
       thumbnailUrl,
+      isLive: isLiveStream,
     };
 
     // Cache with expiry

@@ -864,8 +864,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             cachePolicy="memory-disk"
           />
 
-          {/* YouTube Duration Badge */}
-          {item.duration ? (
+          {/* YouTube Duration or LIVE Badge */}
+          {item.isLive ? (
+            <View style={styles.liveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.duration ? (
             <View style={styles.durationBadge}>
               <Text style={styles.durationText}>{item.duration}</Text>
             </View>
@@ -1009,8 +1014,13 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             </Text>
           </View>
 
-          {/* Duration Badge */}
-          {item.duration ? (
+          {/* Duration or LIVE Badge */}
+          {item.isLive ? (
+            <View style={styles.trendingLiveBadge}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          ) : item.duration ? (
             <View style={styles.trendingDurationBadge}>
               <Text style={styles.trendingDurationText}>{item.duration}</Text>
             </View>
@@ -1585,6 +1595,14 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               )}
             </TouchableOpacity>
 
+            {/* LIVE Badge on Floating Miniplayer */}
+            {(activeVideo.isLive || videoStream?.isLive) && (
+              <View style={styles.miniLiveBadge} pointerEvents="none">
+                <View style={styles.liveDot} />
+                <Text style={styles.miniLiveText}>LIVE</Text>
+              </View>
+            )}
+
             {/* Small Dimmer Overlay for Close Button */}
             <TouchableOpacity
               style={styles.miniplayerCloseBtn}
@@ -1804,9 +1822,16 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
                       {/* Bottom Row of Video: Time Text & Fullscreen Button */}
                       <View style={styles.watchBottomBar}>
-                        <Text style={styles.watchTimeText}>
-                          {formatTime(currentDisplayTime)} / {formatTime(effectiveDuration)}
-                        </Text>
+                        {activeVideo?.isLive || videoStream?.isLive ? (
+                          <View style={styles.watchLiveIndicator}>
+                            <View style={styles.liveDot} />
+                            <Text style={styles.watchLiveText}>LIVE</Text>
+                          </View>
+                        ) : (
+                          <Text style={styles.watchTimeText}>
+                            {formatTime(currentDisplayTime)} / {formatTime(effectiveDuration)}
+                          </Text>
+                        )}
 
                         <TouchableOpacity
                           onPress={handleEnterFullscreen}
@@ -1865,10 +1890,18 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               </Text>
 
               {/* Video Stats */}
-              <Text style={styles.watchVideoStats}>
-                {activeVideo.viewCount || '10K views'}
-                {activeVideo.publishedTime ? ` • ${activeVideo.publishedTime}` : ''}
-              </Text>
+              <View style={styles.watchStatsRow}>
+                {(activeVideo.isLive || videoStream?.isLive) && (
+                  <View style={styles.livePill}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.livePillText}>LIVE</Text>
+                  </View>
+                )}
+                <Text style={styles.watchVideoStats}>
+                  {activeVideo.viewCount || '10K views'}
+                  {activeVideo.publishedTime ? ` • ${activeVideo.publishedTime}` : ''}
+                </Text>
+              </View>
 
               {/* Channel Row (Strictly Channel info, NO like/dislike/comments) */}
               <View style={styles.watchChannelRow}>
@@ -1913,7 +1946,12 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                       style={styles.upNextThumb}
                       contentFit="cover"
                     />
-                    {item.duration ? (
+                    {item.isLive ? (
+                      <View style={styles.upNextLiveBadge}>
+                        <View style={styles.liveDot} />
+                        <Text style={styles.liveText}>LIVE</Text>
+                      </View>
+                    ) : item.duration ? (
                       <View style={styles.upNextDurationBadge}>
                         <Text style={styles.upNextDurationText}>{item.duration}</Text>
                       </View>
@@ -1949,6 +1987,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           onTogglePlay={handleTogglePlay}
           onSeekTo={handleSeek}
           onExitFullscreen={handleExitFullscreen}
+          isLive={Boolean(activeVideo.isLive || videoStream?.isLive)}
         />
       )}
     </SafeAreaView>
@@ -2287,6 +2326,42 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 11,
     fontWeight: '600',
+  },
+  liveBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: '#CC0000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2.5,
+    borderRadius: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ffffff',
+  },
+  liveText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  trendingLiveBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: '#CC0000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3.5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   nowPlayingIndicator: {
     position: 'absolute',
@@ -2639,6 +2714,73 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     fontWeight: '600',
+  },
+  upNextLiveBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: '#CC0000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+  },
+  watchLiveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#CC0000',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  watchLiveText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  watchStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  livePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#CC0000',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  livePillText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  miniLiveBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: '#CC0000',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+    zIndex: 10,
+  },
+  miniLiveText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   upNextMetaCol: {
     flex: 1,

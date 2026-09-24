@@ -158,8 +158,8 @@ function formatViewCount(views?: string | number): string {
 async function enrichVideosMetadata(
   videoIds: string[],
   token: string
-): Promise<Map<string, { duration: string; durationSeconds: number; viewCount: string }>> {
-  const metaMap = new Map<string, { duration: string; durationSeconds: number; viewCount: string }>();
+): Promise<Map<string, { duration: string; durationSeconds: number; viewCount: string; isLive?: boolean }>> {
+  const metaMap = new Map<string, { duration: string; durationSeconds: number; viewCount: string; isLive?: boolean }>();
   if (videoIds.length === 0) return metaMap;
 
   try {
@@ -170,7 +170,7 @@ async function enrichVideosMetadata(
 
     await Promise.all(
       chunks.map(async (chunk) => {
-        const url = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${chunk.join(',')}`;
+        const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${chunk.join(',')}`;
         const res = await fetch(url, {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -181,12 +181,14 @@ async function enrichVideosMetadata(
         const data = await res.json();
         const items = data.items || [];
         for (const item of items) {
+          const isLive = item.snippet?.liveBroadcastContent === 'live';
           const { formatted, seconds } = parseISO8601Duration(item.contentDetails?.duration);
           const viewCount = formatViewCount(item.statistics?.viewCount);
           metaMap.set(item.id, {
-            duration: formatted,
-            durationSeconds: seconds,
+            duration: isLive ? 'LIVE' : formatted,
+            durationSeconds: isLive ? 0 : seconds,
             viewCount,
+            isLive,
           });
         }
       })
@@ -367,6 +369,7 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
         publishedTime: raw.publishedTime,
         thumbnail: raw.thumbnail,
         rank: idx + 1,
+        isLive: meta?.isLive || false,
       };
     });
 
@@ -501,6 +504,7 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
 
     const formattedVideos: YouTubeVideoSearchResult[] = items.map((item: any, idx: number) => {
       const snippet = item.snippet;
+      const isLive = snippet?.liveBroadcastContent === 'live';
       const { formatted, seconds } = parseISO8601Duration(item.contentDetails?.duration);
       const viewCount = formatViewCount(item.statistics?.viewCount);
       return {
@@ -508,8 +512,8 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
         videoId: item.id,
         title: snippet?.title || 'Liked Track',
         author: snippet?.channelTitle || 'YouTube Creator',
-        duration: formatted,
-        durationSeconds: seconds,
+        duration: isLive ? 'LIVE' : formatted,
+        durationSeconds: isLive ? 0 : seconds,
         viewCount,
         publishedTime: formatRelativeTime(snippet?.publishedAt),
         thumbnail:
@@ -518,6 +522,7 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
           snippet?.thumbnails?.default?.url ||
           `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg`,
         rank: idx + 1,
+        isLive,
       };
     });
 

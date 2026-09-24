@@ -34,6 +34,7 @@ interface FullscreenVideoOverlayProps {
   duration?: number;
   onTogglePlay?: () => void;
   onSeekTo?: (seconds: number) => void;
+  isLive?: boolean;
 }
 
 const formatTime = (seconds: number): string => {
@@ -59,6 +60,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   duration: overrideDuration,
   onTogglePlay: overrideTogglePlay,
   onSeekTo: overrideSeekTo,
+  isLive = false,
 }) => {
   const insets = useSafeAreaInsets();
   const { currentSong, isPlaying: audioIsPlaying, togglePlay: audioTogglePlay, seekTo: audioSeekTo } = useAudio();
@@ -391,6 +393,14 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
               <Text style={styles.qualityBadgeText}>{qualityBadge || '1080p'}</Text>
             </View>
 
+            {/* LIVE Stream Badge in Header */}
+            {isLive && (
+              <View style={styles.liveBadgeHeader}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBadgeHeaderText}>LIVE</Text>
+              </View>
+            )}
+
             {/* Vivid / HDR Color Boost Mode Toggle */}
             <TouchableOpacity
               onPress={() => {
@@ -478,22 +488,31 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
 
           {/* Bottom Bar: Time, Slider, Duration & Collapse Icon */}
           <View style={styles.bottomBar}>
-            <Text style={styles.timeText}>{formatTime(currentDisplayTime)}</Text>
+            {isLive ? (
+              <View style={styles.fullscreenLiveBar}>
+                <View style={styles.liveDot} />
+                <Text style={styles.fullscreenLiveText}>LIVE STREAM</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.timeText}>{formatTime(currentDisplayTime)}</Text>
 
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={Math.max(1, duration || 1)}
-              value={currentDisplayTime}
-              minimumTrackTintColor="#38bdf8"
-              maximumTrackTintColor="rgba(255, 255, 255, 0.28)"
-              thumbTintColor="#38bdf8"
-              onSlidingStart={handleSlidingStart}
-              onValueChange={handleValueChange}
-              onSlidingComplete={handleSlidingComplete}
-            />
+                <Slider
+                  style={styles.slider}
+                  minimumValue={0}
+                  maximumValue={Math.max(1, duration || 1)}
+                  value={currentDisplayTime}
+                  minimumTrackTintColor="#38bdf8"
+                  maximumTrackTintColor="rgba(255, 255, 255, 0.28)"
+                  thumbTintColor="#38bdf8"
+                  onSlidingStart={handleSlidingStart}
+                  onValueChange={handleValueChange}
+                  onSlidingComplete={handleSlidingComplete}
+                />
 
-            <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>
+                <Text style={styles.timeText}>{formatTime(duration || 0)}</Text>
+              </>
+            )}
 
             {/* Fullscreen Collapse Icon (matches user reference image) */}
             <TouchableOpacity
@@ -705,5 +724,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     marginTop: 4,
+  },
+  liveBadgeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#CC0000',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  liveBadgeHeaderText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#ffffff',
+  },
+  fullscreenLiveBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+  },
+  fullscreenLiveText: {
+    color: '#ff4444',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
 });
