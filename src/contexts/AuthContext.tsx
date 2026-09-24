@@ -160,10 +160,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             setUser(data.session.user);
           }
           await fetchUserProfile(data.session.user.id, data.session.user.email);
-          // Restore YouTube token from storage on startup
-          const storedYtToken = await getGoogleYouTubeToken();
-          if (storedYtToken && isMounted) {
-            setGoogleYoutubeToken(storedYtToken);
+          // Restore YouTube token from session or persistent storage on startup
+          if (data.session.provider_token) {
+            await saveGoogleYouTubeTokens(
+              data.session.provider_token,
+              data.session.provider_refresh_token || null
+            );
+            if (isMounted) setGoogleYoutubeToken(data.session.provider_token);
+          } else {
+            const storedYtToken = await getGoogleYouTubeToken();
+            if (storedYtToken && isMounted) {
+              setGoogleYoutubeToken(storedYtToken);
+            }
           }
         } else {
           await loadLocalGuestProfile();
@@ -196,8 +204,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 newSession.provider_refresh_token || null
               );
               if (isMounted) setGoogleYoutubeToken(newSession.provider_token);
+            } else {
+              // Ensure we restore persisted Google YouTube token if not in this event
+              const stored = await getGoogleYouTubeToken();
+              if (stored && isMounted) {
+                setGoogleYoutubeToken(stored);
+              }
             }
-          } else {
+          } else if (_event === 'SIGNED_OUT') {
             await loadLocalGuestProfile();
             await clearGoogleYouTubeTokens();
             if (isMounted) setGoogleYoutubeToken(null);
@@ -552,89 +566,142 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { error: error?.message || 'Failed to start YouTube connection.' };
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-      if (result.type === 'success' && result.url) {
-        // Parse callback parameters from query or hash
-        const callbackUrl = result.url;
-        const parseParams = (urlStr: string) => {
-          const hashIndex = urlStr.indexOf('#');
-          const queryIndex = urlStr.indexOf('?');
-          const p: Record<string, string> = {};
-          if (queryIndex !== -1) {
-            const q =
-              hashIndex !== -1 && hashIndex > queryIndex
-                ? urlStr.substring(queryIndex + 1, hashIndex)
-                : urlStr.substring(queryIndex + 1);
-            q.split('&').forEach((item) => {
-              const [k, v] = item.split('=');
-              if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
-            });
-          }
-          if (hashIndex !== -1) {
-            const h = urlStr.substring(hashIndex + 1);
-            h.split('&').forEach((item) => {
-              const [k, v] = item.split('=');
-              if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
-            });
-          }
-          return p;
-        };
+      let listenerSub: any = null;
+      let capturedDeepLinkUrl: string | null = null;
 
-        const params = parseParams(callbackUrl);
-        if (params.error || params.error_description) {
-          return { error: params.error_description || params.error };
+      const deepLinkPromise = new Promise<string | null>((resolve) => {
+        listenerSub = Linking.addEventListener('url', (event) => {
+          if (
+            event.url.includes('code=') ||
+            event.url.includes('access_token=') ||
+            event.url.includes('error=') ||
+            event.url.includes('error_description=')
+          ) {
+            capturedDeepLinkUrl = event.url;
+            resolve(event.url);
+          }
+        });
+      });
+
+      let callbackUrl: string | null = null;
+      try {
+        const browserPromise = WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        const result = await Promise.race([
+          browserPromise,
+          deepLinkPromise.then((url) => ({ type: 'success' as const, url: url! })),
+        ]);
+
+        if (result && result.type === 'success' && result.url) {
+          callbackUrl = result.url;
+        } else if (capturedDeepLinkUrl) {
+          callbackUrl = capturedDeepLinkUrl;
+        } else if (result && result.type === 'cancel') {
+          return { error: 'YouTube connection was cancelled.' };
         }
+      } finally {
+        if (listenerSub) {
+          listenerSub.remove();
+        }
+        if (Platform.OS === 'ios') {
+          try {
+            WebBrowser.dismissAuthSession();
+          } catch {}
+        }
+      }
 
-        // 1. Direct provider_token in URL
-        if (params.provider_token) {
+      if (!callbackUrl || (!callbackUrl.includes('code=') && !callbackUrl.includes('access_token='))) {
+        const initial = await Linking.getInitialURL();
+        if (
+          initial &&
+          (initial.includes('code=') ||
+            initial.includes('access_token=') ||
+            initial.includes('error='))
+        ) {
+          callbackUrl = initial;
+        }
+      }
+
+      if (!callbackUrl) {
+        return { error: 'No authorization callback received.' };
+      }
+
+      const parseParams = (urlStr: string) => {
+        const hashIndex = urlStr.indexOf('#');
+        const queryIndex = urlStr.indexOf('?');
+        const p: Record<string, string> = {};
+        if (queryIndex !== -1) {
+          const q =
+            hashIndex !== -1 && hashIndex > queryIndex
+              ? urlStr.substring(queryIndex + 1, hashIndex)
+              : urlStr.substring(queryIndex + 1);
+          q.split('&').forEach((item) => {
+            const [k, v] = item.split('=');
+            if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+          });
+        }
+        if (hashIndex !== -1) {
+          const h = urlStr.substring(hashIndex + 1);
+          h.split('&').forEach((item) => {
+            const [k, v] = item.split('=');
+            if (k) p[decodeURIComponent(k)] = decodeURIComponent(v || '');
+          });
+        }
+        return p;
+      };
+
+      const params = parseParams(callbackUrl);
+      if (params.error || params.error_description) {
+        return { error: params.error_description || params.error };
+      }
+
+      // 1. Direct provider_token in URL
+      if (params.provider_token) {
+        await saveGoogleYouTubeTokens(
+          params.provider_token,
+          params.provider_refresh_token || null
+        );
+        setGoogleYoutubeToken(params.provider_token);
+        console.log('[Auth] YouTube account connected via provider_token in URL');
+        return {};
+      }
+
+      // 2. PKCE code exchange
+      if (params.code) {
+        const { data: exchangeData, error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(params.code);
+        if (exchangeError) return { error: exchangeError.message };
+        if (exchangeData.session?.provider_token) {
           await saveGoogleYouTubeTokens(
-            params.provider_token,
-            params.provider_refresh_token || null
+            exchangeData.session.provider_token,
+            exchangeData.session.provider_refresh_token || null
           );
-          setGoogleYoutubeToken(params.provider_token);
-          console.log('[Auth] YouTube account connected via provider_token in URL');
+          setGoogleYoutubeToken(exchangeData.session.provider_token);
+          console.log('[Auth] YouTube account connected via PKCE exchange');
           return {};
         }
-
-        // 2. PKCE code exchange
-        if (params.code) {
-          const { data: exchangeData, error: exchangeError } =
-            await supabase.auth.exchangeCodeForSession(params.code);
-          if (exchangeError) return { error: exchangeError.message };
-          if (exchangeData.session?.provider_token) {
-            await saveGoogleYouTubeTokens(
-              exchangeData.session.provider_token,
-              exchangeData.session.provider_refresh_token || null
-            );
-            setGoogleYoutubeToken(exchangeData.session.provider_token);
-            console.log('[Auth] YouTube account connected via PKCE exchange');
-            return {};
-          }
-        } else if (params.access_token && params.refresh_token) {
-          // 3. Implicit flow session
-          const { data: sessionData, error: sessionError } =
-            await supabase.auth.setSession({
-              access_token: params.access_token,
-              refresh_token: params.refresh_token,
-            });
-          if (sessionError) return { error: sessionError.message };
-          if (sessionData.session?.provider_token) {
-            await saveGoogleYouTubeTokens(
-              sessionData.session.provider_token,
-              sessionData.session.provider_refresh_token || null
-            );
-            setGoogleYoutubeToken(sessionData.session.provider_token);
-            console.log('[Auth] YouTube account connected via implicit session');
-            return {};
-          }
+      } else if (params.access_token && params.refresh_token) {
+        // 3. Implicit flow session
+        const { data: sessionData, error: sessionError } =
+          await supabase.auth.setSession({
+            access_token: params.access_token,
+            refresh_token: params.refresh_token,
+          });
+        if (sessionError) return { error: sessionError.message };
+        if (sessionData.session?.provider_token) {
+          await saveGoogleYouTubeTokens(
+            sessionData.session.provider_token,
+            sessionData.session.provider_refresh_token || null
+          );
+          setGoogleYoutubeToken(sessionData.session.provider_token);
+          console.log('[Auth] YouTube account connected via implicit session');
+          return {};
         }
-
-        return {
-          error:
-            'YouTube permission was not returned. Please make sure to check and approve YouTube permissions on the Google consent screen.',
-        };
       }
-      return { error: 'YouTube connection was cancelled.' };
+
+      return {
+        error:
+          'YouTube permission was not returned. Please make sure to check and approve YouTube permissions on the Google consent screen.',
+      };
     } catch (err: any) {
       return { error: err?.message || 'Failed to connect YouTube account.' };
     }

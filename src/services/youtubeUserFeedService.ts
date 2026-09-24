@@ -9,6 +9,8 @@ import { YouTubeVideoSearchResult } from './youtubeVideoSearchService';
 
 export const GOOGLE_YOUTUBE_TOKEN_KEY = '@shorty_google_youtube_token';
 export const GOOGLE_YOUTUBE_REFRESH_TOKEN_KEY = '@shorty_google_youtube_refresh_token';
+export const CACHED_USER_FEED_KEY = '@shorty_cached_user_feed';
+export const CACHED_LIKED_FEED_KEY = '@shorty_cached_liked_feed';
 
 let inMemoryToken: string | null = null;
 const userFeedCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
@@ -29,6 +31,34 @@ export async function getGoogleYouTubeToken(): Promise<string | null> {
 }
 
 /**
+ * Get previously cached User Feed videos from persistent storage (0ms offline/startup load).
+ */
+export async function getCachedUserFeed(): Promise<YouTubeVideoSearchResult[]> {
+  try {
+    const raw = await SafeStorage.getItem(CACHED_USER_FEED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Get previously cached Liked Videos from persistent storage (0ms offline/startup load).
+ */
+export async function getCachedLikedVideos(): Promise<YouTubeVideoSearchResult[]> {
+  try {
+    const raw = await SafeStorage.getItem(CACHED_LIKED_FEED_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/**
  * Save Google OAuth tokens after successful Google login.
  */
 export async function saveGoogleYouTubeTokens(
@@ -43,13 +73,15 @@ export async function saveGoogleYouTubeTokens(
 }
 
 /**
- * Clear stored Google tokens on logout or authorization revocation.
+ * Clear stored Google tokens and cached feeds ONLY on explicit logout.
  */
 export async function clearGoogleYouTubeTokens(): Promise<void> {
   inMemoryToken = null;
   userFeedCache.clear();
   await SafeStorage.removeItem(GOOGLE_YOUTUBE_TOKEN_KEY);
   await SafeStorage.removeItem(GOOGLE_YOUTUBE_REFRESH_TOKEN_KEY);
+  await SafeStorage.removeItem(CACHED_USER_FEED_KEY);
+  await SafeStorage.removeItem(CACHED_LIKED_FEED_KEY);
 }
 
 /**
@@ -180,8 +212,14 @@ export interface UserFeedResult {
  */
 export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserFeedResult> {
   const token = await getGoogleYouTubeToken();
+  const cachedFromStorage = await getCachedUserFeed();
+
   if (!token) {
-    return { videos: [], notConnected: true };
+    return {
+      videos: cachedFromStorage,
+      notConnected: cachedFromStorage.length === 0,
+      requiresReauth: cachedFromStorage.length > 0,
+    };
   }
 
   const cacheKey = `subscriptions_${maxResults}`;
@@ -202,8 +240,11 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
 
     if (subRes.status === 401) {
       console.warn('[youtubeUserFeedService] 401 Unauthorized - Google token expired');
-      await clearGoogleYouTubeTokens();
-      return { videos: [], requiresReauth: true, error: 'Your YouTube session expired. Please reconnect.' };
+      return {
+        videos: cachedFromStorage,
+        requiresReauth: true,
+        error: 'Your YouTube session expired. Please reconnect.',
+      };
     }
 
     if (subRes.status === 403) {
@@ -214,20 +255,25 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
         errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') ||
         errText.includes('PERMISSION_DENIED');
       if (isScopeIssue) {
-        await clearGoogleYouTubeTokens();
         return {
-          videos: [],
+          videos: cachedFromStorage,
           requiresReauth: true,
           error: 'YouTube read permission is required. Tap Grant YouTube Access below.',
         };
       }
-      return { videos: [], error: 'YouTube API Access Forbidden. Check Google Cloud settings.' };
+      return {
+        videos: cachedFromStorage,
+        error: 'YouTube API Access Forbidden. Check Google Cloud settings.',
+      };
     }
 
     if (!subRes.ok) {
       const errBody = await subRes.text();
       console.warn('[youtubeUserFeedService] Subscriptions error:', subRes.status, errBody);
-      return { videos: [], error: `YouTube API Error (${subRes.status})` };
+      return {
+        videos: cachedFromStorage,
+        error: `YouTube API Error (${subRes.status})`,
+      };
     }
 
     const subData = await subRes.json();
@@ -325,10 +371,14 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
     });
 
     userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
+    SafeStorage.setItem(CACHED_USER_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
     return { videos: formattedVideos };
   } catch (err: any) {
     console.warn('[youtubeUserFeedService] fetchUserSubscriptionsFeed error:', err);
-    return { videos: [], error: err?.message || 'Failed to fetch subscriptions feed.' };
+    return {
+      videos: cachedFromStorage,
+      error: err?.message || 'Failed to fetch subscriptions feed.',
+    };
   }
 }
 
@@ -337,8 +387,14 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
  */
 export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedResult> {
   const token = await getGoogleYouTubeToken();
+  const cachedFromStorage = await getCachedLikedVideos();
+
   if (!token) {
-    return { videos: [], notConnected: true };
+    return {
+      videos: cachedFromStorage,
+      notConnected: cachedFromStorage.length === 0,
+      requiresReauth: cachedFromStorage.length > 0,
+    };
   }
 
   const cacheKey = `liked_${maxResults}`;
@@ -359,8 +415,11 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
 
     if (res.status === 401) {
       console.warn('[youtubeUserFeedService] 401 Unauthorized - Google token expired');
-      await clearGoogleYouTubeTokens();
-      return { videos: [], requiresReauth: true, error: 'Your YouTube session expired. Please reconnect.' };
+      return {
+        videos: cachedFromStorage,
+        requiresReauth: true,
+        error: 'Your YouTube session expired. Please reconnect.',
+      };
     }
 
     if (res.status === 403) {
@@ -371,14 +430,16 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
         errText.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') ||
         errText.includes('PERMISSION_DENIED');
       if (isScopeIssue) {
-        await clearGoogleYouTubeTokens();
         return {
-          videos: [],
+          videos: cachedFromStorage,
           requiresReauth: true,
           error: 'YouTube read permission is required. Tap Grant YouTube Access below.',
         };
       }
-      return { videos: [], error: 'YouTube API Access Forbidden. Check Google Cloud settings.' };
+      return {
+        videos: cachedFromStorage,
+        error: 'YouTube API Access Forbidden. Check Google Cloud settings.',
+      };
     }
 
     if (!res.ok) {
@@ -461,9 +522,13 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
     });
 
     userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
+    SafeStorage.setItem(CACHED_LIKED_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
     return { videos: formattedVideos };
   } catch (err: any) {
     console.warn('[youtubeUserFeedService] fetchUserLikedVideos error:', err);
-    return { videos: [], error: err?.message || 'Failed to fetch liked videos.' };
+    return {
+      videos: cachedFromStorage,
+      error: err?.message || 'Failed to fetch liked videos.',
+    };
   }
 }

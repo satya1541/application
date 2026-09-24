@@ -22,10 +22,12 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
 import {
-  searchYouTubeVideos,
+  searchYouTubeVideosWithContinuation,
+  fetchNextYouTubeSearchVideos,
   resolveYouTubeStandaloneVideoStream,
   getCachedVideoStream,
   fetchYouTubeSearchSuggestions,
@@ -61,6 +63,15 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 };
 
+// Robust video buffer options: prevent stalls and unwanted auto-pausing
+const VIDEO_BUFFER_OPTIONS = {
+  preferredForwardBufferDuration: 60, // 60s forward buffer keeps playback completely uninterrupted
+  minBufferForPlayback: 2.0, // Buffer 2.0s before initial play / resume to absorb network jitter
+  waitsToMinimizeStalling: true, // Tell ExoPlayer/AVPlayer to automatically buffer & resume smoothly
+  prioritizeTimeOverSizeThreshold: false,
+  maxBufferBytes: 0, // 0 = automatic system-managed memory allocation (no artificial 20MB choking)
+};
+
 interface YSearchScreenProps {
   onBack?: () => void;
   initialQuery?: string;
@@ -81,25 +92,24 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     { id: 'liked', name: 'Liked', icon: 'heart' as const },
   ], []);
 
-  // Merge trending + user feed categories into one chip list
+  // Merge trending + user feed categories into one chip list - My Feed always first
   const allCategories = useMemo(() => {
-    if (isYouTubeLinked && !isGuest) {
-      return [...USER_FEED_CATEGORIES, ...TRENDING_CATEGORIES];
-    }
-    return TRENDING_CATEGORIES;
-  }, [isYouTubeLinked, isGuest, USER_FEED_CATEGORIES]);
+    return [...USER_FEED_CATEGORIES, ...TRENDING_CATEGORIES];
+  }, [USER_FEED_CATEGORIES]);
 
   // Search query, suggestions & results state
   const [query, setQuery] = useState(initialQuery);
   const [videos, setVideos] = useState<YouTubeVideoSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const suggestionsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Trending / Discover category & video list state
-  const [selectedCategory, setSelectedCategory] = useState<string>('trending');
+  // Trending / Discover category & video list state - Default to My Feed
+  const [selectedCategory, setSelectedCategory] = useState<string>('my_feed');
   const [trendingVideos, setTrendingVideos] = useState<YouTubeVideoSearchResult[]>([]);
   const [isLoadingTrending, setIsLoadingTrending] = useState(false);
   const [userFeedNeedsReauth, setUserFeedNeedsReauth] = useState(false);
@@ -181,13 +191,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     p.showNowPlayingNotification = true; // Shows system media notification
     p.timeUpdateEventInterval = 1.0; // 1 second interval: stops high-frequency thermal re-rendering
     try {
-      p.bufferOptions = {
-        preferredForwardBufferDuration: 15,
-        minBufferForPlayback: 0.1, // 100ms start buffer for instant playback
-        waitsToMinimizeStalling: false,
-        prioritizeTimeOverSizeThreshold: true,
-        maxBufferBytes: 20 * 1024 * 1024,
-      };
+      p.bufferOptions = VIDEO_BUFFER_OPTIONS;
     } catch {}
   });
 
@@ -214,13 +218,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       player.timeUpdateEventInterval = 1.0;
       player.staysActiveInBackground = true;
       player.showNowPlayingNotification = true;
-      player.bufferOptions = {
-        preferredForwardBufferDuration: 15,
-        minBufferForPlayback: 0.1,
-        waitsToMinimizeStalling: false,
-        prioritizeTimeOverSizeThreshold: true,
-        maxBufferBytes: 20 * 1024 * 1024,
-      };
+      player.bufferOptions = VIDEO_BUFFER_OPTIONS;
     } catch {}
   }, [player]);
 
@@ -238,6 +236,18 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     };
   }, [player]);
 
+  // Prevent device sleep/lock while video is actively playing in YSearch
+  useEffect(() => {
+    if (isVideoPlaying) {
+      activateKeepAwakeAsync('ysearch_video').catch(() => {});
+    } else {
+      deactivateKeepAwake('ysearch_video').catch(() => {});
+    }
+    return () => {
+      deactivateKeepAwake('ysearch_video').catch(() => {});
+    };
+  }, [isVideoPlaying]);
+
   // Track video player events with triple-redundant auto-advance & thermal protection
   useEffect(() => {
     if (!player) return;
@@ -251,29 +261,28 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (appStateRef.current === 'active' && !isScrubbingRef.current) {
         setCurrentTime(payload.currentTime);
       }
-      const dur = player.duration || activeVideo?.durationSeconds || 0;
-      if (dur > 0) {
-        setDuration(dur);
-        // Safety auto-advance: if within 0.75s of duration, auto-advance
-        if (dur > 3 && payload.currentTime >= dur - 0.75) {
-          advanceToNextVideo();
-        }
+      const actualDuration =
+        activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
+          ? activeVideo.durationSeconds
+          : player.duration > 0
+          ? player.duration
+          : 0;
+      if (actualDuration > 0) {
+        setDuration(actualDuration);
       }
     });
 
     const subStatus = player.addListener('statusChange', (payload) => {
       if (payload.status === 'readyToPlay') {
-        const dur = player.duration || activeVideo?.durationSeconds || 0;
-        if (dur > 0) setDuration(dur);
+        const actualDuration =
+          activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
+            ? activeVideo.durationSeconds
+            : player.duration > 0
+            ? player.duration
+            : 0;
+        if (actualDuration > 0) setDuration(actualDuration);
         if (!isScrubbingRef.current) {
           player.play();
-        }
-      } else if (payload.status === 'idle') {
-        // Redundancy: if player transitions to idle near the end, auto-advance
-        const cur = player.currentTime;
-        const dur = player.duration || activeVideo?.durationSeconds || 0;
-        if (dur > 3 && cur >= dur - 2.0) {
-          advanceToNextVideo();
         }
       }
     });
@@ -316,21 +325,24 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     const clean = searchQuery.trim();
     if (!clean) {
       setVideos([]);
+      setNextPageToken(null);
       setIsSearching(false);
       setShowSuggestions(false);
       return;
     }
     setIsSearching(true);
     setShowSuggestions(false);
+    setNextPageToken(null);
     try {
-      const results = await searchYouTubeVideos(clean, 35);
-      setVideos(results);
+      const page = await searchYouTubeVideosWithContinuation(clean, 35);
+      setVideos(page.videos);
+      setNextPageToken(page.continuationToken);
       // Pre-warm top 2 search results in background so tapping them plays INSTANTLY
-      if (results[0]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(results[0].videoId).catch(() => {});
+      if (page.videos[0]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(page.videos[0].videoId).catch(() => {});
       }
-      if (results[1]?.videoId) {
-        resolveYouTubeStandaloneVideoStream(results[1].videoId).catch(() => {});
+      if (page.videos[1]?.videoId) {
+        resolveYouTubeStandaloneVideoStream(page.videos[1].videoId).catch(() => {});
       }
     } catch (err) {
       console.warn('YSearch performSearch failed:', err);
@@ -338,6 +350,28 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       setIsSearching(false);
     }
   }, []);
+
+  // Infinite scroll: load next page of search results
+  const loadMoreResults = useCallback(async () => {
+    if (!nextPageToken || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const page = await fetchNextYouTubeSearchVideos(nextPageToken, 25);
+      if (page.videos.length > 0) {
+        setVideos((prev) => {
+          // Deduplicate by videoId
+          const existingIds = new Set(prev.map((v) => v.videoId));
+          const newVideos = page.videos.filter((v) => !existingIds.has(v.videoId));
+          return [...prev, ...newVideos];
+        });
+      }
+      setNextPageToken(page.continuationToken);
+    } catch (err) {
+      console.warn('YSearch loadMore failed:', err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [nextPageToken, isLoadingMore]);
 
   useEffect(() => {
     if (initialQuery.trim()) {
@@ -362,27 +396,34 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           feedResult = await fetchUserLikedVideos(30);
         }
 
-        if (feedResult.notConnected) {
-          setUserFeedNotConnected(true);
-          setTrendingVideos([]);
-        } else if (feedResult.requiresReauth) {
-          setUserFeedNeedsReauth(true);
-          setUserFeedError(feedResult.error || null);
-          setTrendingVideos([]);
-        } else if (feedResult.error) {
-          setUserFeedError(feedResult.error);
-          setTrendingVideos([]);
-        } else if (feedResult.emptyFeed || feedResult.videos.length === 0) {
-          setUserFeedEmpty(true);
-          setTrendingVideos([]);
-        } else {
+        if (feedResult.videos && feedResult.videos.length > 0) {
           setTrendingVideos(feedResult.videos);
+          setUserFeedEmpty(false);
+          if (feedResult.requiresReauth) {
+            setUserFeedNeedsReauth(true);
+            setUserFeedError(feedResult.error || null);
+          } else {
+            setUserFeedNeedsReauth(false);
+            setUserFeedError(null);
+          }
           // Pre-warm top 2
           if (feedResult.videos[0]?.videoId) {
             resolveYouTubeStandaloneVideoStream(feedResult.videos[0].videoId).catch(() => {});
           }
           if (feedResult.videos[1]?.videoId) {
             resolveYouTubeStandaloneVideoStream(feedResult.videos[1].videoId).catch(() => {});
+          }
+        } else {
+          setTrendingVideos([]);
+          if (feedResult.notConnected) {
+            setUserFeedNotConnected(true);
+          } else if (feedResult.requiresReauth) {
+            setUserFeedNeedsReauth(true);
+            setUserFeedError(feedResult.error || null);
+          } else if (feedResult.error) {
+            setUserFeedError(feedResult.error);
+          } else {
+            setUserFeedEmpty(true);
           }
         }
       } else {
@@ -416,6 +457,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (query.trim()) {
         setQuery('');
         setVideos([]);
+        setNextPageToken(null);
       }
       loadTrending(catId);
     },
@@ -509,16 +551,17 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         setIsLoadingStream(false);
         if (player) {
           try {
-            player.bufferOptions = {
-              preferredForwardBufferDuration: 15,
-              minBufferForPlayback: 0.1,
-              waitsToMinimizeStalling: false,
-              prioritizeTimeOverSizeThreshold: true,
-              maxBufferBytes: 20 * 1024 * 1024,
-            };
+            player.bufferOptions = VIDEO_BUFFER_OPTIONS;
           } catch {}
           player.replace({
             uri: cached.hlsUrl,
+            contentType: 'hls',
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+              Origin: 'https://www.youtube.com',
+              Referer: 'https://www.youtube.com/',
+            },
             metadata: {
               title: item.title,
               artist: item.author,
@@ -541,16 +584,17 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           }
           if (player) {
             try {
-              player.bufferOptions = {
-                preferredForwardBufferDuration: 15,
-                minBufferForPlayback: 0.1,
-                waitsToMinimizeStalling: false,
-                prioritizeTimeOverSizeThreshold: true,
-                maxBufferBytes: 20 * 1024 * 1024,
-              };
+              player.bufferOptions = VIDEO_BUFFER_OPTIONS;
             } catch {}
             player.replace({
               uri: streamDetails.hlsUrl,
+              contentType: 'hls',
+              headers: {
+                'User-Agent':
+                  'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
+                Origin: 'https://www.youtube.com',
+                Referer: 'https://www.youtube.com/',
+              },
               metadata: {
                 title: item.title,
                 artist: item.author,
@@ -1235,6 +1279,16 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               setShowSuggestions(false);
               Keyboard.dismiss();
             }}
+            onEndReached={loadMoreResults}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              isLoadingMore ? (
+                <View style={styles.loadMoreContainer}>
+                  <ActivityIndicator size="small" color="#FF0000" />
+                  <Text style={styles.loadMoreText}>Loading more videos...</Text>
+                </View>
+              ) : null
+            }
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Ionicons name="search" size={48} color="#666666" />
@@ -1247,6 +1301,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   onPress={() => {
                     setQuery('');
                     setVideos([]);
+                    setNextPageToken(null);
                   }}
                   activeOpacity={0.8}
                 >
@@ -1325,6 +1380,24 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                         : `Top 30 ${currentCategoryObj.name} Videos`}
                     </Text>
                   </View>
+
+                  {/* Reauth / Refresh notice banner if session needs refresh but cached videos are visible */}
+                  {userFeedNeedsReauth && (selectedCategory === 'my_feed' || selectedCategory === 'liked') ? (
+                    <TouchableOpacity
+                      style={styles.reauthNoticeBanner}
+                      onPress={async () => {
+                        const res = await connectYouTubeAccount();
+                        if (!res.error) loadTrending(selectedCategory);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <Ionicons name="refresh-circle" size={20} color="#FFA726" />
+                      <Text style={styles.reauthNoticeText}>
+                        Session needs refresh. Tap here to reconnect.
+                      </Text>
+                      <Ionicons name="chevron-forward" size={16} color="#FFA726" />
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : null
             }
@@ -2299,6 +2372,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  loadMoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 10,
+  },
+  loadMoreText: {
+    color: '#aaaaaa',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  reauthNoticeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 167, 38, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 167, 38, 0.35)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    gap: 8,
+  },
+  reauthNoticeText: {
+    color: '#FFA726',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
   },
 
   // Floating Miniplayer Styles (Screenshot 2)

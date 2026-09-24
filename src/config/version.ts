@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.0.3',
-  releaseTag: 'v5.0.3',
-  releaseName: 'Shorty v5.0.3: YouTube Subscriptions Feed & Liked Videos Fix',
-  releaseDate: '2026-09-23',
+  otaVersion: '5.0.6',
+  releaseTag: 'v5.0.6',
+  releaseName: 'Shorty v5.0.6: Continuous Video Playback & Smooth Buffer Optimization',
+  releaseDate: '2026-09-24',
   channel: 'preview',
 };

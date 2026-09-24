@@ -90,16 +90,69 @@ export async function fetchYouTubeSearchSuggestions(query: string): Promise<stri
   }
 }
 
+export interface YouTubeSearchPageResult {
+  videos: YouTubeVideoSearchResult[];
+  continuationToken: string | null;
+}
+
 /**
- * Searches YouTube for video content matching query (e.g. "music video").
- * Returns clean list of videos with metadata and high-res thumbnails.
+ * Extracts and formats a videoRenderer item into YouTubeVideoSearchResult.
  */
-export async function searchYouTubeVideos(
+function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
+  const videoId = vr.videoId;
+  if (!videoId || typeof videoId !== 'string') return null;
+
+  const title =
+    vr.title?.runs?.map((r: any) => r.text).join('') ||
+    vr.title?.simpleText ||
+    'Untitled Video';
+
+  const author =
+    vr.ownerText?.runs?.map((r: any) => r.text).join('') ||
+    vr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
+    'YouTube Creator';
+
+  const channelThumbnails =
+    vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail
+      ?.thumbnails || [];
+  const channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
+
+  const duration = vr.lengthText?.simpleText || '';
+  const durationSeconds = parseDurationSeconds(duration);
+  const viewCount =
+    vr.shortViewCountText?.simpleText ||
+    vr.viewCountText?.simpleText ||
+    '';
+  const publishedTime = vr.publishedTimeText?.simpleText || '';
+
+  const videoThumbnails = vr.thumbnail?.thumbnails || [];
+  const bestThumb = videoThumbnails[videoThumbnails.length - 1]?.url;
+  const thumbnail =
+    bestThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+  return {
+    id: videoId,
+    videoId,
+    title,
+    author,
+    channelAvatar,
+    duration,
+    durationSeconds,
+    viewCount,
+    publishedTime,
+    thumbnail,
+  };
+}
+
+/**
+ * Searches YouTube for video content and returns both videos and a continuation token for infinite scroll.
+ */
+export async function searchYouTubeVideosWithContinuation(
   query: string,
   limit: number = 30
-): Promise<YouTubeVideoSearchResult[]> {
+): Promise<YouTubeSearchPageResult> {
   const cleanQuery = query.trim();
-  if (!cleanQuery) return [];
+  if (!cleanQuery) return { videos: [], continuationToken: null };
 
   try {
     const visitorData = await getYouTubeVisitorData();
@@ -135,7 +188,7 @@ export async function searchYouTubeVideos(
     clearTimeout(timeout);
 
     if (!res.ok) {
-      return [];
+      return { videos: [], continuationToken: null };
     }
 
     const data = await res.json();
@@ -144,69 +197,137 @@ export async function searchYouTubeVideos(
         ?.contents || [];
 
     const results: YouTubeVideoSearchResult[] = [];
+    let continuationToken: string | null = null;
 
     for (const section of contents) {
+      if (section?.continuationItemRenderer) {
+        continuationToken =
+          section.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
+      }
       const items = section?.itemSectionRenderer?.contents || [];
       for (const item of items) {
         if (item?.videoRenderer) {
-          const vr = item.videoRenderer;
-          const videoId = vr.videoId;
-          if (!videoId || typeof videoId !== 'string') continue;
-
-          const title =
-            vr.title?.runs?.map((r: any) => r.text).join('') ||
-            vr.title?.simpleText ||
-            'Untitled Video';
-
-          const author =
-            vr.ownerText?.runs?.map((r: any) => r.text).join('') ||
-            vr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
-            'YouTube Creator';
-
-          const channelThumbnails =
-            vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail
-              ?.thumbnails || [];
-          const channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
-
-          const duration = vr.lengthText?.simpleText || '';
-          const durationSeconds = parseDurationSeconds(duration);
-          const viewCount =
-            vr.shortViewCountText?.simpleText ||
-            vr.viewCountText?.simpleText ||
-            '';
-          const publishedTime = vr.publishedTimeText?.simpleText || '';
-
-          const videoThumbnails = vr.thumbnail?.thumbnails || [];
-          // Pick best thumbnail, preferably 720p or highest resolution
-          const bestThumb = videoThumbnails[videoThumbnails.length - 1]?.url;
-          const thumbnail =
-            bestThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-
-          results.push({
-            id: videoId,
-            videoId,
-            title,
-            author,
-            channelAvatar,
-            duration,
-            durationSeconds,
-            viewCount,
-            publishedTime,
-            thumbnail,
-          });
-
-          if (results.length >= limit) break;
+          const parsed = parseVideoRenderer(item.videoRenderer);
+          if (parsed) {
+            results.push(parsed);
+          }
+        } else if (item?.continuationItemRenderer) {
+          continuationToken =
+            item.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
         }
       }
-      if (results.length >= limit) break;
     }
 
-    return results;
+    return {
+      videos: results.slice(0, limit),
+      continuationToken,
+    };
   } catch (err: any) {
     if (err?.name !== 'AbortError') {
       console.warn('searchYouTubeVideos error:', err);
     }
-    return [];
+    return { videos: [], continuationToken: null };
+  }
+}
+
+/**
+ * Searches YouTube for video content matching query (convenience wrapper).
+ */
+export async function searchYouTubeVideos(
+  query: string,
+  limit: number = 30
+): Promise<YouTubeVideoSearchResult[]> {
+  const page = await searchYouTubeVideosWithContinuation(query, limit);
+  return page.videos;
+}
+
+/**
+ * Fetches the next page of YouTube video search results using an InnerTube continuation token.
+ */
+export async function fetchNextYouTubeSearchVideos(
+  continuationToken: string,
+  limit: number = 25
+): Promise<YouTubeSearchPageResult> {
+  if (!continuationToken) {
+    return { videos: [], continuationToken: null };
+  }
+
+  try {
+    const visitorData = await getYouTubeVisitorData();
+
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240105.01.00',
+          hl: 'en',
+          gl: 'IN',
+          visitorData: visitorData || undefined,
+        },
+      },
+      continuation: continuationToken,
+    };
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 6000);
+
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Origin: 'https://www.youtube.com',
+        ...(visitorData ? { 'X-Goog-Visitor-Id': visitorData } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      return { videos: [], continuationToken: null };
+    }
+
+    const data = await res.json();
+    const cmds = data?.onResponseReceivedCommands || [];
+    const results: YouTubeVideoSearchResult[] = [];
+    let nextContinuationToken: string | null = null;
+
+    for (const cmd of cmds) {
+      const continuationItems = cmd?.appendContinuationItemsAction?.continuationItems || [];
+      for (const ci of continuationItems) {
+        if (ci?.continuationItemRenderer) {
+          nextContinuationToken =
+            ci.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
+        }
+        if (ci?.itemSectionRenderer?.contents) {
+          for (const item of ci.itemSectionRenderer.contents) {
+            if (item?.videoRenderer) {
+              const parsed = parseVideoRenderer(item.videoRenderer);
+              if (parsed) results.push(parsed);
+            } else if (item?.continuationItemRenderer) {
+              nextContinuationToken =
+                item.continuationItemRenderer.continuationEndpoint?.continuationCommand?.token || null;
+            }
+          }
+        }
+        if (ci?.videoRenderer) {
+          const parsed = parseVideoRenderer(ci.videoRenderer);
+          if (parsed) results.push(parsed);
+        }
+      }
+    }
+
+    return {
+      videos: results.slice(0, limit),
+      continuationToken: nextContinuationToken,
+    };
+  } catch (err: any) {
+    if (err?.name !== 'AbortError') {
+      console.warn('fetchNextYouTubeSearchVideos error:', err);
+    }
+    return { videos: [], continuationToken: null };
   }
 }
 
