@@ -25,6 +25,8 @@ import {
   saveGoogleYouTubeTokens,
   clearGoogleYouTubeTokens,
   getGoogleYouTubeToken,
+  isYouTubeConnected,
+  prefetchAndCacheUserSubscriptions,
 } from '@/services/youtubeUserFeedService';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -79,9 +81,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isProfileModalVisible, setIsProfileModalVisible] = useState<boolean>(false);
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [googleYoutubeToken, setGoogleYoutubeToken] = useState<string | null>(null);
+  const [isYouTubeLinkedState, setIsYouTubeLinkedState] = useState<boolean>(false);
 
   const isGuest = useMemo(() => !user, [user]);
-  const isYouTubeLinked = useMemo(() => !!googleYoutubeToken, [googleYoutubeToken]);
+  const isYouTubeLinked = useMemo(
+    () => isYouTubeLinkedState || !!googleYoutubeToken,
+    [isYouTubeLinkedState, googleYoutubeToken]
+  );
 
   // Load guest profile from local storage if not logged in
   const loadLocalGuestProfile = useCallback(async () => {
@@ -145,7 +151,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     let isMounted = true;
 
     async function initAuth() {
+      // Restore persistent YouTube connection status from local cache immediately
+      const persistentYtConnected = await isYouTubeConnected();
+      if (isMounted) setIsYouTubeLinkedState(persistentYtConnected);
+
       if (!isSupabaseConfigured()) {
+        const storedYtToken = await getGoogleYouTubeToken();
+        if (storedYtToken && isMounted) {
+          setGoogleYoutubeToken(storedYtToken);
+        }
         await loadLocalGuestProfile();
         await refreshStats();
         if (isMounted) setIsLoading(false);
@@ -166,15 +180,29 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               data.session.provider_token,
               data.session.provider_refresh_token || null
             );
-            if (isMounted) setGoogleYoutubeToken(data.session.provider_token);
+            if (isMounted) {
+              setGoogleYoutubeToken(data.session.provider_token);
+              setIsYouTubeLinkedState(true);
+            }
+            prefetchAndCacheUserSubscriptions(data.session.provider_token).catch(() => {});
           } else {
             const storedYtToken = await getGoogleYouTubeToken();
             if (storedYtToken && isMounted) {
               setGoogleYoutubeToken(storedYtToken);
             }
+            if (persistentYtConnected && isMounted) {
+              setIsYouTubeLinkedState(true);
+            }
           }
         } else {
           await loadLocalGuestProfile();
+          const storedYtToken = await getGoogleYouTubeToken();
+          if (storedYtToken && isMounted) {
+            setGoogleYoutubeToken(storedYtToken);
+          }
+          if (persistentYtConnected && isMounted) {
+            setIsYouTubeLinkedState(true);
+          }
         }
       } catch (err) {
         console.warn('[AuthContext] Error initializing session:', err);
@@ -203,18 +231,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 newSession.provider_token,
                 newSession.provider_refresh_token || null
               );
-              if (isMounted) setGoogleYoutubeToken(newSession.provider_token);
+              if (isMounted) {
+                setGoogleYoutubeToken(newSession.provider_token);
+                setIsYouTubeLinkedState(true);
+              }
+              prefetchAndCacheUserSubscriptions(newSession.provider_token).catch(() => {});
             } else {
               // Ensure we restore persisted Google YouTube token if not in this event
               const stored = await getGoogleYouTubeToken();
-              if (stored && isMounted) {
-                setGoogleYoutubeToken(stored);
+              const connected = await isYouTubeConnected();
+              if (isMounted) {
+                if (stored) setGoogleYoutubeToken(stored);
+                if (connected) setIsYouTubeLinkedState(true);
               }
             }
           } else if (_event === 'SIGNED_OUT') {
             await loadLocalGuestProfile();
             await clearGoogleYouTubeTokens();
-            if (isMounted) setGoogleYoutubeToken(null);
+            if (isMounted) {
+              setGoogleYoutubeToken(null);
+              setIsYouTubeLinkedState(false);
+            }
           }
           await refreshStats();
         }
@@ -482,6 +519,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           params.provider_refresh_token || null
         );
         setGoogleYoutubeToken(params.provider_token);
+        setIsYouTubeLinkedState(true);
+        prefetchAndCacheUserSubscriptions(params.provider_token).catch(() => {});
       }
 
       // 7. Exchange code for session (PKCE) or set tokens (Implicit)
@@ -500,6 +539,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             exchangeData.session.provider_refresh_token || null
           );
           setGoogleYoutubeToken(exchangeData.session.provider_token);
+          setIsYouTubeLinkedState(true);
+          prefetchAndCacheUserSubscriptions(exchangeData.session.provider_token).catch(() => {});
         }
       } else if (params.access_token && params.refresh_token) {
         const { data: sessionData, error: sessionError } =
@@ -519,6 +560,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             sessionData.session.provider_refresh_token || null
           );
           setGoogleYoutubeToken(sessionData.session.provider_token);
+          setIsYouTubeLinkedState(true);
+          prefetchAndCacheUserSubscriptions(sessionData.session.provider_token).catch(() => {});
         }
       } else {
         const { data: currentSession } = await supabase.auth.getSession();
@@ -661,6 +704,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           params.provider_refresh_token || null
         );
         setGoogleYoutubeToken(params.provider_token);
+        setIsYouTubeLinkedState(true);
+        prefetchAndCacheUserSubscriptions(params.provider_token).catch(() => {});
         console.log('[Auth] YouTube account connected via provider_token in URL');
         return {};
       }
@@ -676,6 +721,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             exchangeData.session.provider_refresh_token || null
           );
           setGoogleYoutubeToken(exchangeData.session.provider_token);
+          setIsYouTubeLinkedState(true);
+          prefetchAndCacheUserSubscriptions(exchangeData.session.provider_token).catch(() => {});
           console.log('[Auth] YouTube account connected via PKCE exchange');
           return {};
         }
@@ -693,6 +740,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             sessionData.session.provider_refresh_token || null
           );
           setGoogleYoutubeToken(sessionData.session.provider_token);
+          setIsYouTubeLinkedState(true);
+          prefetchAndCacheUserSubscriptions(sessionData.session.provider_token).catch(() => {});
           console.log('[Auth] YouTube account connected via implicit session');
           return {};
         }
@@ -711,6 +760,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const disconnectYouTubeAccount = useCallback(async (): Promise<void> => {
     await clearGoogleYouTubeTokens();
     setGoogleYoutubeToken(null);
+    setIsYouTubeLinkedState(false);
     console.log('[Auth] YouTube account disconnected');
   }, []);
 
@@ -721,6 +771,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSession(null);
     setUser(null);
     setGoogleYoutubeToken(null);
+    setIsYouTubeLinkedState(false);
     await clearGoogleYouTubeTokens();
     await loadLocalGuestProfile();
     await refreshStats();

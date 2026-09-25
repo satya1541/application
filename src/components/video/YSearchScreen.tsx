@@ -245,13 +245,8 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         if (feedResult.videos && feedResult.videos.length > 0) {
           setTrendingVideos(feedResult.videos);
           setUserFeedEmpty(false);
-          if (feedResult.requiresReauth) {
-            setUserFeedNeedsReauth(true);
-            setUserFeedError(feedResult.error || null);
-          } else {
-            setUserFeedNeedsReauth(false);
-            setUserFeedError(null);
-          }
+          setUserFeedNeedsReauth(false);
+          setUserFeedError(null);
         } else {
           setTrendingVideos([]);
           if (feedResult.notConnected) {
@@ -729,13 +724,22 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                           {currentCategoryObj.name}{(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '' : ' Highlights'}
                         </Text>
                       </View>
-                      <View style={[
-                        styles.carouselBadge,
-                        (selectedCategory === 'my_feed' || selectedCategory === 'liked') && {
-                          backgroundColor: 'rgba(26, 115, 232, 0.15)',
-                          borderColor: 'rgba(26, 115, 232, 0.4)',
-                        },
-                      ]}>
+                      <TouchableOpacity
+                        style={[
+                          styles.carouselBadge,
+                          (selectedCategory === 'my_feed' || selectedCategory === 'liked') && {
+                            backgroundColor: 'rgba(26, 115, 232, 0.15)',
+                            borderColor: 'rgba(26, 115, 232, 0.4)',
+                          },
+                        ]}
+                        activeOpacity={0.7}
+                        onPress={async () => {
+                          if (selectedCategory === 'my_feed' || selectedCategory === 'liked') {
+                            const res = await connectYouTubeAccount();
+                            if (!res.error) loadTrending(selectedCategory);
+                          }
+                        }}
+                      >
                         <Ionicons
                           name={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? 'logo-google' : 'musical-notes'}
                           size={10}
@@ -747,7 +751,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                         ]}>
                           {(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? 'Your Account' : 'Official Charts'}
                         </Text>
-                      </View>
+                      </TouchableOpacity>
                     </View>
 
                     <FlatList
@@ -772,24 +776,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                         : `Top 30 ${currentCategoryObj.name} Videos`}
                     </Text>
                   </View>
-
-                  {/* Reauth / Refresh notice banner if session needs refresh but cached videos are visible */}
-                  {userFeedNeedsReauth && (selectedCategory === 'my_feed' || selectedCategory === 'liked') ? (
-                    <TouchableOpacity
-                      style={styles.reauthNoticeBanner}
-                      onPress={async () => {
-                        const res = await connectYouTubeAccount();
-                        if (!res.error) loadTrending(selectedCategory);
-                      }}
-                      activeOpacity={0.85}
-                    >
-                      <Ionicons name="refresh-circle" size={20} color="#FFA726" />
-                      <Text style={styles.reauthNoticeText}>
-                        Session needs refresh. Tap here to reconnect.
-                      </Text>
-                      <Ionicons name="chevron-forward" size={16} color="#FFA726" />
-                    </TouchableOpacity>
-                  ) : null}
                 </View>
               ) : null
             }
