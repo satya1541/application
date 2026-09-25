@@ -2,30 +2,6 @@ import { Platform, Dimensions, AppState } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 /**
- * Checks whether the current window dimensions indicate landscape mode.
- * Always returns false if the app is in background or PiP mode.
- */
-export function isLandscape(): boolean {
-  if (AppState.currentState !== 'active') return false;
-  const { width, height } = Dimensions.get('window');
-  return width > height;
-}
-
-/**
- * Unlocks orientation dynamically.
- */
-export async function unlockOrientationAsync(): Promise<void> {
-  if (Platform.OS === 'web') return;
-  try {
-    if (ScreenOrientation && typeof ScreenOrientation.unlockAsync === 'function') {
-      await ScreenOrientation.unlockAsync();
-    }
-  } catch (err) {
-    console.warn('[OrientationManager] unlockAsync failed:', err);
-  }
-}
-
-/**
  * Locks orientation to portrait (top-up).
  */
 export async function lockPortraitAsync(): Promise<void> {

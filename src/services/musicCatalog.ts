@@ -1,4 +1,4 @@
-import { Song, Playlist, Artist, AudioAcousticProfile } from '@/types/music';
+import { Song, Artist, AudioAcousticProfile } from '@/types/music';
 
 
 
@@ -185,44 +185,6 @@ export const INITIAL_SONGS: Song[] = [
     language: 'Hindi',
     hasLyrics: true,
     gradientColors: ['#3b82f6', '#1e3a8a'],
-  },
-];
-
-export const INITIAL_PLAYLISTS: Playlist[] = [
-  {
-    id: 'pl-1',
-    title: 'Daily Mix 1',
-    description: 'Arijit Singh, Diljit Dosanjh, Karan Aujla, and deluxe chartbusters',
-    cover: 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=800&auto=format&fit=crop',
-    songCount: 18,
-    songs: INITIAL_SONGS.slice(0, 4),
-    isPinned: true,
-  },
-  {
-    id: 'pl-2',
-    title: 'Punjabi Chartbusters',
-    description: 'Tauba Tauba, Lover, Karan Aujla, Diljit Dosanjh',
-    cover: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=800&auto=format&fit=crop',
-    songCount: 24,
-    songs: [INITIAL_SONGS[1], INITIAL_SONGS[3]],
-    isPinned: true,
-  },
-  {
-    id: 'pl-3',
-    title: 'Arijit Singh Essentials',
-    description: 'Kesariya, Channa Mereya, Tum Hi Ho, and timeless melodies',
-    cover: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?q=80&w=800&auto=format&fit=crop',
-    songCount: 32,
-    songs: [INITIAL_SONGS[0], INITIAL_SONGS[4]],
-    isPinned: true,
-  },
-  {
-    id: 'pl-4',
-    title: 'Heavy Rotation',
-    description: 'Your most streamed tracks this month in pristine Hi-Fi',
-    cover: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?q=80&w=800&auto=format&fit=crop',
-    songCount: 15,
-    songs: INITIAL_SONGS,
   },
 ];
 

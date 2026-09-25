@@ -189,23 +189,6 @@ export async function clearHistory(userId?: string | null): Promise<boolean> {
   }
 }
 
-/**
- * Removes a single entry from listening history by entry id.
- */
-export async function removeHistoryEntry(entryId: string, userId?: string | null): Promise<HistoryEntry[]> {
-  try {
-    const existing = await getListeningHistory();
-    const updated = existing.filter((e) => e.id !== entryId && e.song.id !== entryId);
-    await SafeStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
-    if (isSupabaseConfigured() && userId) {
-      await supabase.from('listening_history').delete().eq('user_id', userId).eq('song_id', entryId);
-    }
-    return updated;
-  } catch (err) {
-    console.warn('[historyService] Error removing history entry:', err);
-    return [];
-  }
-}
 
 /**
  * Prunes listening history older than 7 days locally and in Supabase.

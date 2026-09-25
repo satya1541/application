@@ -24,7 +24,6 @@ export const YOUTUBE_PLAYLIST_CATEGORIES = [
   'Global & Pop',
 ] as const;
 
-export type YouTubePlaylistCategory = string;
 
 export function getCategoryFallbackCover(category: string): string {
   switch (category) {
@@ -165,16 +164,6 @@ export function categorizePlaylist(item: { id: string; title: string; descriptio
   return { category: 'Global & Pop', badge: 'Curated' };
 }
 
-/**
- * Strips temporary expiry parameters from YouTube CDN thumbnail URLs.
- */
-export function cleanYouTubeThumbnailUrl(rawUrl: string): string {
-  if (!rawUrl || typeof rawUrl !== 'string') return '';
-  if (rawUrl.includes('i.ytimg.com/vi/')) {
-    return rawUrl.split('?')[0];
-  }
-  return rawUrl;
-}
 
 /**
  * Safely extracts high-resolution thumbnail URL from any YouTube node,
@@ -770,7 +759,6 @@ export const FALLBACK_YOUTUBE_PLAYLISTS: YouTubePlaylistItem[] = [
   }
 ];
 
-export const OFFICIAL_YOUTUBE_PLAYLISTS: YouTubePlaylistItem[] = FALLBACK_YOUTUBE_PLAYLISTS;
 
 
 // In-memory runtime cache for dynamic live playlists

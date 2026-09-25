@@ -213,15 +213,6 @@ function setCachedVideoDetails(cleanId: string, details: VideoStreamDetails): vo
   videoStreamCache.set(cleanId, { details, expiresAt });
 }
 
-export function getCachedVideoDetails(videoId: string): VideoStreamDetails | null {
-  const cleanId = videoId.replace(/^yt_/, '').trim();
-  const cached = videoStreamCache.get(cleanId);
-  if (cached && Date.now() < cached.expiresAt - 300000) {
-    return cached.details;
-  }
-  return null;
-}
-
 function scoreVideoFormat(f: any): number {
   let score = 0;
   const q = (f.qualityLabel || '').toLowerCase();

@@ -48,11 +48,3 @@ export async function recordMonthlyReplayShown(): Promise<void> {
   }
 }
 
-/**
- * Utility for testing or manual reset.
- */
-export async function resetMonthlyReplayTimer(): Promise<void> {
-  try {
-    await SafeStorage.removeItem(STORAGE_KEY_LAST_REPLAY_SHOWN);
-  } catch { }
-}

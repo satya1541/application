@@ -14,15 +14,6 @@ export const JIOSAAVN_BADGE: SourceBadge = {
   qualityLabel: 'Lossless 320kbps',
 };
 
-export const YOUTUBE_BADGE: SourceBadge = {
-  name: 'Opus',
-  icon: '🎵',
-  color: '#ff4e45',
-  bg: 'rgba(255, 78, 69, 0.12)',
-  border: 'rgba(255, 78, 69, 0.3)',
-  qualityLabel: 'Opus 160kbps',
-};
-
 const SAAVN_DES_KEY = '38346591';
 
 /**

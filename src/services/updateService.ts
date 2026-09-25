@@ -53,10 +53,6 @@ export function subscribeToUpdates(listener: UpdateListener): () => void {
   };
 }
 
-export function getUpdateStatus(): AppUpdateStatus {
-  return { ...currentStatus };
-}
-
 /**
  * Initializes update tracking:
  * 1. Checks if the app was just launched with a newly applied OTA update

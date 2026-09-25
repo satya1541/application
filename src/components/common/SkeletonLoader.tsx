@@ -89,71 +89,7 @@ export const SongItemSkeleton: React.FC<{ count?: number; showTrackNumber?: bool
   );
 };
 
-/**
- * Skeleton placeholder for Browse All 2-column cards.
- */
-export const CardGridSkeleton: React.FC<{ count?: number }> = ({ count = 6 }) => {
-  return (
-    <View style={styles.gridContainer}>
-      {Array.from({ length: count }).map((_, index) => (
-        <View key={`card-skeleton-${index}`} style={styles.gridCard}>
-          <Skeleton
-            width={index % 3 === 0 ? '75%' : '60%'}
-            height={16}
-            borderRadius={4}
-            style={{ position: 'absolute', top: 14, left: 14 }}
-          />
-          <Skeleton
-            width={72}
-            height={72}
-            borderRadius={36}
-            style={{
-              position: 'absolute',
-              right: -10,
-              bottom: -8,
-              transform: [{ rotate: '18deg' }],
-            }}
-          />
-        </View>
-      ))}
-    </View>
-  );
-};
 
-/**
- * Skeleton placeholder for horizontal media carousels (Artists, Albums, Playlists).
- */
-export const MediaCarouselSkeleton: React.FC<{ count?: number; type?: 'song' | 'album' | 'artist' }> = ({
-  count = 5,
-  type = 'album',
-}) => {
-  const isCircle = type === 'artist';
-  const size = isCircle ? 104 : 116;
-
-  return (
-    <View style={styles.carouselContainer}>
-      {/* Title & Subtitle skeleton */}
-      <View style={{ marginBottom: 12, paddingHorizontal: 16 }}>
-        <Skeleton width="45%" height={16} borderRadius={4} style={{ marginBottom: 6 }} />
-        <Skeleton width="65%" height={11} borderRadius={4} />
-      </View>
-      <View style={styles.carouselRow}>
-        {Array.from({ length: count }).map((_, index) => (
-          <View key={`media-skeleton-${index}`} style={{ width: size, marginRight: 14 }}>
-            <Skeleton
-              width={size}
-              height={size}
-              borderRadius={isCircle ? size / 2 : 8}
-              style={{ marginBottom: 8 }}
-            />
-            <Skeleton width="80%" height={12} borderRadius={4} style={{ marginBottom: 4 }} />
-            <Skeleton width="50%" height={10} borderRadius={4} />
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-};
 
 /**
  * Full skeleton layout for the Search Screen results view.
@@ -231,27 +167,6 @@ const styles = StyleSheet.create({
   },
   songTextContainer: {
     flex: 1,
-  },
-  gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    paddingHorizontal: 16,
-  },
-  gridCard: {
-    width: '48%',
-    height: 96,
-    borderRadius: 8,
-    backgroundColor: '#1c1c1c',
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  carouselContainer: {
-    marginBottom: 26,
-  },
-  carouselRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
   },
   searchSkeletonContainer: {
     paddingTop: 8,

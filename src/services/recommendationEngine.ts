@@ -13,7 +13,6 @@ import {
   ListeningAction,
   SessionIntent,
   DynamicWeights,
-  ExplorationMixRatio,
   RecommendationResult,
 } from '@/types/recommendation';
 import { searchSaavnSongs, getTrendingSaavnSongs } from './saavnStream';
@@ -64,13 +63,6 @@ export const INTENT_WEIGHT_PROFILES: Record<SessionIntent, DynamicWeights> = {
   },
 };
 
-// ─── Dynamic Exploration Ratios ─────────────────────────────────
-export const INTENT_EXPLORATION_RATIOS: Record<SessionIntent, ExplorationMixRatio> = {
-  DEEP_FOCUS_ARTIST: { exploitation: 0.85, exploration: 0.10, discovery: 0.05 },
-  MOOD_FLOW:         { exploitation: 0.75, exploration: 0.18, discovery: 0.07 },
-  CHARTS_POPULAR:    { exploitation: 0.70, exploration: 0.20, discovery: 0.10 },
-  ACTIVE_DISCOVERY:  { exploitation: 0.45, exploration: 0.35, discovery: 0.20 },
-};
 
 // ─── Event Weights ──────────────────────────────────────────────
 const EVENT_WEIGHTS: Record<ListeningAction, number> = {
