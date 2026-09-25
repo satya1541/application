@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.1.7',
-  releaseTag: 'v5.1.7',
-  releaseName: 'Shorty v5.1.7: Fix Fullscreen Video Scrubber & Progress Bar in Music Player Video Mode',
+  otaVersion: '5.1.8',
+  releaseTag: 'v5.1.8',
+  releaseName: 'Shorty v5.1.8: Real-Time YouTube Up Next Recommendations & Continuous Auto-Play in YSearch',
   releaseDate: '2026-09-25',
   channel: 'preview',
 };
