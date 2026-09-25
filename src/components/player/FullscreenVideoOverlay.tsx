@@ -104,15 +104,22 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoViewRef = useRef<VideoView>(null);
 
+  // Exit fullscreen cleanly
+  const handleExit = useCallback(async () => {
+    await lockPortraitAsync();
+    onExitFullscreen();
+  }, [onExitFullscreen]);
+
   const handleTriggerPiP = useCallback(async () => {
     try {
+      handleExit();
       if (videoViewRef.current) {
         await videoViewRef.current.startPictureInPicture();
       }
     } catch (err) {
       console.warn('PiP start error in fullscreen:', err);
     }
-  }, []);
+  }, [handleExit]);
 
   // Ensure player emits timeUpdate events at 1.0s interval for smooth UI with low CPU/thermal usage
   useEffect(() => {
@@ -250,11 +257,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
     }).start(() => setSeekFeedback(null));
   };
 
-  // Exit fullscreen cleanly
-  const handleExit = useCallback(async () => {
-    await lockPortraitAsync();
-    onExitFullscreen();
-  }, [onExitFullscreen]);
+
 
   // Swipe-down gesture to exit fullscreen (matching YouTube mobile)
   const fullscreenPanResponder = useRef(
@@ -341,6 +344,8 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
           surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
           allowsPictureInPicture={Boolean(isPlaying && !audioIsPlaying)}
           startsPictureInPictureAutomatically={Boolean(isPlaying && !audioIsPlaying)}
+          onPictureInPictureStart={handleExit}
+          onPictureInPictureStop={handleExit}
         />
 
         {/* Vivid / HDR Color Boost Layer: Micro-contrast enhancer and warm color saturation pop */}

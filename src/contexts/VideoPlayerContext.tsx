@@ -69,6 +69,8 @@ interface VideoPlayerContextType {
   enterFullscreen: () => Promise<void>;
   exitFullscreen: () => Promise<void>;
   triggerPiP: () => Promise<void>;
+  handlePiPStart: () => void;
+  handlePiPStop: () => void;
 }
 
 const VideoPlayerContext = createContext<VideoPlayerContextType | null>(null);
@@ -90,6 +92,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const hasAdvancedRef = useRef<boolean>(false);
   const watchVideoViewRef = useRef<VideoView | null>(null);
   const miniVideoViewRef = useRef<VideoView | null>(null);
+  const isPiPActiveRef = useRef<boolean>(false);
+  const pipExitCooldownRef = useRef<boolean>(false);
 
   // Initialize single persistent native player
   const player = useVideoPlayer(null, (p) => {
@@ -104,14 +108,26 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     } catch {}
   });
 
-  // Track AppState for background/active resync
+  // Track AppState for background/active resync and PiP restore
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       appStateRef.current = nextState;
-      if (nextState === 'active' && player) {
-        try {
-          setCurrentTime(player.currentTime);
-        } catch {}
+      if (nextState === 'active') {
+        if (player) {
+          try {
+            setCurrentTime(player.currentTime);
+          } catch {}
+        }
+        if (isPiPActiveRef.current) {
+          isPiPActiveRef.current = false;
+          pipExitCooldownRef.current = true;
+          setTimeout(() => {
+            pipExitCooldownRef.current = false;
+          }, 600);
+          setIsFullscreen(false);
+          lockPortraitAsync().catch(() => {});
+          setPlayerMode('full');
+        }
       }
     });
     return () => sub.remove();
@@ -386,6 +402,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const closePlayer = useCallback(() => {
+    isPiPActiveRef.current = false;
+    pipExitCooldownRef.current = false;
     if (player) {
       try {
         player.pause();
@@ -412,8 +430,30 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsFullscreen(false);
   }, []);
 
+  const handlePiPStart = useCallback(() => {
+    isPiPActiveRef.current = true;
+    if (isFullscreen) {
+      setIsFullscreen(false);
+      lockPortraitAsync().catch(() => {});
+    }
+  }, [isFullscreen]);
+
+  const handlePiPStop = useCallback(() => {
+    isPiPActiveRef.current = false;
+    pipExitCooldownRef.current = true;
+    setTimeout(() => {
+      pipExitCooldownRef.current = false;
+    }, 600);
+    setIsFullscreen(false);
+    lockPortraitAsync().catch(() => {});
+    setPlayerMode('full');
+  }, []);
+
   const triggerPiP = useCallback(async () => {
     try {
+      if (isFullscreen) {
+        await exitFullscreen();
+      }
       const activeRef = playerMode === 'full' ? watchVideoViewRef.current : miniVideoViewRef.current;
       if (activeRef) {
         await activeRef.startPictureInPicture();
@@ -424,12 +464,16 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       console.warn('PiP start error, falling back to miniplayer:', err);
       collapseToMini();
     }
-  }, [playerMode, collapseToMini]);
+  }, [playerMode, isFullscreen, exitFullscreen, collapseToMini]);
 
   // Physical screen orientation listener
   useEffect(() => {
     if (playerMode === 'hidden') return;
     const unsub = addOrientationListener((isLand) => {
+      // Never trigger orientation changes while app is in background, in PiP, or during PiP restore cooldown
+      if (appStateRef.current !== 'active' || isPiPActiveRef.current || pipExitCooldownRef.current) {
+        return;
+      }
       if (isLand && !isFullscreen) {
         enterFullscreen().catch(() => {});
       } else if (!isLand && isFullscreen) {
@@ -465,6 +509,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       enterFullscreen,
       exitFullscreen,
       triggerPiP,
+      handlePiPStart,
+      handlePiPStop,
     }),
     [
       player,
@@ -489,6 +535,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       enterFullscreen,
       exitFullscreen,
       triggerPiP,
+      handlePiPStart,
+      handlePiPStop,
     ]
   );
 

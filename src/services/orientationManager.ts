@@ -1,10 +1,12 @@
-import { Platform, Dimensions } from 'react-native';
+import { Platform, Dimensions, AppState } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 /**
  * Checks whether the current window dimensions indicate landscape mode.
+ * Always returns false if the app is in background or PiP mode.
  */
 export function isLandscape(): boolean {
+  if (AppState.currentState !== 'active') return false;
   const { width, height } = Dimensions.get('window');
   return width > height;
 }
@@ -67,6 +69,8 @@ export function addOrientationListener(callback: (isLandscapeMode: boolean) => v
     try {
       nativeSub = ScreenOrientation.addOrientationChangeListener((event) => {
         if (isCleanedUp) return;
+        // Never trigger landscape rotation if the app is in background or PiP window
+        if (AppState.currentState !== 'active') return;
         const orient = event.orientationInfo.orientation;
         const isLand =
           orient === ScreenOrientation.Orientation.LANDSCAPE_LEFT ||
@@ -81,6 +85,8 @@ export function addOrientationListener(callback: (isLandscapeMode: boolean) => v
   // 2. Also listen to Dimensions change as universal fallback
   const dimSub = Dimensions.addEventListener('change', ({ window }) => {
     if (isCleanedUp) return;
+    // In Android PiP, window dimensions are 16:9 (width > height), which must not trigger landscape rotation!
+    if (AppState.currentState !== 'active') return;
     callback(window.width > window.height);
   });
 

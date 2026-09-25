@@ -139,6 +139,8 @@ export const GlobalVideoPlayer: React.FC = () => {
     enterFullscreen,
     exitFullscreen,
     triggerPiP,
+    handlePiPStart,
+    handlePiPStop,
   } = useVideoPlayerContext();
   const { isPlaying: isAudioPlaying } = useAudio();
 
@@ -509,6 +511,8 @@ export const GlobalVideoPlayer: React.FC = () => {
                     surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
                     allowsPictureInPicture={isPiPAllowed}
                     startsPictureInPictureAutomatically={isPiPAllowed}
+                    onPictureInPictureStart={handlePiPStart}
+                    onPictureInPictureStop={handlePiPStop}
                   />
                 </View>
               )}
@@ -608,6 +612,8 @@ export const GlobalVideoPlayer: React.FC = () => {
                         surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
                         allowsPictureInPicture={isPiPAllowed}
                         startsPictureInPictureAutomatically={isPiPAllowed}
+                        onPictureInPictureStart={handlePiPStart}
+                        onPictureInPictureStop={handlePiPStop}
                       />
                     </View>
 
