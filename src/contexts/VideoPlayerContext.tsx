@@ -14,7 +14,6 @@ import { useAudio } from '@/contexts/AudioContext';
 import {
   resolveYouTubeStandaloneVideoStream,
   getCachedVideoStream,
-  fetchYouTubeNextRecommendations,
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
@@ -55,8 +54,6 @@ interface VideoPlayerContextType {
   isLoadingStream: boolean;
   isFullscreen: boolean;
   playlist: YouTubeVideoSearchResult[];
-  recommendations: YouTubeVideoSearchResult[];
-  isLoadingRecommendations: boolean;
   watchVideoViewRef: React.RefObject<VideoView | null>;
   miniVideoViewRef: React.RefObject<VideoView | null>;
   playVideo: (item: YouTubeVideoSearchResult, queue?: YouTubeVideoSearchResult[]) => Promise<void>;
@@ -90,8 +87,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isLoadingStream, setIsLoadingStream] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [playlist, setPlaylist] = useState<YouTubeVideoSearchResult[]>([]);
-  const [recommendations, setRecommendations] = useState<YouTubeVideoSearchResult[]>([]);
-  const [isLoadingRecommendations, setIsLoadingRecommendations] = useState<boolean>(false);
 
   const appStateRef = useRef(AppState.currentState);
   const hasAdvancedRef = useRef<boolean>(false);
@@ -170,49 +165,95 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [isAudioPlaying, isVideoPlaying, player]);
 
-  // Real-time YouTube "Up Next" & Recommendation resolution via InnerTube v1/next
-  useEffect(() => {
-    if (!activeVideo?.videoId) {
-      setRecommendations([]);
-      setIsLoadingRecommendations(false);
-      return;
+  // Next / Previous Video implementation
+  const nextVideo = useCallback(() => {
+    if (!activeVideo || playlist.length === 0) return;
+    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
+    if (currentIndex >= 0 && currentIndex < playlist.length - 1) {
+      playVideo(playlist[currentIndex + 1], playlist);
     }
+  }, [activeVideo, playlist]);
 
-    let isMounted = true;
-    setIsLoadingRecommendations(true);
+  const prevVideo = useCallback(() => {
+    if (!activeVideo || playlist.length === 0) return;
+    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
+    if (currentIndex > 0) {
+      playVideo(playlist[currentIndex - 1], playlist);
+    } else {
+      seekTo(0);
+    }
+  }, [activeVideo, playlist]);
 
-    fetchYouTubeNextRecommendations(activeVideo.videoId, 20)
-      .then((recs) => {
-        if (isMounted) {
-          setRecommendations(recs);
-          setIsLoadingRecommendations(false);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setIsLoadingRecommendations(false);
-        }
-      });
+  // Native player event listeners
+  useEffect(() => {
+    if (!player) return;
+
+    const subPlaying = player.addListener('playingChange', (payload) => {
+      setIsVideoPlaying(payload.isPlaying);
+    });
+
+    const subTime = player.addListener('timeUpdate', (payload) => {
+      if (appStateRef.current === 'active') {
+        setCurrentTime(payload.currentTime);
+      }
+      const actualDuration =
+        activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
+          ? activeVideo.durationSeconds
+          : player.duration > 0
+          ? player.duration
+          : 0;
+      if (actualDuration > 0) {
+        setDuration(actualDuration);
+      }
+    });
+
+    const subStatus = player.addListener('statusChange', (payload) => {
+      if (payload.status === 'readyToPlay') {
+        const actualDuration =
+          activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
+            ? activeVideo.durationSeconds
+            : player.duration > 0
+            ? player.duration
+            : 0;
+        if (actualDuration > 0) setDuration(actualDuration);
+        player.play();
+      }
+    });
+
+    const subSourceLoad = player.addListener('sourceLoad', (payload) => {
+      if (payload.duration > 0) {
+        setDuration(payload.duration);
+      }
+      player.play();
+    });
+
+    // Authoritative end-of-stream advance
+    const subEnded = player.addListener('playToEnd', () => {
+      setIsVideoPlaying(false);
+      if (!hasAdvancedRef.current) {
+        hasAdvancedRef.current = true;
+        nextVideo();
+      }
+    });
 
     return () => {
-      isMounted = false;
+      subPlaying.remove();
+      subTime.remove();
+      subStatus.remove();
+      subSourceLoad.remove();
+      subEnded.remove();
     };
-  }, [activeVideo?.videoId]);
+  }, [player, activeVideo, nextVideo]);
 
-  const seekTo = useCallback(
-    (seconds: number) => {
-      if (!player) return;
-      try {
-        const maxDur = duration > 0 ? duration : seconds;
-        const clamped = Math.max(0, Math.min(seconds, maxDur));
-        player.currentTime = clamped;
-        setCurrentTime(clamped);
-      } catch (err) {
-        console.warn('Video seek error:', err);
-      }
-    },
-    [player, duration]
-  );
+  // Sync duration on active video change
+  useEffect(() => {
+    hasAdvancedRef.current = false;
+    if (player && player.duration > 0) {
+      setDuration(player.duration);
+    } else if (activeVideo?.durationSeconds) {
+      setDuration(activeVideo.durationSeconds);
+    }
+  }, [player, activeVideo]);
 
   // Play video with cached / live stream resolution
   const playVideo = useCallback(
@@ -333,109 +374,20 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [player, isVideoPlaying, isAudioPlaying, pauseBackgroundAudio]);
 
-  // Next Video with continuous YouTube Auto-Play
-  const nextVideo = useCallback(() => {
-    if (!activeVideo) return;
-
-    // 1. Advance in current playlist if available
-    if (playlist.length > 0) {
-      const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
-      if (currentIndex >= 0 && currentIndex < playlist.length - 1) {
-        playVideo(playlist[currentIndex + 1], playlist);
-        return;
+  const seekTo = useCallback(
+    (seconds: number) => {
+      if (!player) return;
+      try {
+        const maxDur = duration > 0 ? duration : seconds;
+        const clamped = Math.max(0, Math.min(seconds, maxDur));
+        player.currentTime = clamped;
+        setCurrentTime(clamped);
+      } catch (err) {
+        console.warn('Video seek error:', err);
       }
-    }
-
-    // 2. Seamless continuous YouTube auto-play: advance to first recommendation
-    if (recommendations.length > 0) {
-      const nextRec =
-        recommendations.find((r) => r.videoId !== activeVideo.videoId) || recommendations[0];
-      if (nextRec && nextRec.videoId !== activeVideo.videoId) {
-        playVideo(nextRec, recommendations);
-      }
-    }
-  }, [activeVideo, playlist, recommendations, playVideo]);
-
-  const prevVideo = useCallback(() => {
-    if (!activeVideo || playlist.length === 0) return;
-    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
-    if (currentIndex > 0) {
-      playVideo(playlist[currentIndex - 1], playlist);
-    } else {
-      seekTo(0);
-    }
-  }, [activeVideo, playlist, playVideo, seekTo]);
-
-  // Native player event listeners
-  useEffect(() => {
-    if (!player) return;
-
-    const subPlaying = player.addListener('playingChange', (payload) => {
-      setIsVideoPlaying(payload.isPlaying);
-    });
-
-    const subTime = player.addListener('timeUpdate', (payload) => {
-      if (appStateRef.current === 'active') {
-        setCurrentTime(payload.currentTime);
-      }
-      const actualDuration =
-        activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
-          ? activeVideo.durationSeconds
-          : player.duration > 0
-          ? player.duration
-          : 0;
-      if (actualDuration > 0) {
-        setDuration(actualDuration);
-      }
-    });
-
-    const subStatus = player.addListener('statusChange', (payload) => {
-      if (payload.status === 'readyToPlay') {
-        const actualDuration =
-          activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
-            ? activeVideo.durationSeconds
-            : player.duration > 0
-            ? player.duration
-            : 0;
-        if (actualDuration > 0) setDuration(actualDuration);
-        player.play();
-      }
-    });
-
-    const subSourceLoad = player.addListener('sourceLoad', (payload) => {
-      if (payload.duration > 0) {
-        setDuration(payload.duration);
-      }
-      player.play();
-    });
-
-    // Authoritative end-of-stream advance
-    const subEnded = player.addListener('playToEnd', () => {
-      setIsVideoPlaying(false);
-      if (!hasAdvancedRef.current) {
-        hasAdvancedRef.current = true;
-        nextVideo();
-      }
-    });
-
-    return () => {
-      subPlaying.remove();
-      subTime.remove();
-      subStatus.remove();
-      subSourceLoad.remove();
-      subEnded.remove();
-    };
-  }, [player, activeVideo, nextVideo]);
-
-  // Sync duration on active video change
-  useEffect(() => {
-    hasAdvancedRef.current = false;
-    if (player && player.duration > 0) {
-      setDuration(player.duration);
-    } else if (activeVideo?.durationSeconds) {
-      setDuration(activeVideo.durationSeconds);
-    }
-  }, [player, activeVideo]);
+    },
+    [player, duration]
+  );
 
   const collapseToMini = useCallback(() => {
     if (isFullscreen) {
@@ -542,8 +494,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoadingStream,
       isFullscreen,
       playlist,
-      recommendations,
-      isLoadingRecommendations,
       watchVideoViewRef,
       miniVideoViewRef,
       playVideo,
@@ -572,8 +522,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoadingStream,
       isFullscreen,
       playlist,
-      recommendations,
-      isLoadingRecommendations,
       playVideo,
       pauseVideo,
       resumeVideo,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -126,8 +126,6 @@ export const GlobalVideoPlayer: React.FC = () => {
     isLoadingStream,
     isFullscreen,
     playlist,
-    recommendations,
-    isLoadingRecommendations,
     watchVideoViewRef,
     miniVideoViewRef,
     playVideo,
@@ -463,13 +461,8 @@ export const GlobalVideoPlayer: React.FC = () => {
   const effectiveDuration = duration > 0 ? duration : activeVideo?.durationSeconds || 0;
   const isLiveVideo = Boolean(activeVideo?.isLive || videoStream?.isLive);
 
-  // Up next videos: prioritize authentic YouTube recommendations, fall back to current playlist
-  const upNextVideos = useMemo(() => {
-    if (recommendations && recommendations.length > 0) {
-      return recommendations.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 20);
-    }
-    return playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
-  }, [recommendations, playlist, activeVideo?.videoId]);
+  // Up next videos from current playlist
+  const upNextVideos = playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
 
   // Native PiP is strictly reserved for actively playing YSearch videos - never regular audio songs
   const isPiPAllowed = Boolean(isVideoPlaying && !isAudioPlaying && activeVideo);
@@ -848,16 +841,10 @@ export const GlobalVideoPlayer: React.FC = () => {
               <View style={styles.watchDivider} />
 
               {/* Up Next / Related Videos Header */}
-              {(upNextVideos.length > 0 || isLoadingRecommendations) && (
+              {upNextVideos.length > 0 && (
                 <>
                   <View style={styles.upNextSectionHeader}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Ionicons name="sparkles" size={14} color="#FF0000" style={{ marginRight: 6 }} />
-                      <Text style={styles.upNextSectionTitle}>Up Next & Recommendations</Text>
-                    </View>
-                    {isLoadingRecommendations && (
-                      <ActivityIndicator size="small" color="#FF0000" />
-                    )}
+                    <Text style={styles.upNextSectionTitle}>Up Next</Text>
                   </View>
 
                   {/* Up Next Cards */}
@@ -865,7 +852,7 @@ export const GlobalVideoPlayer: React.FC = () => {
                     <TouchableOpacity
                       key={`upnext-${item.videoId}`}
                       style={styles.upNextCard}
-                      onPress={() => playVideo(item, [item, ...upNextVideos])}
+                      onPress={() => playVideo(item, playlist)}
                       activeOpacity={0.8}
                     >
                       <View style={styles.upNextThumbContainer}>
