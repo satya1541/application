@@ -3,7 +3,6 @@ import { View, StyleSheet, Dimensions, ActivityIndicator, Text, TouchableOpacity
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { MaterialIcons } from '@expo/vector-icons';
 import {
-  useAudioProgress,
   getExactAudioCurrentTime,
   registerAudioSeekListener,
 } from '@/contexts/AudioContext';
@@ -37,7 +36,6 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
   borderRadius = 24,
 }) => {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const { position } = useAudioProgress();
 
   // Stable references for timer callbacks and native listeners
   const isPlayingRef = useRef<boolean>(isPlaying);
@@ -371,6 +369,7 @@ export const VideoCanvasView: React.FC<VideoCanvasViewProps> = React.memo(({
         isVisible={isFullscreen}
         qualityBadge={qualityBadge}
         onExitFullscreen={handleExitFullscreen}
+        isAudioSynced={true}
       />
     </View>
   );

@@ -37,6 +37,7 @@ interface FullscreenVideoOverlayProps {
   onTogglePlay?: () => void;
   onSeekTo?: (seconds: number) => void;
   isLive?: boolean;
+  isAudioSynced?: boolean;
 }
 
 const formatTime = (seconds: number): string => {
@@ -63,23 +64,37 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   onTogglePlay: overrideTogglePlay,
   onSeekTo: overrideSeekTo,
   isLive = false,
+  isAudioSynced = false,
 }) => {
   const insets = useSafeAreaInsets();
   const { currentSong, isPlaying: audioIsPlaying, togglePlay: audioTogglePlay, seekTo: audioSeekTo } = useAudio();
   const { position: audioPosition, duration: audioDuration } = useAudioProgress();
   const { currentTime: videoPosition, duration: videoDuration } = useVideoProgress();
 
-  const isPlaying = overrideIsPlaying !== undefined ? overrideIsPlaying : audioIsPlaying;
+  // Determine if this is audio-synced music video canvas (from VideoCanvasView) or standalone video (from YSearch GlobalVideoPlayer)
+  const isMusicMode = Boolean(
+    isAudioSynced ||
+    (!overrideTitle && (currentSong || audioDuration > 0)) ||
+    (videoDuration === 0 && (audioDuration > 0 || currentSong))
+  );
+
+  const isPlaying =
+    overrideIsPlaying !== undefined
+      ? overrideIsPlaying
+      : (isMusicMode ? audioIsPlaying : true);
+
   const position =
     overridePosition !== undefined
       ? overridePosition
-      : (player ? videoPosition : audioPosition);
+      : (isMusicMode ? audioPosition : (player ? videoPosition : audioPosition));
+
   const duration =
     overrideDuration !== undefined
       ? overrideDuration
-      : (player ? (videoDuration || 0) : audioDuration);
-  const togglePlay = overrideTogglePlay || audioTogglePlay;
-  const seekTo = overrideSeekTo || audioSeekTo;
+      : (isMusicMode ? audioDuration : (player ? (videoDuration || 0) : audioDuration));
+
+  const togglePlay = overrideTogglePlay || (isMusicMode ? audioTogglePlay : () => {});
+  const seekTo = overrideSeekTo || (isMusicMode ? audioSeekTo : () => {});
   const displayTitle = overrideTitle || currentSong?.name || 'Now Playing';
   const displayArtist = overrideArtist || currentSong?.artist || 'Unknown Artist';
 
@@ -342,8 +357,8 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
           contentFit={contentFit}
           nativeControls={false}
           surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
-          allowsPictureInPicture={Boolean(isPlaying && !audioIsPlaying)}
-          startsPictureInPictureAutomatically={Boolean(isPlaying && !audioIsPlaying)}
+          allowsPictureInPicture={Boolean(!isMusicMode && isPlaying && !audioIsPlaying)}
+          startsPictureInPictureAutomatically={Boolean(!isMusicMode && isPlaying && !audioIsPlaying)}
           onPictureInPictureStart={handleExit}
           onPictureInPictureStop={handleExit}
         />
@@ -472,14 +487,16 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
             </TouchableOpacity>
 
             {/* Picture-in-Picture Button */}
-            <TouchableOpacity
-              onPress={handleTriggerPiP}
-              style={styles.pipToggleBtn}
-              activeOpacity={0.7}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <MaterialIcons name="picture-in-picture-alt" size={18} color="#ffffff" />
-            </TouchableOpacity>
+            {!isMusicMode && (
+              <TouchableOpacity
+                onPress={handleTriggerPiP}
+                style={styles.pipToggleBtn}
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <MaterialIcons name="picture-in-picture-alt" size={18} color="#ffffff" />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Center Playback Controls */}
@@ -538,7 +555,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
                   style={styles.slider}
                   minimumValue={0}
                   maximumValue={Math.max(1, duration || 1)}
-                  value={currentDisplayTime}
+                  value={Math.min(Math.max(0, currentDisplayTime), Math.max(1, duration || 1))}
                   minimumTrackTintColor="#38bdf8"
                   maximumTrackTintColor="rgba(255, 255, 255, 0.28)"
                   thumbTintColor="#38bdf8"

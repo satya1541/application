@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.1.6',
-  releaseTag: 'v5.1.6',
-  releaseName: 'Shorty v5.1.6: Persist YouTube Login in Cache & DB with Resilient Feed and Zero Daily Re-auth Prompts',
+  otaVersion: '5.1.7',
+  releaseTag: 'v5.1.7',
+  releaseName: 'Shorty v5.1.7: Fix Fullscreen Video Scrubber & Progress Bar in Music Player Video Mode',
   releaseDate: '2026-09-25',
   channel: 'preview',
 };
