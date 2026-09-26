@@ -818,7 +818,7 @@ export const GlobalVideoPlayer: React.FC = () => {
 
               {/* Channel Row */}
               <View style={styles.watchChannelRow}>
-                {activeVideo.channelAvatar ? (
+                {activeVideo.channelAvatar && !activeVideo.channelAvatar.includes('ui-avatars.com') ? (
                   <ExpoImage
                     source={{ uri: activeVideo.channelAvatar }}
                     style={styles.watchChannelAvatar}

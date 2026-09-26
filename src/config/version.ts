@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.1',
-  releaseTag: 'v5.2.1',
-  releaseName: 'Shorty v5.2.1: Fix Channel View (banner, subs, uploads) & channelId resolution',
+  otaVersion: '5.2.2',
+  releaseTag: 'v5.2.2',
+  releaseName: 'Shorty v5.2.2: Real YouTube channel logos across Trending, Charts & Search, fast avatar caching & list optimizations',
   releaseDate: '2026-09-26',
   channel: 'preview',
 };

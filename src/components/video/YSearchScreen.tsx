@@ -733,10 +733,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={false}
-            windowSize={11}
-            maxToRenderPerBatch={10}
-            initialNumToRender={8}
+            removeClippedSubviews={Platform.OS === 'android'}
+            windowSize={5}
+            maxToRenderPerBatch={5}
+            initialNumToRender={5}
             onScrollBeginDrag={() => {
               setShowSuggestions(false);
               Keyboard.dismiss();
@@ -788,10 +788,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={false}
-            windowSize={11}
-            maxToRenderPerBatch={10}
-            initialNumToRender={8}
+            removeClippedSubviews={Platform.OS === 'android'}
+            windowSize={5}
+            maxToRenderPerBatch={5}
+            initialNumToRender={5}
             ListHeaderComponent={
               trendingVideos.length > 0 ? (
                 <View>
@@ -2009,7 +2009,7 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            {item.channelAvatar ? (
+            {item.channelAvatar && !item.channelAvatar.includes('ui-avatars.com') ? (
               <ExpoImage
                 source={{ uri: item.channelAvatar }}
                 style={styles.channelAvatar}
@@ -2059,7 +2059,16 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
         </View>
       </TouchableOpacity>
     );
-  }
+  },
+  (prev, next) =>
+    prev.item.videoId === next.item.videoId &&
+    prev.item.channelAvatar === next.item.channelAvatar &&
+    prev.item.thumbnail === next.item.thumbnail &&
+    prev.item.title === next.item.title &&
+    prev.isActive === next.isActive &&
+    prev.isPlaying === next.isPlaying &&
+    prev.themeMode === next.themeMode &&
+    prev.surfaceHex === next.surfaceHex
 );
 
 interface TrendingCardItemProps {
@@ -2160,5 +2169,12 @@ const TrendingCardItem = React.memo<TrendingCardItemProps>(
         </View>
       </TouchableOpacity>
     );
-  }
+  },
+  (prev, next) =>
+    prev.item.videoId === next.item.videoId &&
+    prev.item.thumbnail === next.item.thumbnail &&
+    prev.item.title === next.item.title &&
+    prev.isActive === next.isActive &&
+    prev.themeMode === next.themeMode &&
+    prev.surfaceHex === next.surfaceHex
 );

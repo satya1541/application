@@ -4,6 +4,11 @@
  */
 
 import { getYouTubeVisitorData } from './youtubeStreamResolver';
+import {
+  enrichVideosWithChannelAvatars,
+  getChannelAvatar,
+  setCachedChannelAvatar,
+} from './youtubeAvatarService';
 
 export interface YouTubeVideoSearchResult {
   id: string;
@@ -153,10 +158,15 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
     channelAvatar = `https:${channelAvatar}`;
   }
 
-  // High quality fallback avatar using channel author name
-  if (!channelAvatar && author) {
-    const cleanAuthor = author.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
-    channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+  // Cache real avatar if present, or lookup from cache
+  if (channelAvatar) {
+    if (channelId) setCachedChannelAvatar(channelId, channelAvatar);
+    if (author) setCachedChannelAvatar(author, channelAvatar);
+  } else {
+    channelAvatar =
+      (channelId && getChannelAvatar(channelId)) ||
+      (author && getChannelAvatar(author)) ||
+      undefined;
   }
 
   const duration = isLive ? 'LIVE' : (vr.lengthText?.simpleText || '');
@@ -267,6 +277,10 @@ export async function searchYouTubeVideosWithContinuation(
       }
     }
 
+    if (results.length > 0) {
+      await enrichVideosWithChannelAvatars(results);
+    }
+
     return {
       videos: results.slice(0, limit),
       continuationToken,
@@ -366,6 +380,10 @@ export async function fetchNextYouTubeSearchVideos(
           if (parsed) results.push(parsed);
         }
       }
+    }
+
+    if (results.length > 0) {
+      await enrichVideosWithChannelAvatars(results);
     }
 
     return {
@@ -700,12 +718,16 @@ export async function fetchTrendingYouTubeVideos(
 
           const title = item.title || 'Untitled Video';
           const rank = item.chartEntryMetadata?.currentPosition || index + 1;
-          const cleanAuthor = rawArtist.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
-          const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+          const channelId = item.externalChannelId || undefined;
+          const channelAvatar =
+            (channelId && getChannelAvatar(channelId)) ||
+            (rawArtist && getChannelAvatar(rawArtist)) ||
+            undefined;
 
           results.push({
             id: videoId,
             videoId,
+            channelId,
             title,
             author: rawArtist,
             channelAvatar,
@@ -719,6 +741,7 @@ export async function fetchTrendingYouTubeVideos(
         });
 
         if (results.length > 0) {
+          await enrichVideosWithChannelAvatars(results);
           trendingCache.set(categoryId, { timestamp: Date.now(), videos: results });
           return results.slice(0, limit);
         }
@@ -796,51 +819,106 @@ export async function fetchRelatedYouTubeVideos(
 
       for (const item of resultsSection) {
         const cvr = item?.compactVideoRenderer || item?.videoRenderer;
-        if (!cvr) continue;
+        const lvm = item?.lockupViewModel;
+        if (!cvr && !lvm) continue;
 
-        const vId = cvr.videoId;
+        let vId = cvr?.videoId || lvm?.contentId;
+        if (!vId && lvm?.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId) {
+          vId = lvm.rendererContext.commandContext.onTap.innertubeCommand.watchEndpoint.videoId;
+        }
         if (!vId || typeof vId !== 'string' || seenIds.has(vId)) continue;
         seenIds.add(vId);
 
-        const title =
-          cvr.title?.simpleText ||
-          cvr.title?.runs?.map((r: any) => r.text).join('') ||
-          'Recommended Video';
+        let title =
+          cvr?.title?.simpleText ||
+          cvr?.title?.runs?.map((r: any) => r.text).join('') ||
+          '';
 
-        const author =
-          cvr.longBylineText?.runs?.map((r: any) => r.text).join('') ||
-          cvr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
-          'YouTube Creator';
+        let author =
+          cvr?.longBylineText?.runs?.map((r: any) => r.text).join('') ||
+          cvr?.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
+          '';
 
-        const duration = cvr.lengthText?.simpleText || '';
-        const durationSeconds = parseDurationSeconds(duration);
+        let channelId =
+          cvr?.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
+          cvr?.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.navigationEndpoint?.browseEndpoint?.browseId ||
+          undefined;
 
         const channelThumbnails =
-          cvr.channelThumbnail?.thumbnails ||
-          cvr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ||
+          cvr?.channelThumbnail?.thumbnails ||
+          cvr?.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ||
           [];
         let channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url;
-        if (channelAvatar && channelAvatar.startsWith('//')) channelAvatar = `https:${channelAvatar}`;
 
-        if (!channelAvatar && author) {
-          const cleanAuthor = author.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
-          channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+        let duration = cvr?.lengthText?.simpleText || '';
+        let viewCount = cvr?.viewCountText?.simpleText || '';
+        let publishedTime = cvr?.publishedTimeText?.simpleText || '';
+
+        const thumbs = cvr?.thumbnail?.thumbnails || [];
+        let bestThumb = thumbs[thumbs.length - 1]?.url;
+
+        if (lvm) {
+          const meta = lvm.metadata?.lockupMetadataViewModel;
+          if (meta?.title?.content) title = meta.title.content;
+          const metaRows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+          if (metaRows[0]?.metadataParts?.[0]?.text?.content) {
+            author = metaRows[0].metadataParts[0].text.content;
+          }
+          if (metaRows[1]?.metadataParts?.[0]?.text?.content) {
+            viewCount = metaRows[1].metadataParts[0].text.content;
+          }
+          if (metaRows[1]?.metadataParts?.[1]?.text?.content) {
+            publishedTime = metaRows[1].metadataParts[1].text.content;
+          }
+          const imageObj = meta?.image?.decoratedAvatarViewModel?.avatar?.avatarViewModel?.image;
+          const avatarSources = imageObj?.sources || [];
+          if (avatarSources.length > 0) {
+            channelAvatar = avatarSources[avatarSources.length - 1]?.url;
+          }
+          const lvmBrowseId =
+            meta?.image?.rendererContext?.commandContext?.onTap?.innertubeCommand?.browseEndpoint?.browseId;
+          if (lvmBrowseId) channelId = lvmBrowseId;
+
+          const thumbObj = lvm.contentImage?.thumbnailViewModel?.image;
+          const thumbSources = thumbObj?.sources || [];
+          if (thumbSources.length > 0) {
+            bestThumb = thumbSources[thumbSources.length - 1]?.url;
+          }
+          const badges = lvm.contentImage?.thumbnailBottomOverlayViewModel?.badges || [];
+          const durBadge = badges[0]?.thumbnailBadgeViewModel?.text;
+          if (durBadge) duration = durBadge;
         }
 
-        const thumbs = cvr.thumbnail?.thumbnails || [];
-        let bestThumb = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+        if (!title) title = 'Recommended Video';
+        if (!author) author = 'YouTube Creator';
+
+        const durationSeconds = parseDurationSeconds(duration);
+        if (channelAvatar && channelAvatar.startsWith('//')) channelAvatar = `https:${channelAvatar}`;
+
+        if (!bestThumb) bestThumb = `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
         if (bestThumb.startsWith('//')) bestThumb = `https:${bestThumb}`;
+
+        if (channelAvatar) {
+          if (channelId) setCachedChannelAvatar(channelId, channelAvatar);
+          if (author) setCachedChannelAvatar(author, channelAvatar);
+        } else {
+          channelAvatar =
+            (channelId && getChannelAvatar(channelId)) ||
+            (author && getChannelAvatar(author)) ||
+            undefined;
+        }
 
         results.push({
           id: vId,
           videoId: vId,
+          channelId,
           title,
           author,
           channelAvatar,
           duration,
           durationSeconds,
-          viewCount: cvr.viewCountText?.simpleText || '',
-          publishedTime: cvr.publishedTimeText?.simpleText || '',
+          viewCount,
+          publishedTime,
           thumbnail: bestThumb,
         });
 
@@ -848,6 +926,7 @@ export async function fetchRelatedYouTubeVideos(
       }
 
       if (results.length > 0) {
+        await enrichVideosWithChannelAvatars(results);
         return results;
       }
     }

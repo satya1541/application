@@ -6,6 +6,7 @@
 
 import { SafeStorage } from './storage';
 import { YouTubeVideoSearchResult } from './youtubeVideoSearchService';
+import { getChannelAvatar, setCachedChannelAvatar } from './youtubeAvatarService';
 
 export const GOOGLE_YOUTUBE_TOKEN_KEY = '@shorty_google_youtube_token';
 export const GOOGLE_YOUTUBE_REFRESH_TOKEN_KEY = '@shorty_google_youtube_refresh_token';
@@ -227,6 +228,12 @@ export async function prefetchAndCacheUserSubscriptions(token: string): Promise<
 
     if (extracted.length > 0) {
       await saveStoredSubscribedChannels(extracted);
+      for (const ch of extracted) {
+        if (ch.thumbnail) {
+          setCachedChannelAvatar(ch.channelId, ch.thumbnail);
+          setCachedChannelAvatar(ch.title, ch.thumbnail);
+        }
+      }
       console.log(`[youtubeUserFeedService] Prefetched & saved ${extracted.length} subscribed channels to persistent cache`);
     }
 
@@ -391,6 +398,8 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
         if (ch.thumbnail) {
           channelThumbMap.set(ch.channelId, ch.thumbnail);
           channelThumbMap.set(ch.title.toLowerCase().trim(), ch.thumbnail);
+          setCachedChannelAvatar(ch.channelId, ch.thumbnail);
+          setCachedChannelAvatar(ch.title, ch.thumbnail);
         }
       }
 
@@ -420,15 +429,18 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
 
       const topVideos = rawVideos.slice(0, maxResults);
       const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
-        const cleanAuthor = (raw.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
         const channelAvatar =
+          channelThumbMap.get(raw.channelId) ||
           channelThumbMap.get(raw.author?.toLowerCase().trim()) ||
+          (raw.channelId && getChannelAvatar(raw.channelId)) ||
+          getChannelAvatar(raw.author) ||
           raw.channelAvatar ||
-          `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+          undefined;
 
         return {
           id: `yt_sub_${raw.videoId}`,
           videoId: raw.videoId,
+          channelId: raw.channelId,
           title: raw.title,
           author: raw.author,
           channelAvatar,
@@ -514,14 +526,16 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
                   if (!videoId) return null;
                   const snippet = item.snippet;
                   const authorName = snippet?.channelTitle || snippet?.videoOwnerChannelTitle || 'YouTube Creator';
-                  const cleanAuthor = authorName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
                   const avatar =
                     channelThumbMap.get(chId) ||
                     channelThumbMap.get(authorName.toLowerCase().trim()) ||
+                    getChannelAvatar(chId) ||
+                    getChannelAvatar(authorName) ||
                     snippet?.thumbnails?.default?.url ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+                    undefined;
                   return {
                     videoId,
+                    channelId: chId,
                     title: snippet?.title || 'Unknown Video',
                     author: authorName,
                     channelAvatar: avatar,
@@ -561,14 +575,16 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
 
             const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
               const meta = metaMap.get(raw.videoId);
-              const cleanAuthor = (raw.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
               const avatar =
                 raw.channelAvatar ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+                (raw.channelId && getChannelAvatar(raw.channelId)) ||
+                getChannelAvatar(raw.author) ||
+                undefined;
 
               return {
                 id: `yt_sub_${raw.videoId}`,
                 videoId: raw.videoId,
+                channelId: raw.channelId,
                 title: raw.title,
                 author: raw.author,
                 channelAvatar: avatar,
@@ -601,11 +617,11 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
     // Fall back to persistent storage cache with channelAvatar enrichment
     if (cachedFromStorage.length > 0) {
       const enrichedCache = cachedFromStorage.map((v) => {
-        if (v.channelAvatar) return v;
-        const cleanAuthor = (v.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+        if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
+        const realAvatar = (v.channelId && getChannelAvatar(v.channelId)) || getChannelAvatar(v.author);
         return {
           ...v,
-          channelAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`,
+          channelAvatar: realAvatar || undefined,
         };
       });
       return { videos: enrichedCache };
@@ -673,14 +689,17 @@ export async function fetchUserLikedVideos(maxResults = 30, forceRefresh = false
             const { formatted, seconds } = parseISO8601Duration(item.contentDetails?.duration);
             const viewCount = formatViewCount(item.statistics?.viewCount);
             const authorName = snippet?.channelTitle || 'YouTube Creator';
-            const cleanAuthor = authorName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+            const channelId = snippet?.channelId || undefined;
             const channelAvatar =
               snippet?.thumbnails?.default?.url ||
-              `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+              (channelId && getChannelAvatar(channelId)) ||
+              getChannelAvatar(authorName) ||
+              undefined;
 
             return {
               id: `yt_liked_${item.id}`,
               videoId: item.id,
+              channelId,
               title: snippet?.title || 'Liked Track',
               author: authorName,
               channelAvatar,
@@ -708,11 +727,11 @@ export async function fetchUserLikedVideos(maxResults = 30, forceRefresh = false
     // If token expired (401) or absent, seamlessly return cached liked videos with channelAvatar
     if (cachedFromStorage.length > 0) {
       const enrichedCache = cachedFromStorage.map((v) => {
-        if (v.channelAvatar) return v;
-        const cleanAuthor = (v.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+        if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
+        const realAvatar = (v.channelId && getChannelAvatar(v.channelId)) || getChannelAvatar(v.author);
         return {
           ...v,
-          channelAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`,
+          channelAvatar: realAvatar || undefined,
         };
       });
       return { videos: enrichedCache };
