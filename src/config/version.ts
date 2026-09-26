@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.1.8',
-  releaseTag: 'v5.1.8',
-  releaseName: 'Shorty v5.1.8: Hide Bottom Navbar on YSearch Screen',
+  otaVersion: '5.2.1',
+  releaseTag: 'v5.2.1',
+  releaseName: 'Shorty v5.2.1: Fix Channel View (banner, subs, uploads) & channelId resolution',
   releaseDate: '2026-09-26',
   channel: 'preview',
 };

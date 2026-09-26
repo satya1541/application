@@ -359,7 +359,7 @@ export interface UserFeedResult {
  * First checks active OAuth token; on expiration or offline, seamlessly falls back to
  * stored channel subscriptions + public RSS channel feeds with 0ms interruption.
  */
-export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserFeedResult> {
+export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh = false): Promise<UserFeedResult> {
   const token = await getGoogleYouTubeToken();
   const isConnected = await isYouTubeConnected();
   const cachedFromStorage = await getCachedUserFeed();
@@ -375,7 +375,7 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
 
   const cacheKey = `subscriptions_${maxResults}`;
   const cached = userFeedCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL && cached.videos.length > 0) {
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL && cached.videos.length > 0) {
     return { videos: cached.videos };
   }
 
@@ -385,9 +385,22 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
       const storedChannels = await getStoredSubscribedChannels();
       if (!storedChannels || storedChannels.length === 0) return null;
 
-      const topChannels = storedChannels.slice(0, 15);
+      // Build map of stored channel thumbnails
+      const channelThumbMap = new Map<string, string>();
+      for (const ch of storedChannels) {
+        if (ch.thumbnail) {
+          channelThumbMap.set(ch.channelId, ch.thumbnail);
+          channelThumbMap.set(ch.title.toLowerCase().trim(), ch.thumbnail);
+        }
+      }
+
+      // Shuffle channels slightly on forceRefresh to vary feed ordering
+      const channelsToUse = forceRefresh
+        ? [...storedChannels].sort(() => Math.random() - 0.5).slice(0, 15)
+        : storedChannels.slice(0, 15);
+
       const settled = await Promise.allSettled(
-        topChannels.map((c) => fetchChannelRssUploads(c.channelId, 3))
+        channelsToUse.map((c) => fetchChannelRssUploads(c.channelId, 3))
       );
 
       const rawVideos: any[] = [];
@@ -406,19 +419,28 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
       });
 
       const topVideos = rawVideos.slice(0, maxResults);
-      const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => ({
-        id: `yt_sub_${raw.videoId}`,
-        videoId: raw.videoId,
-        title: raw.title,
-        author: raw.author,
-        duration: '3:30',
-        durationSeconds: 210,
-        viewCount: '',
-        publishedTime: raw.publishedTime,
-        thumbnail: raw.thumbnail,
-        rank: idx + 1,
-        isLive: false,
-      }));
+      const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
+        const cleanAuthor = (raw.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+        const channelAvatar =
+          channelThumbMap.get(raw.author?.toLowerCase().trim()) ||
+          raw.channelAvatar ||
+          `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+
+        return {
+          id: `yt_sub_${raw.videoId}`,
+          videoId: raw.videoId,
+          title: raw.title,
+          author: raw.author,
+          channelAvatar,
+          duration: '3:30',
+          durationSeconds: 210,
+          viewCount: '',
+          publishedTime: raw.publishedTime,
+          thumbnail: raw.thumbnail,
+          rank: idx + 1,
+          isLive: false,
+        };
+      });
 
       userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
       SafeStorage.setItem(CACHED_USER_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
@@ -460,6 +482,14 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
           saveStoredSubscribedChannels(extractedChannels).catch(() => {});
         }
 
+        const channelThumbMap = new Map<string, string>();
+        for (const ch of extractedChannels) {
+          if (ch.thumbnail) {
+            channelThumbMap.set(ch.channelId, ch.thumbnail);
+            channelThumbMap.set(ch.title.toLowerCase().trim(), ch.thumbnail);
+          }
+        }
+
         const channelIds = extractedChannels.map((c) => c.channelId);
         if (channelIds.length > 0) {
           const selectedChannels = channelIds.slice(0, 12);
@@ -483,10 +513,18 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
                   const videoId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
                   if (!videoId) return null;
                   const snippet = item.snippet;
+                  const authorName = snippet?.channelTitle || snippet?.videoOwnerChannelTitle || 'YouTube Creator';
+                  const cleanAuthor = authorName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+                  const avatar =
+                    channelThumbMap.get(chId) ||
+                    channelThumbMap.get(authorName.toLowerCase().trim()) ||
+                    snippet?.thumbnails?.default?.url ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
                   return {
                     videoId,
                     title: snippet?.title || 'Unknown Video',
-                    author: snippet?.channelTitle || snippet?.videoOwnerChannelTitle || 'YouTube Creator',
+                    author: authorName,
+                    channelAvatar: avatar,
                     publishedAt: snippet?.publishedAt || '',
                     publishedTime: formatRelativeTime(snippet?.publishedAt),
                     thumbnail:
@@ -523,11 +561,17 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
 
             const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
               const meta = metaMap.get(raw.videoId);
+              const cleanAuthor = (raw.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+              const avatar =
+                raw.channelAvatar ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+
               return {
                 id: `yt_sub_${raw.videoId}`,
                 videoId: raw.videoId,
                 title: raw.title,
                 author: raw.author,
+                channelAvatar: avatar,
                 duration: meta?.duration || '3:30',
                 durationSeconds: meta?.durationSeconds || 210,
                 viewCount: meta?.viewCount || '',
@@ -549,15 +593,22 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
     }
 
     // Token expired (401), not provided, or API returned non-OK:
-    // Seamlessly fetch new uploads using stored subscriptions RSS without bothering the user!
     const rssVideos = await fetchFromStoredChannelsRss();
     if (rssVideos && rssVideos.length > 0) {
       return { videos: rssVideos };
     }
 
-    // Fall back to persistent storage cache
+    // Fall back to persistent storage cache with channelAvatar enrichment
     if (cachedFromStorage.length > 0) {
-      return { videos: cachedFromStorage };
+      const enrichedCache = cachedFromStorage.map((v) => {
+        if (v.channelAvatar) return v;
+        const cleanAuthor = (v.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+        return {
+          ...v,
+          channelAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`,
+        };
+      });
+      return { videos: enrichedCache };
     }
 
     // If completely empty and no connection at all
@@ -583,7 +634,7 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30): Promise<UserF
  * Fetches user's official Liked Videos directly using YouTube Data API v3 videos.list(myRating=like).
  * Seamlessly caches videos locally so they remain accessible even if OAuth token expires.
  */
-export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedResult> {
+export async function fetchUserLikedVideos(maxResults = 30, forceRefresh = false): Promise<UserFeedResult> {
   const token = await getGoogleYouTubeToken();
   const isConnected = await isYouTubeConnected();
   const cachedFromStorage = await getCachedLikedVideos();
@@ -598,7 +649,7 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
 
   const cacheKey = `liked_${maxResults}`;
   const cached = userFeedCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL && cached.videos.length > 0) {
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL && cached.videos.length > 0) {
     return { videos: cached.videos };
   }
 
@@ -621,11 +672,18 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
             const isLive = snippet?.liveBroadcastContent === 'live';
             const { formatted, seconds } = parseISO8601Duration(item.contentDetails?.duration);
             const viewCount = formatViewCount(item.statistics?.viewCount);
+            const authorName = snippet?.channelTitle || 'YouTube Creator';
+            const cleanAuthor = authorName.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+            const channelAvatar =
+              snippet?.thumbnails?.default?.url ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+
             return {
               id: `yt_liked_${item.id}`,
               videoId: item.id,
               title: snippet?.title || 'Liked Track',
-              author: snippet?.channelTitle || 'YouTube Creator',
+              author: authorName,
+              channelAvatar,
               duration: isLive ? 'LIVE' : formatted,
               durationSeconds: isLive ? 0 : seconds,
               viewCount,
@@ -647,9 +705,17 @@ export async function fetchUserLikedVideos(maxResults = 30): Promise<UserFeedRes
       }
     }
 
-    // If token expired (401) or absent, seamlessly return cached liked videos without annoying warning banners
+    // If token expired (401) or absent, seamlessly return cached liked videos with channelAvatar
     if (cachedFromStorage.length > 0) {
-      return { videos: cachedFromStorage };
+      const enrichedCache = cachedFromStorage.map((v) => {
+        if (v.channelAvatar) return v;
+        const cleanAuthor = (v.author || 'YouTube Creator').replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+        return {
+          ...v,
+          channelAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`,
+        };
+      });
+      return { videos: enrichedCache };
     }
 
     return { videos: [], emptyFeed: true };

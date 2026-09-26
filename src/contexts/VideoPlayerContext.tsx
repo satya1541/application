@@ -14,6 +14,7 @@ import { useAudio } from '@/contexts/AudioContext';
 import {
   resolveYouTubeStandaloneVideoStream,
   getCachedVideoStream,
+  fetchRelatedYouTubeVideos,
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
@@ -165,24 +166,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [isAudioPlaying, isVideoPlaying, player]);
 
-  // Next / Previous Video implementation
-  const nextVideo = useCallback(() => {
-    if (!activeVideo || playlist.length === 0) return;
-    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
-    if (currentIndex >= 0 && currentIndex < playlist.length - 1) {
-      playVideo(playlist[currentIndex + 1], playlist);
-    }
-  }, [activeVideo, playlist]);
-
-  const prevVideo = useCallback(() => {
-    if (!activeVideo || playlist.length === 0) return;
-    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
-    if (currentIndex > 0) {
-      playVideo(playlist[currentIndex - 1], playlist);
-    } else {
-      seekTo(0);
-    }
-  }, [activeVideo, playlist]);
+  const nextVideoRef = useRef<() => void>(() => {});
 
   // Native player event listeners
   useEffect(() => {
@@ -232,7 +216,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setIsVideoPlaying(false);
       if (!hasAdvancedRef.current) {
         hasAdvancedRef.current = true;
-        nextVideo();
+        nextVideoRef.current();
       }
     });
 
@@ -243,7 +227,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       subSourceLoad.remove();
       subEnded.remove();
     };
-  }, [player, activeVideo, nextVideo]);
+  }, [player, activeVideo]);
 
   // Sync duration on active video change
   useEffect(() => {
@@ -353,6 +337,53 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     [activeVideo, videoStream, player, isVideoPlaying, isAudioPlaying, pauseBackgroundAudio]
   );
 
+  const seekTo = useCallback(
+    (seconds: number) => {
+      if (!player) return;
+      try {
+        const maxDur = duration > 0 ? duration : seconds;
+        const clamped = Math.max(0, Math.min(seconds, maxDur));
+        player.currentTime = clamped;
+        setCurrentTime(clamped);
+      } catch (err) {
+        console.warn('Video seek error:', err);
+      }
+    },
+    [player, duration]
+  );
+
+  // Next / Previous Video implementation with infinite Up Next auto-play
+  const nextVideo = useCallback(async () => {
+    if (!activeVideo) return;
+    const currentIndex = playlist.length > 0 ? playlist.findIndex((v) => v.videoId === activeVideo.videoId) : -1;
+    if (currentIndex >= 0 && currentIndex < playlist.length - 1) {
+      playVideo(playlist[currentIndex + 1], playlist);
+    } else {
+      // Reached the end of queue - dynamically fetch related YouTube videos for endless playback!
+      try {
+        const related = await fetchRelatedYouTubeVideos(activeVideo.videoId, 10);
+        if (related.length > 0) {
+          const updatedPlaylist = [...playlist, ...related];
+          playVideo(related[0], updatedPlaylist);
+        }
+      } catch (err) {
+        console.warn('Auto-play nextVideo related fetch failed:', err);
+      }
+    }
+  }, [activeVideo, playlist, playVideo]);
+
+  nextVideoRef.current = nextVideo;
+
+  const prevVideo = useCallback(() => {
+    if (!activeVideo || playlist.length === 0) return;
+    const currentIndex = playlist.findIndex((v) => v.videoId === activeVideo.videoId);
+    if (currentIndex > 0) {
+      playVideo(playlist[currentIndex - 1], playlist);
+    } else {
+      seekTo(0);
+    }
+  }, [activeVideo, playlist, playVideo, seekTo]);
+
   const pauseVideo = useCallback(() => {
     if (player) player.pause();
   }, [player]);
@@ -373,21 +404,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       player.play();
     }
   }, [player, isVideoPlaying, isAudioPlaying, pauseBackgroundAudio]);
-
-  const seekTo = useCallback(
-    (seconds: number) => {
-      if (!player) return;
-      try {
-        const maxDur = duration > 0 ? duration : seconds;
-        const clamped = Math.max(0, Math.min(seconds, maxDur));
-        player.currentTime = clamped;
-        setCurrentTime(clamped);
-      } catch (err) {
-        console.warn('Video seek error:', err);
-      }
-    },
-    [player, duration]
-  );
 
   const collapseToMini = useCallback(() => {
     if (isFullscreen) {

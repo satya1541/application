@@ -41,6 +41,7 @@ import {
   UserFeedResult,
 } from '@/services/youtubeUserFeedService';
 import { useAuth } from '@/contexts/AuthContext';
+import { YouTubeChannelScreen } from './YouTubeChannelScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 24;
@@ -92,6 +93,21 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const [userFeedNotConnected, setUserFeedNotConnected] = useState(false);
   const [userFeedError, setUserFeedError] = useState<string | null>(null);
   const [userFeedEmpty, setUserFeedEmpty] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<{
+    channelId: string;
+    title: string;
+    avatar?: string;
+  } | null>(null);
+
+  const handleOpenChannel = useCallback((video: YouTubeVideoSearchResult) => {
+    const resolvedChannelId = video.channelId || (video.id.startsWith('UC') ? video.id : video.author);
+    setSelectedChannel({
+      channelId: resolvedChannelId,
+      title: video.author,
+      avatar: video.channelAvatar,
+    });
+  }, []);
+
   const {
     activeVideo,
     isVideoPlaying,
@@ -163,10 +179,14 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return () => backHandler.remove();
   }, [showSplash, dismissSplash]);
 
-  // Back handler when active in YSearch: clear suggestions/search query first, or delegate to onBack
+  // Back handler when active in YSearch: clear channel modal / suggestions / search query first, or delegate to onBack
   useEffect(() => {
     if (showSplash) return;
     const backAction = () => {
+      if (selectedChannel) {
+        setSelectedChannel(null);
+        return true;
+      }
       if (showSuggestions) {
         setShowSuggestions(false);
         Keyboard.dismiss();
@@ -188,7 +208,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     };
     const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
     return () => backHandler.remove();
-  }, [showSplash, showSuggestions, query, videos.length, onBack]);
+  }, [showSplash, selectedChannel, showSuggestions, query, videos.length, onBack]);
 
   const handleHeaderBack = useCallback(() => {
     if (showSuggestions) {
@@ -269,8 +289,10 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [performSearch, initialQuery]);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Load Trending videos from official InnerTube Charts or User Feed
-  const loadTrending = useCallback(async (catId: string) => {
+  const loadTrending = useCallback(async (catId: string, forceRefresh = false) => {
     setIsLoadingTrending(true);
     setUserFeedNeedsReauth(false);
     setUserFeedNotConnected(false);
@@ -281,9 +303,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (catId === 'my_feed' || catId === 'liked') {
         let feedResult: UserFeedResult;
         if (catId === 'my_feed') {
-          feedResult = await fetchUserSubscriptionsFeed(30);
+          feedResult = await fetchUserSubscriptionsFeed(30, forceRefresh);
         } else {
-          feedResult = await fetchUserLikedVideos(30);
+          feedResult = await fetchUserLikedVideos(30, forceRefresh);
         }
 
         if (feedResult.videos && feedResult.videos.length > 0) {
@@ -305,7 +327,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           }
         }
       } else {
-        const results = await fetchTrendingYouTubeVideos(catId, 30);
+        const results = await fetchTrendingYouTubeVideos(catId, 30, forceRefresh);
         setTrendingVideos(results);
       }
     } catch (err: any) {
@@ -318,6 +340,19 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       setIsLoadingTrending(false);
     }
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      if (query.trim()) {
+        await performSearch(query);
+      } else {
+        await loadTrending(selectedCategory, true);
+      }
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [query, performSearch, loadTrending, selectedCategory]);
 
   useEffect(() => {
     loadTrending(selectedCategory);
@@ -434,10 +469,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           surfaceHex={surfaceHex}
           onSelect={handleSelectVideo}
           onPlayPress={handleCardPlayPress}
+          onChannelPress={handleOpenChannel}
         />
       );
     },
-    [activeVideo?.videoId, isVideoPlaying, themeMode, surfaceHex, handleSelectVideo, handleCardPlayPress]
+    [activeVideo?.videoId, isVideoPlaying, themeMode, surfaceHex, handleSelectVideo, handleCardPlayPress, handleOpenChannel]
   );
 
   // Active Category Object
@@ -689,6 +725,8 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             keyExtractor={(item) => item.videoId}
             renderItem={renderVideoCard}
             extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
             contentContainerStyle={[
               styles.videoListContent,
               { paddingBottom: activeVideo && playerMode === 'mini' ? 140 + insets.bottom : 24 + insets.bottom },
@@ -742,6 +780,8 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             keyExtractor={(item) => `trending-${item.videoId}`}
             renderItem={renderVideoCard}
             extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
             contentContainerStyle={[
               styles.videoListContent,
               { paddingBottom: activeVideo && playerMode === 'mini' ? 140 + insets.bottom : 24 + insets.bottom },
@@ -969,6 +1009,18 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           />
         )}
       </View>
+
+      {/* Full Channel View Modal Overlay */}
+      {selectedChannel && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 99999 }]}>
+          <YouTubeChannelScreen
+            channelId={selectedChannel.channelId}
+            initialTitle={selectedChannel.title}
+            initialAvatar={selectedChannel.avatar}
+            onClose={() => setSelectedChannel(null)}
+          />
+        </View>
+      )}
 
     </SafeAreaView>
 
@@ -1860,10 +1912,11 @@ interface VideoCardItemProps {
   surfaceHex: string;
   onSelect: (item: YouTubeVideoSearchResult) => void;
   onPlayPress: (item: YouTubeVideoSearchResult) => void;
+  onChannelPress?: (item: YouTubeVideoSearchResult) => void;
 }
 
 const VideoCardItem = React.memo<VideoCardItemProps>(
-  ({ item, isActive, isPlaying, themeMode, surfaceHex, onSelect, onPlayPress }) => {
+  ({ item, isActive, isPlaying, themeMode, surfaceHex, onSelect, onPlayPress, onChannelPress }) => {
     const [thumbError, setThumbError] = useState(false);
     const thumbUri = thumbError
       ? `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
@@ -1951,19 +2004,25 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
           ]}
         >
           {/* Channel Avatar */}
-          {item.channelAvatar ? (
-            <ExpoImage
-              source={{ uri: item.channelAvatar }}
-              style={styles.channelAvatar}
-              contentFit="cover"
-              cachePolicy="memory-disk"
-              transition={0}
-            />
-          ) : (
-            <View style={styles.channelAvatarPlaceholder}>
-              <Ionicons name="logo-youtube" size={16} color="#FF0000" />
-            </View>
-          )}
+          <TouchableOpacity
+            onPress={() => onChannelPress?.(item)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {item.channelAvatar ? (
+              <ExpoImage
+                source={{ uri: item.channelAvatar }}
+                style={styles.channelAvatar}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                transition={0}
+              />
+            ) : (
+              <View style={styles.channelAvatarPlaceholder}>
+                <Ionicons name="logo-youtube" size={16} color="#FF0000" />
+              </View>
+            )}
+          </TouchableOpacity>
 
           {/* Title & Channel Subtitle */}
           <View style={styles.videoMetaCol}>
@@ -1976,11 +2035,13 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
             >
               {item.title}
             </Text>
-            <Text style={styles.videoSubtitle} numberOfLines={1}>
-              {item.author}
-              {item.viewCount ? ` • ${item.viewCount}` : ''}
-              {item.publishedTime ? ` • ${item.publishedTime}` : ''}
-            </Text>
+            <TouchableOpacity onPress={() => onChannelPress?.(item)} activeOpacity={0.7}>
+              <Text style={styles.videoSubtitle} numberOfLines={1}>
+                {item.author}
+                {item.viewCount ? ` • ${item.viewCount}` : ''}
+                {item.publishedTime ? ` • ${item.publishedTime}` : ''}
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {/* Quick Play Icon */}

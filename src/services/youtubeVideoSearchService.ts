@@ -10,6 +10,7 @@ export interface YouTubeVideoSearchResult {
   videoId: string;
   title: string;
   author: string;
+  channelId?: string;
   channelAvatar?: string;
   duration: string;
   durationSeconds: number;
@@ -134,12 +135,28 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
     vr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
     'YouTube Creator';
 
+  // Extract the UC... channel ID from browse endpoints
+  const channelId =
+    vr.ownerText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
+    vr.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
+    vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.navigationEndpoint?.browseEndpoint?.browseId ||
+    undefined;
+
   const channelThumbnails =
-    vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail
-      ?.thumbnails || [];
+    vr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ||
+    vr.ownerThumbnail?.thumbnails ||
+    vr.channelThumbnail?.thumbnails ||
+    vr.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.avatar?.thumbnails ||
+    [];
   let channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url || undefined;
   if (channelAvatar && channelAvatar.startsWith('//')) {
     channelAvatar = `https:${channelAvatar}`;
+  }
+
+  // High quality fallback avatar using channel author name
+  if (!channelAvatar && author) {
+    const cleanAuthor = author.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+    channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
   }
 
   const duration = isLive ? 'LIVE' : (vr.lengthText?.simpleText || '');
@@ -165,6 +182,7 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
     videoId,
     title,
     author,
+    channelId,
     channelAvatar,
     duration,
     durationSeconds,
@@ -597,10 +615,11 @@ const TRENDING_CACHE_TTL = 15 * 60 * 1000;
  */
 export async function fetchTrendingYouTubeVideos(
   categoryId: string = 'trending',
-  limit: number = 30
+  limit: number = 30,
+  forceRefresh: boolean = false
 ): Promise<YouTubeVideoSearchResult[]> {
   const cached = trendingCache.get(categoryId);
-  if (cached && Date.now() - cached.timestamp < TRENDING_CACHE_TTL && cached.videos.length > 0) {
+  if (!forceRefresh && cached && Date.now() - cached.timestamp < TRENDING_CACHE_TTL && cached.videos.length > 0) {
     return cached.videos.slice(0, limit);
   }
 
@@ -681,12 +700,15 @@ export async function fetchTrendingYouTubeVideos(
 
           const title = item.title || 'Untitled Video';
           const rank = item.chartEntryMetadata?.currentPosition || index + 1;
+          const cleanAuthor = rawArtist.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+          const channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
 
           results.push({
             id: videoId,
             videoId,
             title,
             author: rawArtist,
+            channelAvatar,
             duration: durStr,
             durationSeconds: durSec,
             viewCount: `#${rank} on YouTube Charts`,
@@ -717,6 +739,121 @@ export async function fetchTrendingYouTubeVideos(
       return ranked;
     }
   } catch {}
+
+  return [];
+}
+
+/**
+ * Fetches related / recommended YouTube videos for a given video ID to power the infinite Up Next auto-play queue.
+ */
+export async function fetchRelatedYouTubeVideos(
+  videoId: string,
+  limit: number = 15
+): Promise<YouTubeVideoSearchResult[]> {
+  const cleanId = videoId.replace(/^yt_/, '').trim();
+  if (!cleanId) return [];
+
+  try {
+    const visitorData = await getYouTubeVisitorData();
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240105.01.00',
+          hl: 'en',
+          gl: 'IN',
+          visitorData: visitorData || undefined,
+        },
+      },
+      videoId: cleanId,
+    };
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch('https://www.youtube.com/youtubei/v1/next?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Origin: 'https://www.youtube.com',
+        ...(visitorData ? { 'X-Goog-Visitor-Id': visitorData } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      const results: YouTubeVideoSearchResult[] = [];
+      const seenIds = new Set<string>([cleanId]);
+
+      // Look through secondaryResults or watchNextResults
+      const resultsSection =
+        data?.contents?.twoColumnWatchNextResults?.secondaryResults?.secondaryResults?.results ||
+        [];
+
+      for (const item of resultsSection) {
+        const cvr = item?.compactVideoRenderer || item?.videoRenderer;
+        if (!cvr) continue;
+
+        const vId = cvr.videoId;
+        if (!vId || typeof vId !== 'string' || seenIds.has(vId)) continue;
+        seenIds.add(vId);
+
+        const title =
+          cvr.title?.simpleText ||
+          cvr.title?.runs?.map((r: any) => r.text).join('') ||
+          'Recommended Video';
+
+        const author =
+          cvr.longBylineText?.runs?.map((r: any) => r.text).join('') ||
+          cvr.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
+          'YouTube Creator';
+
+        const duration = cvr.lengthText?.simpleText || '';
+        const durationSeconds = parseDurationSeconds(duration);
+
+        const channelThumbnails =
+          cvr.channelThumbnail?.thumbnails ||
+          cvr.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ||
+          [];
+        let channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url;
+        if (channelAvatar && channelAvatar.startsWith('//')) channelAvatar = `https:${channelAvatar}`;
+
+        if (!channelAvatar && author) {
+          const cleanAuthor = author.replace(/[^a-zA-Z0-9 ]/g, '').trim() || 'YT';
+          channelAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanAuthor)}&background=1f1f1f&color=ff0000&bold=true&size=128`;
+        }
+
+        const thumbs = cvr.thumbnail?.thumbnails || [];
+        let bestThumb = thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
+        if (bestThumb.startsWith('//')) bestThumb = `https:${bestThumb}`;
+
+        results.push({
+          id: vId,
+          videoId: vId,
+          title,
+          author,
+          channelAvatar,
+          duration,
+          durationSeconds,
+          viewCount: cvr.viewCountText?.simpleText || '',
+          publishedTime: cvr.publishedTimeText?.simpleText || '',
+          thumbnail: bestThumb,
+        });
+
+        if (results.length >= limit) break;
+      }
+
+      if (results.length > 0) {
+        return results;
+      }
+    }
+  } catch (err) {
+    console.warn('[fetchRelatedYouTubeVideos] error:', err);
+  }
 
   return [];
 }
