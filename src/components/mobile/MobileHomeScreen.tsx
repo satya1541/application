@@ -26,10 +26,10 @@ import { GreetingHeader } from '../feed/GreetingHeader';
 import { QuickAccessGrid } from '../feed/QuickAccessGrid';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { YSearchScreen } from '../video/YSearchScreen';
 
 interface MobileHomeScreenProps {
   onOpenSettings?: () => void;
+  onOpenYSearch?: () => void;
 }
 
 interface LanguageDef {
@@ -142,7 +142,7 @@ const HomeHeader = React.memo<HomeHeaderProps>(
   }
 );
 
-export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ onOpenSettings }) => {
+export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ onOpenSettings, onOpenYSearch }) => {
   const { bgHex, accent } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
   const { profile } = useAuth();
@@ -325,35 +325,16 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ o
     sectionSongs['english_lossless']?.length,
   ]);
 
-  const [showYSearch, setShowYSearch] = useState(false);
-
-  useEffect(() => {
-    if (!showYSearch) return;
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setShowYSearch(false);
-      return true;
-    });
-    return () => sub.remove();
-  }, [showYSearch]);
-
-  const handleOpenYSearch = useCallback(() => {
-    setShowYSearch(true);
-  }, []);
-
   const listHeader = useMemo(
     () => (
       <HomeHeader
         onOpenSettings={onOpenSettings}
-        onOpenYSearch={handleOpenYSearch}
+        onOpenYSearch={onOpenYSearch}
         fallbackSongs={fallbackSongs}
       />
     ),
-    [onOpenSettings, handleOpenYSearch, fallbackSongs]
+    [onOpenSettings, onOpenYSearch, fallbackSongs]
   );
-
-  if (showYSearch) {
-    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
-  }
 
   return (
     <SafeAreaView style={[styles.screenWrapper, { backgroundColor: bgHex }]} edges={['top']}>

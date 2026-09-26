@@ -40,7 +40,6 @@ import {
   normalizeExploreUrl,
 } from '@/services/youtubeExploreService';
 import { Song } from '@/types/music';
-import { YSearchScreen } from '../video/YSearchScreen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
@@ -62,9 +61,10 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
 
 interface MobileExploreScreenProps {
   onNavigateHome?: () => void;
+  onOpenYSearch?: () => void;
 }
 
-export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavigateHome }) => {
+export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavigateHome, onOpenYSearch }) => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
 
@@ -88,15 +88,8 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   const [playlistDetail, setPlaylistDetail] = useState<ExplorePlaylistDetail | null>(null);
   const [isLoadingPlaylist, setIsLoadingPlaylist] = useState(false);
 
-  // YSearch Screen State
-  const [showYSearch, setShowYSearch] = useState(false);
-
-  // Back handling (Stacked: YSearch -> Playlist Modal -> Category Modal -> Home Tab)
+  // Back handling (Stacked: Playlist Modal -> Category Modal -> Home Tab)
   const handleBack = useCallback(() => {
-    if (showYSearch) {
-      setShowYSearch(false);
-      return true;
-    }
     if (selectedPlaylistId) {
       setSelectedPlaylistId(null);
       setPlaylistDetail(null);
@@ -112,7 +105,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       return true;
     }
     return false;
-  }, [showYSearch, selectedPlaylistId, selectedCategory, onNavigateHome]);
+  }, [selectedPlaylistId, selectedCategory, onNavigateHome]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
@@ -302,10 +295,6 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     { id: 'videos', label: 'Music Videos', icon: 'videocam-outline' },
   ];
 
-  if (showYSearch) {
-    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
-  }
-
   return (
     <SafeAreaView
       style={[styles.safeArea, { backgroundColor: bgHex }]}
@@ -322,7 +311,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <TouchableOpacity
               style={styles.ySearchHeaderBtn}
-              onPress={() => setShowYSearch(true)}
+              onPress={onOpenYSearch}
               activeOpacity={0.8}
             >
               <Ionicons name="logo-youtube" size={16} color="#FF0000" style={{ marginRight: 5 }} />
@@ -566,7 +555,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <TouchableOpacity
                     style={styles.ySearchExploreBadge}
-                    onPress={() => setShowYSearch(true)}
+                    onPress={onOpenYSearch}
                     activeOpacity={0.8}
                   >
                     <Ionicons name="logo-youtube" size={13} color="#FF0000" style={{ marginRight: 4 }} />

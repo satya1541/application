@@ -25,7 +25,6 @@ import { useAudio } from '@/contexts/AudioContext';
 import { Song } from '@/types/music';
 import { ArtistProfileModal } from '../explore/ArtistProfileModal';
 import { AlbumModal } from '../explore/AlbumModal';
-import { YSearchScreen } from '../video/YSearchScreen';
 import { NoInternetView } from '../common/NoInternetView';
 import { useNetwork } from '@/contexts/NetworkContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
@@ -145,16 +144,16 @@ const BROWSE_CATEGORIES: BrowseCategory[] = [
 
 interface MobileSearchScreenProps {
   onNavigateHome?: () => void;
+  onOpenYSearch?: () => void;
 }
 
-export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNavigateHome }) => {
+export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNavigateHome, onOpenYSearch }) => {
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [searchResult, setSearchResult] = useState<ExploreSearchResult | null>(null);
   const [suggestions, setSuggestions] = useState<GroupedSuggestions | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showYSearch, setShowYSearch] = useState(false);
 
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
@@ -210,11 +209,6 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
 
   // Unified Back Handler (Handles edge-swipe gesture, hardware back button, and in-screen swipe)
   const handleBack = useCallback(() => {
-    // 0. If YSearch screen is active, close it and return to standard search
-    if (showYSearch) {
-      setShowYSearch(false);
-      return true;
-    }
     // 1. If artist profile modal is open, close it
     if (selectedArtist) {
       setSelectedArtist(null);
@@ -244,7 +238,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
       return true;
     }
     return false;
-  }, [showYSearch, selectedArtist, selectedAlbumId, selectedCategory, query, searchResult, onNavigateHome]);
+  }, [selectedArtist, selectedAlbumId, selectedCategory, query, searchResult, onNavigateHome]);
 
   // Android System Back & Edge-Swipe Navigation Handler
   useEffect(() => {
@@ -549,10 +543,6 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
     }
   };
 
-  if (showYSearch) {
-    return <YSearchScreen onBack={() => setShowYSearch(false)} />;
-  }
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
       <View style={styles.content}>
@@ -561,7 +551,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
           <Text style={styles.header}>Search</Text>
           <TouchableOpacity
             style={styles.ySearchHeaderBtn}
-            onPress={() => setShowYSearch(true)}
+            onPress={onOpenYSearch}
             activeOpacity={0.8}
           >
             <Ionicons name="logo-youtube" size={18} color="#FF0000" style={{ marginRight: 6 }} />

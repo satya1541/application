@@ -21,6 +21,7 @@ import { MobilePostsScreen } from './MobilePostsScreen';
 import { MobileSearchScreen } from './MobileSearchScreen';
 import { MyLibScreen } from './MyLibScreen';
 import { SettingsScreen } from './SettingsScreen';
+import { YSearchScreen } from '../video/YSearchScreen';
 import { SongActionMenu } from '../common/SongActionMenu';
 import { QueueModal } from '../explore/QueueModal';
 import { useAppTheme } from '@/contexts/ThemeContext';
@@ -40,6 +41,7 @@ export const MobileMainNavigator: React.FC = () => {
   });
   const [myLibRefreshTrigger, setMyLibRefreshTrigger] = useState(0);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [ySearchVisible, setYSearchVisible] = useState(false);
   const { isOffline } = useNetwork();
 
   // Animated values for smooth cross-screen transitions
@@ -127,6 +129,10 @@ export const MobileMainNavigator: React.FC = () => {
         setSettingsVisible(false);
         return true;
       }
+      if (ySearchVisible) {
+        setYSearchVisible(false);
+        return true;
+      }
       if (activeTab !== 'home') {
         handleSelectTab('home');
         return true;
@@ -134,7 +140,7 @@ export const MobileMainNavigator: React.FC = () => {
       return false;
     });
     return () => subscription.remove();
-  }, [activeTab, settingsVisible, visitedTabs]);
+  }, [activeTab, settingsVisible, ySearchVisible, visitedTabs]);
 
   const handleOpenSettings = useCallback(() => {
     setSettingsVisible(true);
@@ -142,6 +148,14 @@ export const MobileMainNavigator: React.FC = () => {
 
   const handleCloseSettings = useCallback(() => {
     setSettingsVisible(false);
+  }, []);
+
+  const handleOpenYSearch = useCallback(() => {
+    setYSearchVisible(true);
+  }, []);
+
+  const handleCloseYSearch = useCallback(() => {
+    setYSearchVisible(false);
   }, []);
 
   return (
@@ -160,7 +174,10 @@ export const MobileMainNavigator: React.FC = () => {
           ]}
           pointerEvents={activeTab === 'home' ? 'auto' : 'none'}
         >
-          <MobileHomeScreen onOpenSettings={handleOpenSettings} />
+          <MobileHomeScreen
+            onOpenSettings={handleOpenSettings}
+            onOpenYSearch={handleOpenYSearch}
+          />
         </Animated.View>
 
         {/* Layer: Explore (YT Music Explore) */}
@@ -176,7 +193,10 @@ export const MobileMainNavigator: React.FC = () => {
           pointerEvents={activeTab === 'explore' ? 'auto' : 'none'}
         >
           {visitedTabs.explore && (
-            <MobileExploreScreen onNavigateHome={() => handleSelectTab('home')} />
+            <MobileExploreScreen
+              onNavigateHome={() => handleSelectTab('home')}
+              onOpenYSearch={handleOpenYSearch}
+            />
           )}
         </Animated.View>
 
@@ -193,7 +213,10 @@ export const MobileMainNavigator: React.FC = () => {
           pointerEvents={activeTab === 'search' ? 'auto' : 'none'}
         >
           {visitedTabs.search && (
-            <MobileSearchScreen onNavigateHome={() => handleSelectTab('home')} />
+            <MobileSearchScreen
+              onNavigateHome={() => handleSelectTab('home')}
+              onOpenYSearch={handleOpenYSearch}
+            />
           )}
         </Animated.View>
 
@@ -252,22 +275,25 @@ export const MobileMainNavigator: React.FC = () => {
         </Animated.View>
       </View>
 
-      {/* Floating MiniPlayer sitting right above tab bar */}
-      <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
+      {/* Floating MiniPlayer sitting right above tab bar (hidden when YSearch or Settings is active) */}
+      {!ySearchVisible && !settingsVisible && (
+        <>
+          <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
+          <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
+        </>
+      )}
 
-      {/* Persistent Spotify Offline Banner sitting right above tab bar */}
-      <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 84 : 64} />
-
-      {/* Spotify Bottom Tab Navigation Bar (4 Distinct Tabs) */}
-      <View
-        style={[
-          styles.tabBar,
-          {
-            backgroundColor: themeMode === 'oled' ? '#000000' : surfaceHex,
-            borderTopColor: themeMode === 'oled' ? '#141414' : '#282828',
-          },
-        ]}
-      >
+      {/* Spotify Bottom Tab Navigation Bar (Hidden when YSearch is open) */}
+      {!ySearchVisible && (
+        <View
+          style={[
+            styles.tabBar,
+            {
+              backgroundColor: themeMode === 'oled' ? '#000000' : surfaceHex,
+              borderTopColor: themeMode === 'oled' ? '#141414' : '#282828',
+            },
+          ]}
+        >
         {/* 1. Home */}
         <TouchableOpacity
           style={styles.tabButton}
@@ -394,10 +420,18 @@ export const MobileMainNavigator: React.FC = () => {
           </Text>
         </TouchableOpacity>
       </View>
+      )}
+
+      {/* YSearch Screen Full Overlay (Completely hides bottom navbar & occupies full screen) */}
+      {ySearchVisible && (
+        <View style={[StyleSheet.absoluteFill, { zIndex: 1000, backgroundColor: bgHex }]}>
+          <YSearchScreen onBack={handleCloseYSearch} />
+        </View>
+      )}
 
       {/* Settings Screen Full Overlay (Preserves tab hierarchy & state underneath) */}
       {settingsVisible && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 100, backgroundColor: bgHex }]}>
+        <View style={[StyleSheet.absoluteFill, { zIndex: 1100, backgroundColor: bgHex }]}>
           <SettingsScreen onBack={handleCloseSettings} />
         </View>
       )}

@@ -163,6 +163,50 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return () => backHandler.remove();
   }, [showSplash, dismissSplash]);
 
+  // Back handler when active in YSearch: clear suggestions/search query first, or delegate to onBack
+  useEffect(() => {
+    if (showSplash) return;
+    const backAction = () => {
+      if (showSuggestions) {
+        setShowSuggestions(false);
+        Keyboard.dismiss();
+        return true;
+      }
+      if (query.trim().length > 0 || videos.length > 0) {
+        setQuery('');
+        setVideos([]);
+        setNextPageToken(null);
+        setShowSuggestions(false);
+        Keyboard.dismiss();
+        return true;
+      }
+      if (onBack) {
+        onBack();
+        return true;
+      }
+      return false;
+    };
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, [showSplash, showSuggestions, query, videos.length, onBack]);
+
+  const handleHeaderBack = useCallback(() => {
+    if (showSuggestions) {
+      setShowSuggestions(false);
+      Keyboard.dismiss();
+      return;
+    }
+    if (query.trim().length > 0 || videos.length > 0) {
+      setQuery('');
+      setVideos([]);
+      setNextPageToken(null);
+      setShowSuggestions(false);
+      Keyboard.dismiss();
+      return;
+    }
+    onBack?.();
+  }, [showSuggestions, query, videos.length, onBack]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -437,7 +481,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           {onBack && (
             <TouchableOpacity
               style={styles.backBtn}
-              onPress={onBack}
+              onPress={handleHeaderBack}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Ionicons name="arrow-back" size={24} color="#ffffff" />
@@ -647,7 +691,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
             contentContainerStyle={[
               styles.videoListContent,
-              { paddingBottom: activeVideo && playerMode === 'mini' ? 170 : 80 },
+              { paddingBottom: activeVideo && playerMode === 'mini' ? 140 + insets.bottom : 24 + insets.bottom },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -700,7 +744,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}`}
             contentContainerStyle={[
               styles.videoListContent,
-              { paddingBottom: activeVideo && playerMode === 'mini' ? 170 : 80 },
+              { paddingBottom: activeVideo && playerMode === 'mini' ? 140 + insets.bottom : 24 + insets.bottom },
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
