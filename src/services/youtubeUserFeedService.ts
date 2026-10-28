@@ -1,12 +1,14 @@
 /**
  * YouTube User Feed Service
  * Fetches personalized YouTube Subscriptions Feed, Liked Videos, and Playlists
- * using the user's authenticated Google Account (OAuth provider_token).
+ * using the user's authenticated Google Account (OAuth provider_token) or high-resilience
+ * InnerTube endpoints with local like and caching fallbacks.
  */
 
 import { SafeStorage } from './storage';
 import { YouTubeVideoSearchResult } from './youtubeVideoSearchService';
 import { getChannelAvatar, setCachedChannelAvatar } from './youtubeAvatarService';
+import { getStoredLikedSongs } from './userPlaylistService';
 
 export const GOOGLE_YOUTUBE_TOKEN_KEY = '@shorty_google_youtube_token';
 export const GOOGLE_YOUTUBE_REFRESH_TOKEN_KEY = '@shorty_google_youtube_refresh_token';
@@ -14,6 +16,7 @@ export const GOOGLE_YOUTUBE_CONNECTED_KEY = '@shorty_google_youtube_connected';
 export const GOOGLE_YOUTUBE_SUBSCRIPTIONS_KEY = '@shorty_user_subscribed_channels';
 export const CACHED_USER_FEED_KEY = '@shorty_cached_user_feed';
 export const CACHED_LIKED_FEED_KEY = '@shorty_cached_liked_feed';
+export const LOCAL_LIKED_VIDEOS_KEY = '@shorty_local_liked_videos_v1';
 
 export interface SubscribedChannel {
   channelId: string;
@@ -21,6 +24,15 @@ export interface SubscribedChannel {
   thumbnail?: string;
   lastUpdated?: number;
 }
+
+export const DEFAULT_STARTER_CHANNELS: SubscribedChannel[] = [
+  { channelId: 'UCq-Fj5jknLsUf-MWSy4_brA', title: 'T-Series' },
+  { channelId: 'UC56gTxKC445i-0j5q0s9w1w', title: 'Sony Music India' },
+  { channelId: 'UCFFbwnve3yF62-tVXkTyHqg', title: 'Zee Music Company' },
+  { channelId: 'UCbTLwN10NoCU4WDzLf1JMOA', title: 'YRF' },
+  { channelId: 'UCnoZXdE9yKqVl7Ua0z6p7vA', title: 'Speed Records' },
+  { channelId: 'UCNAqh0o_2wG9_gLg5-EeVcg', title: 'Tips Official' },
+];
 
 let inMemoryToken: string | null = null;
 const userFeedCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
@@ -38,6 +50,49 @@ export async function getGoogleYouTubeToken(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Automatically refresh Google OAuth access token using stored refresh token.
+ */
+export async function refreshGoogleYouTubeToken(): Promise<string | null> {
+  try {
+    const refreshToken = await SafeStorage.getItem(GOOGLE_YOUTUBE_REFRESH_TOKEN_KEY);
+    if (!refreshToken) return null;
+
+    const clientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+    if (!clientId) return null;
+
+    const bodyParams = new URLSearchParams({
+      client_id: clientId,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    });
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: bodyParams.toString(),
+    });
+
+    if (!res.ok) {
+      console.warn('[youtubeUserFeedService] Refresh token failed with status:', res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    if (data.access_token) {
+      inMemoryToken = data.access_token;
+      await SafeStorage.setItem(GOOGLE_YOUTUBE_TOKEN_KEY, data.access_token);
+      console.log('[youtubeUserFeedService] Successfully refreshed Google access token');
+      return data.access_token;
+    }
+  } catch (err) {
+    console.warn('[youtubeUserFeedService] Failed to refresh Google access token:', err);
+  }
+  return null;
 }
 
 /**
@@ -94,6 +149,71 @@ export async function saveStoredSubscribedChannels(channels: SubscribedChannel[]
 }
 
 /**
+ * Get locally stored liked YouTube videos.
+ */
+export async function getStoredLocalLikedVideos(): Promise<YouTubeVideoSearchResult[]> {
+  try {
+    const raw = await SafeStorage.getItem(LOCAL_LIKED_VIDEOS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Save / toggle a video in local liked videos.
+ */
+export async function saveLocalLikedVideo(
+  video: YouTubeVideoSearchResult
+): Promise<YouTubeVideoSearchResult[]> {
+  try {
+    const current = await getStoredLocalLikedVideos();
+    const filtered = current.filter((v) => v.videoId !== video.videoId);
+    const updated = [video, ...filtered];
+    await SafeStorage.setItem(LOCAL_LIKED_VIDEOS_KEY, JSON.stringify(updated));
+    userFeedCache.delete('liked_30');
+    userFeedCache.delete('liked_50');
+    return updated;
+  } catch (err) {
+    console.warn('[youtubeUserFeedService] saveLocalLikedVideo error:', err);
+    return [];
+  }
+}
+
+/**
+ * Remove a video from local liked videos.
+ */
+export async function removeLocalLikedVideo(
+  videoId: string
+): Promise<YouTubeVideoSearchResult[]> {
+  try {
+    const current = await getStoredLocalLikedVideos();
+    const updated = current.filter((v) => v.videoId !== videoId);
+    await SafeStorage.setItem(LOCAL_LIKED_VIDEOS_KEY, JSON.stringify(updated));
+    userFeedCache.delete('liked_30');
+    userFeedCache.delete('liked_50');
+    return updated;
+  } catch (err) {
+    console.warn('[youtubeUserFeedService] removeLocalLikedVideo error:', err);
+    return [];
+  }
+}
+
+/**
+ * Check if a YouTube video is liked locally.
+ */
+export async function isLocalVideoLiked(videoId: string): Promise<boolean> {
+  try {
+    const current = await getStoredLocalLikedVideos();
+    return current.some((v) => v.videoId === videoId);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Save Google OAuth tokens after successful Google login and mark connected state permanently.
  */
 export async function saveGoogleYouTubeTokens(
@@ -141,63 +261,184 @@ export async function isYouTubeConnected(): Promise<boolean> {
 }
 
 /**
- * Fetches recent video uploads from a YouTube channel via official public RSS / Atom feed.
- * Completely immune to OAuth token expiration, runs 100% reliably 24/7 without authentication.
+ * Parses string duration ("1:49" or "1:02:15") to seconds.
  */
-export async function fetchChannelRssUploads(channelId: string, limit = 3): Promise<any[]> {
+function parseDurationToSeconds(durationStr?: string): number {
+  if (!durationStr) return 210;
+  const parts = durationStr.split(':').map((p) => parseInt(p, 10));
+  if (parts.some(isNaN)) return 210;
+  if (parts.length === 2) {
+    return parts[0] * 60 + parts[1];
+  } else if (parts.length === 3) {
+    return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  return 210;
+}
+
+/**
+ * Fetches recent video uploads from a YouTube channel via InnerTube browse endpoint.
+ * Highly robust, immune to OAuth token expiration, runs 100% reliably without authentication.
+ */
+export async function fetchChannelUploadsInnerTube(
+  channelId: string,
+  limit = 4
+): Promise<any[]> {
   try {
-    const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
     const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 6000);
-    const res = await fetch(url, {
+    const timeout = setTimeout(() => ctrl.abort(), 7000);
+    const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
       signal: ctrl.signal,
       headers: {
+        'Content-Type': 'application/json',
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'application/atom+xml,application/xml,text/xml',
       },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: '2.20240105.01.00',
+            hl: 'en',
+            gl: 'IN',
+          },
+        },
+        browseId: channelId,
+        params: 'EgZ2aWRlb3PyBgQKAjoA', // Channel "Videos" tab filter
+      }),
     });
     clearTimeout(timeout);
     if (!res.ok) return [];
 
-    const xml = await res.text();
-    const entries = xml.split('<entry>');
-    entries.shift(); // remove header
-
+    const data = await res.json();
     const videos: any[] = [];
-    for (const entry of entries) {
-      const videoIdMatch = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/);
-      const titleMatch = entry.match(/<title>([^<]+)<\/title>/);
-      const authorMatch = entry.match(/<name>([^<]+)<\/name>/);
-      const publishedMatch = entry.match(/<published>([^<]+)<\/published>/);
-      const thumbMatch = entry.match(/<media:thumbnail[^>]+url="([^"]+)"/);
 
-      if (videoIdMatch && videoIdMatch[1]) {
-        const videoId = videoIdMatch[1].trim();
-        const rawTitle = titleMatch ? titleMatch[1].trim() : 'Unknown Video';
-        const cleanTitle = rawTitle
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, '&')
-          .replace(/&#39;/g, "'")
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>');
+    // Parse modern lockupViewModel structure
+    const tabs = data.contents?.twoColumnBrowseResultsRenderer?.tabs;
+    const videosTab = tabs?.find((t: any) => t.tabRenderer?.content?.richGridRenderer);
+    const contents = videosTab?.tabRenderer?.content?.richGridRenderer?.contents || [];
 
-        videos.push({
-          videoId,
-          title: cleanTitle,
-          author: authorMatch ? authorMatch[1].trim() : 'YouTube Creator',
-          publishedAt: publishedMatch ? publishedMatch[1].trim() : new Date().toISOString(),
-          publishedTime: formatRelativeTime(publishedMatch ? publishedMatch[1].trim() : undefined),
-          thumbnail: thumbMatch ? thumbMatch[1].trim() : `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-        });
+    for (const item of contents) {
+      const lockup = item?.richItemRenderer?.content?.lockupViewModel;
+      if (lockup) {
+        const videoId =
+          lockup.contentId ||
+          lockup.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint?.videoId;
+        if (videoId && typeof videoId === 'string' && videoId.length === 11) {
+          const meta = lockup.metadata?.lockupMetadataViewModel;
+          const rawTitle =
+            meta?.title?.content ||
+            lockup.rendererContext?.accessibilityContext?.label ||
+            'Unknown Video';
+          const title = rawTitle.replace(/\s+\d+\s+minutes?,\s+\d+\s+seconds?$/i, '').trim();
 
-        if (videos.length >= limit) break;
+          const thumbs = lockup.contentImage?.thumbnailViewModel?.image?.sources || [];
+          const thumbnail =
+            thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+          let duration = '3:30';
+          let durationSeconds = 210;
+          const overlays = lockup.contentImage?.thumbnailViewModel?.overlays || [];
+          for (const ov of overlays) {
+            const badges = ov?.thumbnailBottomOverlayViewModel?.badges || [];
+            for (const b of badges) {
+              if (b.thumbnailBadgeViewModel?.text) {
+                duration = b.thumbnailBadgeViewModel.text;
+                const parsed = parseDurationToSeconds(duration);
+                if (parsed > 0) durationSeconds = parsed;
+                break;
+              }
+            }
+          }
+
+          let viewCount = '';
+          let publishedTime = '';
+          const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
+          for (const r of rows) {
+            const parts = r.metadataParts || r.elements || [];
+            for (const p of parts) {
+              const textVal = p.text?.content || p.metadataElementRenderer?.text?.content || '';
+              if (textVal.includes('view') || textVal.includes('watching')) {
+                viewCount = textVal;
+              } else if (
+                textVal.includes('ago') ||
+                textVal.includes('Streamed') ||
+                textVal.includes('Premiered')
+              ) {
+                publishedTime = textVal;
+              }
+            }
+          }
+
+          videos.push({
+            videoId,
+            channelId,
+            title,
+            duration,
+            durationSeconds,
+            viewCount,
+            publishedTime,
+            thumbnail,
+          });
+          if (videos.length >= limit) break;
+        }
       }
     }
+
+    // Fallback parser if modern lockupViewModel wasn't used
+    if (videos.length === 0) {
+      const parseItems = (obj: any) => {
+        if (!obj || typeof obj !== 'object') return;
+        const vr = obj.videoRenderer || obj.gridVideoRenderer || obj.compactVideoRenderer;
+        if (vr && vr.videoId) {
+          const videoId = vr.videoId;
+          const title = vr.title?.runs?.[0]?.text || vr.title?.simpleText || 'Unknown Video';
+          const duration = vr.lengthText?.simpleText || '3:30';
+          const viewCount = vr.viewCountText?.simpleText || vr.shortViewCountText?.simpleText || '';
+          const publishedTime = vr.publishedTimeText?.simpleText || '';
+          const thumbs = vr.thumbnail?.thumbnails || [];
+          const thumbnail =
+            thumbs[thumbs.length - 1]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          videos.push({
+            videoId,
+            channelId,
+            title,
+            duration,
+            durationSeconds: parseDurationToSeconds(duration),
+            viewCount,
+            publishedTime,
+            thumbnail,
+          });
+          if (videos.length >= limit) return;
+        }
+        for (const k of Object.keys(obj)) {
+          if (Array.isArray(obj[k])) {
+            for (const c of obj[k]) {
+              parseItems(c);
+              if (videos.length >= limit) return;
+            }
+          } else if (typeof obj[k] === 'object' && obj[k] !== null) {
+            parseItems(obj[k]);
+            if (videos.length >= limit) return;
+          }
+        }
+      };
+      parseItems(data);
+    }
+
     return videos;
-  } catch {
+  } catch (err) {
+    console.warn(`[youtubeUserFeedService] fetchChannelUploadsInnerTube failed for ${channelId}:`, err);
     return [];
   }
+}
+
+/**
+ * Fetches recent video uploads from a YouTube channel.
+ * Delegates to high-speed InnerTube API with zero authentication requirement.
+ */
+export async function fetchChannelRssUploads(channelId: string, limit = 3): Promise<any[]> {
+  return await fetchChannelUploadsInnerTube(channelId, limit);
 }
 
 /**
@@ -359,26 +600,20 @@ export interface UserFeedResult {
   notConnected?: boolean;
   emptyFeed?: boolean;
   error?: string;
+  isStarterFeed?: boolean;
 }
 
 /**
  * Fetches user's Subscriptions Feed (latest uploads from subscribed channels).
  * First checks active OAuth token; on expiration or offline, seamlessly falls back to
- * stored channel subscriptions + public RSS channel feeds with 0ms interruption.
+ * stored channel subscriptions or curated starter channels with 0ms interruption.
  */
-export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh = false): Promise<UserFeedResult> {
-  const token = await getGoogleYouTubeToken();
-  const isConnected = await isYouTubeConnected();
+export async function fetchUserSubscriptionsFeed(
+  maxResults = 30,
+  forceRefresh = false
+): Promise<UserFeedResult> {
+  let token = await getGoogleYouTubeToken();
   const cachedFromStorage = await getCachedUserFeed();
-
-  // If user never connected YouTube at all and has no cached videos
-  if (!isConnected && !token && cachedFromStorage.length === 0) {
-    return {
-      videos: [],
-      notConnected: true,
-      requiresReauth: false,
-    };
-  }
 
   const cacheKey = `subscriptions_${maxResults}`;
   const cached = userFeedCache.get(cacheKey);
@@ -386,15 +621,16 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
     return { videos: cached.videos };
   }
 
-  // Resilient RSS fallback for stored channels
-  const fetchFromStoredChannelsRss = async (): Promise<YouTubeVideoSearchResult[] | null> => {
+  // Resilient worker for channels (stored user subscriptions OR starter channels)
+  const fetchFromChannels = async (
+    channelsToUse: SubscribedChannel[],
+    isStarter: boolean
+  ): Promise<YouTubeVideoSearchResult[] | null> => {
     try {
-      const storedChannels = await getStoredSubscribedChannels();
-      if (!storedChannels || storedChannels.length === 0) return null;
+      if (!channelsToUse || channelsToUse.length === 0) return null;
 
-      // Build map of stored channel thumbnails
       const channelThumbMap = new Map<string, string>();
-      for (const ch of storedChannels) {
+      for (const ch of channelsToUse) {
         if (ch.thumbnail) {
           channelThumbMap.set(ch.channelId, ch.thumbnail);
           channelThumbMap.set(ch.title.toLowerCase().trim(), ch.thumbnail);
@@ -403,31 +639,42 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
         }
       }
 
-      // Shuffle channels slightly on forceRefresh to vary feed ordering
-      const channelsToUse = forceRefresh
-        ? [...storedChannels].sort(() => Math.random() - 0.5).slice(0, 15)
-        : storedChannels.slice(0, 15);
+      const selected = forceRefresh
+        ? [...channelsToUse].sort(() => Math.random() - 0.5).slice(0, 10)
+        : channelsToUse.slice(0, 10);
 
+      const perChannelLimit = Math.max(3, Math.ceil(maxResults / selected.length));
       const settled = await Promise.allSettled(
-        channelsToUse.map((c) => fetchChannelRssUploads(c.channelId, 3))
+        selected.map((c) => fetchChannelUploadsInnerTube(c.channelId, perChannelLimit))
       );
 
       const rawVideos: any[] = [];
-      for (const r of settled) {
+      for (let i = 0; i < settled.length; i++) {
+        const r = settled[i];
+        const ch = selected[i];
         if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-          rawVideos.push(...r.value);
+          for (const v of r.value) {
+            rawVideos.push({
+              ...v,
+              author: v.author && v.author !== 'YouTube Creator' ? v.author : ch.title,
+            });
+          }
         }
       }
 
       if (rawVideos.length === 0) return null;
 
-      rawVideos.sort((a, b) => {
-        const timeA = new Date(a.publishedAt).getTime() || 0;
-        const timeB = new Date(b.publishedAt).getTime() || 0;
-        return timeB - timeA;
-      });
+      // Deduplicate by videoId
+      const seen = new Set<string>();
+      const deduped: any[] = [];
+      for (const v of rawVideos) {
+        if (!seen.has(v.videoId)) {
+          seen.add(v.videoId);
+          deduped.push(v);
+        }
+      }
 
-      const topVideos = rawVideos.slice(0, maxResults);
+      const topVideos = deduped.slice(0, maxResults);
       const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
         const channelAvatar =
           channelThumbMap.get(raw.channelId) ||
@@ -444,10 +691,10 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
           title: raw.title,
           author: raw.author,
           channelAvatar,
-          duration: '3:30',
-          durationSeconds: 210,
-          viewCount: '',
-          publishedTime: raw.publishedTime,
+          duration: raw.duration || '3:30',
+          durationSeconds: raw.durationSeconds || 210,
+          viewCount: raw.viewCount || '',
+          publishedTime: raw.publishedTime || '',
           thumbnail: raw.thumbnail,
           rank: idx + 1,
           isLive: false,
@@ -458,27 +705,41 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
       SafeStorage.setItem(CACHED_USER_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
       return formattedVideos;
     } catch (e) {
-      console.warn('[youtubeUserFeedService] RSS fallback error:', e);
+      console.warn('[youtubeUserFeedService] fetchFromChannels error:', e);
       return null;
     }
   };
 
   try {
-    // If active OAuth token is present, attempt official YouTube API
+    // 1. If active OAuth token is present, attempt official YouTube API
     if (token) {
       const subUrl = `https://www.googleapis.com/youtube/v3/subscriptions?part=snippet&mine=true&maxResults=25`;
-      const subRes = await fetch(subUrl, {
+      let subRes = await fetch(subUrl, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
       });
 
+      // On 401 Unauthorized, automatically attempt to refresh token
+      if (subRes.status === 401) {
+        console.log('[youtubeUserFeedService] Subscriptions access token expired, attempting auto-refresh...');
+        const refreshedToken = await refreshGoogleYouTubeToken();
+        if (refreshedToken) {
+          token = refreshedToken;
+          subRes = await fetch(subUrl, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+          });
+        }
+      }
+
       if (subRes.ok) {
         const subData = await subRes.json();
         const channels = subData.items || [];
 
-        // Save channel IDs & metadata for offline / token-expired resilient RSS fallback
         const extractedChannels: SubscribedChannel[] = channels
           .map((c: any) => {
             const id = c.snippet?.resourceId?.channelId;
@@ -492,198 +753,144 @@ export async function fetchUserSubscriptionsFeed(maxResults = 30, forceRefresh =
 
         if (extractedChannels.length > 0) {
           saveStoredSubscribedChannels(extractedChannels).catch(() => {});
-        }
-
-        const channelThumbMap = new Map<string, string>();
-        for (const ch of extractedChannels) {
-          if (ch.thumbnail) {
-            channelThumbMap.set(ch.channelId, ch.thumbnail);
-            channelThumbMap.set(ch.title.toLowerCase().trim(), ch.thumbnail);
-          }
-        }
-
-        const channelIds = extractedChannels.map((c) => c.channelId);
-        if (channelIds.length > 0) {
-          const selectedChannels = channelIds.slice(0, 12);
-          const playlistPromises = selectedChannels.map(async (chId) => {
-            const uploadsPlaylistId = chId.replace(/^UC/, 'UU');
-            const pUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=3`;
-            try {
-              const pRes = await fetch(pUrl, {
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                  Accept: 'application/json',
-                },
-              });
-              if (!pRes.ok) {
-                return await fetchChannelRssUploads(chId, 3);
-              }
-              const pData = await pRes.json();
-              const pItems = pData.items || [];
-              return pItems
-                .map((item: any) => {
-                  const videoId = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId;
-                  if (!videoId) return null;
-                  const snippet = item.snippet;
-                  const authorName = snippet?.channelTitle || snippet?.videoOwnerChannelTitle || 'YouTube Creator';
-                  const avatar =
-                    channelThumbMap.get(chId) ||
-                    channelThumbMap.get(authorName.toLowerCase().trim()) ||
-                    getChannelAvatar(chId) ||
-                    getChannelAvatar(authorName) ||
-                    snippet?.thumbnails?.default?.url ||
-                    undefined;
-                  return {
-                    videoId,
-                    channelId: chId,
-                    title: snippet?.title || 'Unknown Video',
-                    author: authorName,
-                    channelAvatar: avatar,
-                    publishedAt: snippet?.publishedAt || '',
-                    publishedTime: formatRelativeTime(snippet?.publishedAt),
-                    thumbnail:
-                      snippet?.thumbnails?.high?.url ||
-                      snippet?.thumbnails?.medium?.url ||
-                      snippet?.thumbnails?.default?.url ||
-                      `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-                  };
-                })
-                .filter(Boolean);
-            } catch {
-              return await fetchChannelRssUploads(chId, 3);
-            }
-          });
-
-          const settled = await Promise.allSettled(playlistPromises);
-          const rawVideos: any[] = [];
-          for (const r of settled) {
-            if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-              rawVideos.push(...r.value);
-            }
-          }
-
-          if (rawVideos.length > 0) {
-            rawVideos.sort((a, b) => {
-              const timeA = new Date(a.publishedAt).getTime() || 0;
-              const timeB = new Date(b.publishedAt).getTime() || 0;
-              return timeB - timeA;
-            });
-
-            const topVideos = rawVideos.slice(0, maxResults);
-            const videoIdList = topVideos.map((v) => v.videoId);
-            const metaMap = await enrichVideosMetadata(videoIdList, token);
-
-            const formattedVideos: YouTubeVideoSearchResult[] = topVideos.map((raw, idx) => {
-              const meta = metaMap.get(raw.videoId);
-              const avatar =
-                raw.channelAvatar ||
-                (raw.channelId && getChannelAvatar(raw.channelId)) ||
-                getChannelAvatar(raw.author) ||
-                undefined;
-
-              return {
-                id: `yt_sub_${raw.videoId}`,
-                videoId: raw.videoId,
-                channelId: raw.channelId,
-                title: raw.title,
-                author: raw.author,
-                channelAvatar: avatar,
-                duration: meta?.duration || '3:30',
-                durationSeconds: meta?.durationSeconds || 210,
-                viewCount: meta?.viewCount || '',
-                publishedTime: raw.publishedTime,
-                thumbnail: raw.thumbnail,
-                rank: idx + 1,
-                isLive: meta?.isLive || false,
-              };
-            });
-
-            userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
-            SafeStorage.setItem(CACHED_USER_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
-            return { videos: formattedVideos };
+          const feedFromLive = await fetchFromChannels(extractedChannels, false);
+          if (feedFromLive && feedFromLive.length > 0) {
+            return { videos: feedFromLive, isStarterFeed: false };
           }
         }
       } else {
-        console.log(`[youtubeUserFeedService] YouTube API responded with status ${subRes.status}, switching to resilient RSS feed`);
+        console.log(`[youtubeUserFeedService] YouTube API responded with status ${subRes.status}, falling back to resilient feed`);
       }
     }
 
-    // Token expired (401), not provided, or API returned non-OK:
-    const rssVideos = await fetchFromStoredChannelsRss();
-    if (rssVideos && rssVideos.length > 0) {
-      return { videos: rssVideos };
+    // 2. Fall back to stored subscribed channels
+    const storedChannels = await getStoredSubscribedChannels();
+    if (storedChannels.length > 0) {
+      const feedFromStored = await fetchFromChannels(storedChannels, false);
+      if (feedFromStored && feedFromStored.length > 0) {
+        return { videos: feedFromStored, isStarterFeed: false };
+      }
     }
 
-    // Fall back to persistent storage cache with channelAvatar enrichment
+    // 3. Fall back to cached feed in persistent storage if present
     if (cachedFromStorage.length > 0) {
-      const enrichedCache = cachedFromStorage.map((v) => {
-        if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
-        const realAvatar = (v.channelId && getChannelAvatar(v.channelId)) || getChannelAvatar(v.author);
-        return {
-          ...v,
-          channelAvatar: realAvatar || undefined,
-        };
-      });
-      return { videos: enrichedCache };
+      return { videos: cachedFromStorage };
     }
 
-    // If completely empty and no connection at all
+    // 4. Fall back to starter music channels so new / unlinked users always see music uploads
+    const starterFeed = await fetchFromChannels(DEFAULT_STARTER_CHANNELS, true);
+    if (starterFeed && starterFeed.length > 0) {
+      return { videos: starterFeed, isStarterFeed: true };
+    }
+
     return {
       videos: [],
-      notConnected: !isConnected,
-      emptyFeed: isConnected,
+      notConnected: !(await isYouTubeConnected()),
+      emptyFeed: true,
     };
   } catch (err: any) {
     console.warn('[youtubeUserFeedService] fetchUserSubscriptionsFeed error:', err);
-    const rssVideos = await fetchFromStoredChannelsRss();
-    if (rssVideos && rssVideos.length > 0) {
-      return { videos: rssVideos };
+    if (cachedFromStorage.length > 0) {
+      return { videos: cachedFromStorage };
+    }
+    const starterFeed = await fetchFromChannels(DEFAULT_STARTER_CHANNELS, true);
+    if (starterFeed && starterFeed.length > 0) {
+      return { videos: starterFeed, isStarterFeed: true };
     }
     return {
-      videos: cachedFromStorage,
-      error: cachedFromStorage.length === 0 ? 'Failed to fetch subscriptions feed.' : undefined,
+      videos: [],
+      error: 'Failed to fetch subscriptions feed.',
     };
   }
 }
 
 /**
- * Fetches user's official Liked Videos directly using YouTube Data API v3 videos.list(myRating=like).
- * Seamlessly caches videos locally so they remain accessible even if OAuth token expires.
+ * Fetches user's Liked Videos.
+ * Seamlessly integrates Google YouTube liked videos with in-app liked tracks and local likes.
  */
-export async function fetchUserLikedVideos(maxResults = 30, forceRefresh = false): Promise<UserFeedResult> {
-  const token = await getGoogleYouTubeToken();
-  const isConnected = await isYouTubeConnected();
+export async function fetchUserLikedVideos(
+  maxResults = 30,
+  forceRefresh = false
+): Promise<UserFeedResult> {
+  let token = await getGoogleYouTubeToken();
   const cachedFromStorage = await getCachedLikedVideos();
+  const localLikedVideos = await getStoredLocalLikedVideos();
+  const inAppLikedSongs = await getStoredLikedSongs();
 
-  if (!isConnected && !token && cachedFromStorage.length === 0) {
-    return {
-      videos: [],
-      notConnected: true,
-      requiresReauth: false,
-    };
-  }
+  // Convert in-app liked songs to YouTubeVideoSearchResult
+  const inAppLikedVideos: YouTubeVideoSearchResult[] = [];
+  inAppLikedSongs.forEach((s, idx) => {
+    const videoId = s.id.startsWith('yt_')
+      ? s.id.replace('yt_', '')
+      : s.id.length === 11
+      ? s.id
+      : null;
+    if (videoId) {
+      inAppLikedVideos.push({
+        id: `yt_liked_${videoId}`,
+        videoId,
+        title: s.name,
+        author: s.artist,
+        duration: s.duration
+          ? `${Math.floor(s.duration / 60)}:${(s.duration % 60).toString().padStart(2, '0')}`
+          : '3:30',
+        durationSeconds: s.duration || 210,
+        viewCount: '',
+        publishedTime: '',
+        thumbnail: s.cover || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        rank: idx + 1,
+        isLive: false,
+      });
+    }
+  });
 
   const cacheKey = `liked_${maxResults}`;
   const cached = userFeedCache.get(cacheKey);
   if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL && cached.videos.length > 0) {
-    return { videos: cached.videos };
+    // Merge any newer local likes into cached
+    const seen = new Set<string>();
+    const merged: YouTubeVideoSearchResult[] = [];
+    for (const v of [...localLikedVideos, ...cached.videos, ...inAppLikedVideos]) {
+      if (!seen.has(v.videoId)) {
+        seen.add(v.videoId);
+        merged.push(v);
+      }
+    }
+    return { videos: merged };
   }
+
+  let remoteVideos: YouTubeVideoSearchResult[] = [];
 
   try {
     if (token) {
       const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&myRating=like&maxResults=${maxResults}`;
-      const res = await fetch(url, {
+      let res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
         },
       });
 
+      // On 401, auto-refresh token and retry
+      if (res.status === 401) {
+        console.log('[youtubeUserFeedService] Liked videos token expired, attempting auto-refresh...');
+        const refreshedToken = await refreshGoogleYouTubeToken();
+        if (refreshedToken) {
+          token = refreshedToken;
+          res = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/json',
+            },
+          });
+        }
+      }
+
       if (res.ok) {
         const data = await res.json();
         const items = data.items || [];
         if (items.length > 0) {
-          const formattedVideos: YouTubeVideoSearchResult[] = items.map((item: any, idx: number) => {
+          remoteVideos = items.map((item: any, idx: number) => {
             const snippet = item.snippet;
             const isLive = snippet?.liveBroadcastContent === 'live';
             const { formatted, seconds } = parseISO8601Duration(item.contentDetails?.duration);
@@ -717,32 +924,32 @@ export async function fetchUserLikedVideos(maxResults = 30, forceRefresh = false
             };
           });
 
-          userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
-          SafeStorage.setItem(CACHED_LIKED_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
-          return { videos: formattedVideos };
+          SafeStorage.setItem(CACHED_LIKED_FEED_KEY, JSON.stringify(remoteVideos)).catch(() => {});
         }
       }
     }
-
-    // If token expired (401) or absent, seamlessly return cached liked videos with channelAvatar
-    if (cachedFromStorage.length > 0) {
-      const enrichedCache = cachedFromStorage.map((v) => {
-        if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
-        const realAvatar = (v.channelId && getChannelAvatar(v.channelId)) || getChannelAvatar(v.author);
-        return {
-          ...v,
-          channelAvatar: realAvatar || undefined,
-        };
-      });
-      return { videos: enrichedCache };
-    }
-
-    return { videos: [], emptyFeed: true };
-  } catch (err: any) {
-    console.warn('[youtubeUserFeedService] fetchUserLikedVideos error:', err);
-    return {
-      videos: cachedFromStorage,
-      error: cachedFromStorage.length === 0 ? 'Failed to fetch liked videos.' : undefined,
-    };
+  } catch (err) {
+    console.warn('[youtubeUserFeedService] fetchUserLikedVideos remote error:', err);
   }
+
+  // Combine: localLikedVideos + remoteVideos + cachedFromStorage + inAppLikedVideos
+  const basePool = remoteVideos.length > 0 ? remoteVideos : cachedFromStorage;
+  const combined = [...localLikedVideos, ...basePool, ...inAppLikedVideos];
+
+  // Deduplicate by videoId
+  const seenIds = new Set<string>();
+  const finalVideos: YouTubeVideoSearchResult[] = [];
+  for (const v of combined) {
+    if (!seenIds.has(v.videoId)) {
+      seenIds.add(v.videoId);
+      finalVideos.push(v);
+    }
+  }
+
+  if (finalVideos.length > 0) {
+    userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: finalVideos });
+    return { videos: finalVideos };
+  }
+
+  return { videos: [], emptyFeed: true };
 }
