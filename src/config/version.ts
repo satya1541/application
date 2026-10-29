@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.6',
-  releaseTag: 'v5.2.6',
-  releaseName: 'Shorty v5.2.6: Fix MiniPlayer display, tablet playlist grid alignment, artist banner width & YSearch video canvas',
+  otaVersion: '5.2.7',
+  releaseTag: 'v5.2.7',
+  releaseName: 'Shorty v5.2.7: Fix CJK foreign lyrics mismatch, YouTube native lyrics, precision auto-scroll & Spotify/Apple style Lyric Story Cards',
   releaseDate: '2026-10-29',
   channel: 'preview',
 };
