@@ -761,18 +761,23 @@ export async function fetchPlaylistDetails(playlistBrowseId: string): Promise<Ex
 }
 
 /**
+ * Safely parses YouTube duration strings (e.g. "3:45", "1:15:30") or seconds into numeric seconds
+ */
+export function parseDurationToSeconds(dur?: string | number): number {
+  if (typeof dur === 'number') return dur;
+  if (!dur || typeof dur !== 'string') return 0;
+  const parts = dur.trim().split(':').map((p) => parseInt(p, 10));
+  if (parts.some((n) => isNaN(n))) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+/**
  * Transforms an ExplorePlaylistTrack into Shorty's Song model
  */
 export function explorePlaylistTrackToSong(track: ExplorePlaylistTrack, playlistTitle?: string): Song {
-  let durationSec = 210;
-  if (track.duration) {
-    const parts = track.duration.split(':').map((p) => parseInt(p, 10));
-    if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-      durationSec = parts[0] * 60 + parts[1];
-    } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-      durationSec = parts[0] * 3600 + parts[1] * 60 + parts[2];
-    }
-  }
+  let durationSec = parseDurationToSeconds(track.duration) || 210;
 
   return {
     id: track.id.startsWith('yt_') ? track.id : `yt_${track.videoId}`,
@@ -1077,7 +1082,10 @@ export async function fetchYouTubeArtistDetails(
   if (!forceRefresh) {
     const mem = inMemoryArtistDetailsCache.get(browseId);
     if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
-      return mem.data;
+      const hasValidDurations = mem.data.topSongs?.some((s) => s.duration && s.duration > 0);
+      if (hasValidDurations || !mem.data.topSongs?.length) {
+        return mem.data;
+      }
     }
 
     try {
@@ -1085,8 +1093,11 @@ export async function fetchYouTubeArtistDetails(
       if (disk) {
         const parsed = JSON.parse(disk) as YouTubeArtistDetails;
         if (parsed && parsed.name && parsed.topSongs?.length > 0) {
-          inMemoryArtistDetailsCache.set(browseId, { data: parsed, timestamp: Date.now() });
-          return parsed;
+          const hasValidDurations = parsed.topSongs.some((s) => s.duration && s.duration > 0);
+          if (hasValidDurations) {
+            inMemoryArtistDetailsCache.set(browseId, { data: parsed, timestamp: Date.now() });
+            return parsed;
+          }
         }
       }
     } catch {}
@@ -1184,6 +1195,25 @@ export async function fetchYouTubeArtistDetails(
           thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
           if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
 
+          const rawDuration =
+            r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.map((x: any) => x.text).join('') ||
+            r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.simpleText ||
+            '';
+          let durSec = parseDurationToSeconds(rawDuration);
+          if (!durSec && Array.isArray(r.flexColumns)) {
+            for (const col of r.flexColumns) {
+              const runs = col?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+              for (const run of runs) {
+                const t = (run?.text || '').trim();
+                if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) {
+                  durSec = parseDurationToSeconds(t);
+                  break;
+                }
+              }
+              if (durSec) break;
+            }
+          }
+
           initialTopSongs.push({
             id: videoId,
             name: songTitle,
@@ -1191,7 +1221,7 @@ export async function fetchYouTubeArtistDetails(
             album: albumName || 'Single',
             cover: thumbUrl,
             streamUrl: '',
-            duration: 0,
+            duration: durSec,
             quality: 'Opus',
             source: 'youtube',
             sourceBadge: YOUTUBE_OPUS_BADGE,
@@ -1267,13 +1297,24 @@ export async function fetchYouTubeArtistDetails(
           thumbUrl = thumbUrl.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
           if (thumbUrl.startsWith('//')) thumbUrl = 'https:' + thumbUrl;
 
+          let vidDuration = 0;
+          if (Array.isArray(r.subtitle?.runs)) {
+            for (const run of r.subtitle.runs) {
+              const t = (run?.text || '').trim();
+              if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) {
+                vidDuration = parseDurationToSeconds(t);
+                break;
+              }
+            }
+          }
+
           if (vidId && vidTitle) {
             videos.push({
               id: vidId,
               title: vidTitle,
               artist: resolvedName,
               artwork: thumbUrl,
-              duration: 0,
+              duration: vidDuration,
               views: vidViews,
               source: 'youtube',
             });
@@ -1333,7 +1374,10 @@ export async function fetchYouTubeArtistDetails(
           const plData = await plRes.json();
           const plItems =
             plData.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer
-              ?.contents?.[0]?.musicPlaylistShelfRenderer?.contents || [];
+              ?.contents?.[0]?.musicPlaylistShelfRenderer?.contents ||
+            plData.contents?.twoColumnBrowseResultsRenderer?.secondaryContents?.sectionListRenderer?.contents?.[0]
+              ?.musicPlaylistShelfRenderer?.contents ||
+            [];
           const fullList: Song[] = [];
           for (const item of plItems) {
             const r = item.musicResponsiveListItemRenderer;
@@ -1355,6 +1399,25 @@ export async function fetchYouTubeArtistDetails(
             sThumb = sThumb.replace(/=w\d+-h\d+[^"]*/, '=w500-h500-l90-rj');
             if (sThumb.startsWith('//')) sThumb = 'https:' + sThumb;
 
+            const rawDuration =
+              r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.runs?.map((x: any) => x.text).join('') ||
+              r.fixedColumns?.[0]?.musicResponsiveListItemFixedColumnRenderer?.text?.simpleText ||
+              '';
+            let durSec = parseDurationToSeconds(rawDuration);
+            if (!durSec && Array.isArray(r.flexColumns)) {
+              for (const col of r.flexColumns) {
+                const runs = col?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+                for (const run of runs) {
+                  const t = (run?.text || '').trim();
+                  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(t)) {
+                    durSec = parseDurationToSeconds(t);
+                    break;
+                  }
+                }
+                if (durSec) break;
+              }
+            }
+
             fullList.push({
               id: vid,
               name: sTitle,
@@ -1362,7 +1425,7 @@ export async function fetchYouTubeArtistDetails(
               album: sAlbum || 'Track',
               cover: sThumb,
               streamUrl: '',
-              duration: 0,
+              duration: durSec,
               quality: 'Opus',
               source: 'youtube',
               sourceBadge: YOUTUBE_OPUS_BADGE,

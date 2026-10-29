@@ -17,6 +17,8 @@ import {
 import { Image as ExpoImage } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { GLASS_THEME } from '@/constants/glassTheme';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAudio } from '@/contexts/AudioContext';
 import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
@@ -40,6 +42,7 @@ import {
   normalizeExploreUrl,
 } from '@/services/youtubeExploreService';
 import { Song } from '@/types/music';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_PADDING = 16;
@@ -47,7 +50,7 @@ const ALBUM_CARD_WIDTH = 145;
 const VIDEO_CARD_WIDTH = 220;
 const PLAYLIST_CARD_WIDTH = 150;
 const GRID_GAP = 12;
-const GRID_CARD_WIDTH = Math.floor((SCREEN_WIDTH - CARD_PADDING * 2 - GRID_GAP) / 2);
+const BASE_GRID_CARD_WIDTH = Math.floor((SCREEN_WIDTH - CARD_PADDING * 2 - GRID_GAP) / 2);
 
 type FilterChip = 'all' | 'trending' | 'moods' | 'genres' | 'albums' | 'videos';
 
@@ -65,6 +68,37 @@ interface MobileExploreScreenProps {
 }
 
 export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavigateHome, onOpenYSearch }) => {
+  const {
+    width: windowWidth,
+    isTablet,
+    isLandscape,
+    useSidebarNavigation,
+    sidebarWidth,
+    contentMaxWidth,
+  } = useResponsive();
+
+  const availableWidth = useSidebarNavigation
+    ? windowWidth - sidebarWidth
+    : windowWidth;
+
+  const effectiveWidth = isTablet && contentMaxWidth
+    ? Math.min(availableWidth, contentMaxWidth)
+    : availableWidth;
+
+  const cols = useMemo(() => {
+    if (!isTablet) return 2;
+    const targetCardWidth = 190;
+    const computedCols = Math.floor(
+      (effectiveWidth - CARD_PADDING * 2 + GRID_GAP) / (targetCardWidth + GRID_GAP)
+    );
+    return Math.max(2, Math.min(6, computedCols));
+  }, [isTablet, effectiveWidth]);
+
+  const dynamicGridCardWidth = useMemo(() => {
+    return Math.floor(
+      (effectiveWidth - CARD_PADDING * 2 - GRID_GAP * (cols - 1)) / cols
+    );
+  }, [effectiveWidth, cols]);
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
 
@@ -283,7 +317,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
     Share.share({
       title: playlist.title,
       message: `Listen to "${playlist.title}" on YouTube Music: https://music.youtube.com/playlist?list=${rawId}`,
-    }).catch(() => {});
+    }).catch(() => { });
   }, []);
 
   const chips: Array<{ id: FilterChip; label: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -374,7 +408,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, isTablet && { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -516,11 +550,11 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 {newAlbums.map((album) => (
                   <TouchableOpacity
                     key={album.id}
-                    style={[styles.gridAlbumCard, { backgroundColor: surfaceHex }]}
+                    style={[styles.gridAlbumCard, { width: dynamicGridCardWidth, backgroundColor: surfaceHex }]}
                     activeOpacity={0.8}
                     onPress={() => handleOpenPlaylist(album.id, album.title, album.thumbnail)}
                   >
-                    <View style={styles.gridAlbumCoverWrapper}>
+                    <View style={[styles.gridAlbumCoverWrapper, { height: dynamicGridCardWidth }]}>
                       <ExpoImage
                         source={{ uri: album.thumbnail }}
                         style={styles.gridAlbumCover}
@@ -576,7 +610,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                       key={vid.videoId}
                       style={[
                         styles.gridVideoCard,
-                        { backgroundColor: surfaceHex },
+                        { width: dynamicGridCardWidth, backgroundColor: surfaceHex },
                         isCurrent && { borderColor: accent.hex, borderWidth: 1.5 },
                       ]}
                       activeOpacity={0.8}
@@ -1238,23 +1272,34 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 13,
+    paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: GLASS_THEME.radii.pill,
+    marginRight: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  chipInactive: {
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   chipActive: {
-    borderColor: 'transparent',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceActive,
+    borderColor: GLASS_THEME.colors.borderSpecular,
   },
   chipText: {
-    color: '#BBBBBB',
+    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  chipTextInactive: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '500',
   },
   chipTextActive: {
-    color: '#000000',
-    fontWeight: '800',
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   loaderContainer: {
     flex: 1,
@@ -1270,6 +1315,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 4,
+    paddingBottom: 140,
   },
   sectionBlock: {
     marginTop: 18,
@@ -1303,12 +1349,21 @@ const styles = StyleSheet.create({
   },
   moodCard: {
     width: (SCREEN_WIDTH - CARD_PADDING * 2 - 20) / 3,
-    height: 76,
-    borderRadius: 12,
+    height: 84,
+    borderRadius: GLASS_THEME.radii.card,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  moodIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
   moodStripe: {
     height: 4,
@@ -1321,10 +1376,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   moodTitle: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    color: GLASS_THEME.colors.textPrimary,
+    fontSize: 11.5,
+    fontWeight: '600',
     textAlign: 'center',
+    letterSpacing: -0.1,
   },
   songsList: {
     gap: 8,
@@ -1517,7 +1573,7 @@ const styles = StyleSheet.create({
     gap: GRID_GAP,
   },
   gridAlbumCard: {
-    width: GRID_CARD_WIDTH,
+    width: BASE_GRID_CARD_WIDTH,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
@@ -1525,7 +1581,7 @@ const styles = StyleSheet.create({
   },
   gridAlbumCoverWrapper: {
     width: '100%',
-    height: GRID_CARD_WIDTH,
+    height: BASE_GRID_CARD_WIDTH,
     position: 'relative',
     backgroundColor: '#1E1E1E',
   },
@@ -1534,7 +1590,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   gridVideoCard: {
-    width: GRID_CARD_WIDTH,
+    width: BASE_GRID_CARD_WIDTH,
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
@@ -1542,7 +1598,7 @@ const styles = StyleSheet.create({
   },
   gridVideoThumbWrapper: {
     width: '100%',
-    height: Math.floor((GRID_CARD_WIDTH * 9) / 16),
+    height: Math.floor((BASE_GRID_CARD_WIDTH * 9) / 16),
     position: 'relative',
     backgroundColor: '#1E1E1E',
   },

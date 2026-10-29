@@ -25,6 +25,8 @@ import { getSaavnAlbumDetails } from '@/services/saavnStream';
 import { fetchPlaylistDetails } from '@/services/youtubeExploreService';
 import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface AlbumModalProps {
   visible: boolean;
@@ -41,6 +43,7 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
   albumCover,
   onClose,
 }) => {
+  const { isTablet } = useResponsive();
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
   const [albumDetails, setAlbumDetails] = useState<{
@@ -133,10 +136,12 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle={isTablet ? 'overFullScreen' : 'fullScreen'}
+      transparent={isTablet}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <View style={[styles.modalBackdrop, isTablet && styles.tabletBackdrop]}>
+        <View style={[styles.container, isTablet && styles.tabletContainer]}>
         <SafeAreaView style={styles.floatingHeader}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
             <Ionicons name="chevron-down" size={26} color="#ffffff" />
@@ -148,7 +153,7 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
           contentContainerStyle={styles.scrollContent}
         >
           <LinearGradient
-            colors={['#1e3a29', '#121212']}
+            colors={['rgba(28, 34, 48, 0.90)', 'rgba(12, 14, 20, 0.95)', '#050508']}
             style={styles.headerGradient}
           >
             <Image source={{ uri: cover }} style={styles.albumArt} />
@@ -161,7 +166,7 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
 
             <View style={styles.actionRow}>
               <TouchableOpacity style={styles.shuffleBtn} activeOpacity={0.7}>
-                <Ionicons name="shuffle" size={22} color="#1DB954" />
+                <Ionicons name="shuffle" size={20} color="#ffffff" />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.playFab}
@@ -170,7 +175,7 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
                   if (songs.length > 0) playSong(songs[0], songs);
                 }}
               >
-                <Ionicons name="play" size={26} color="#000000" />
+                <Ionicons name="play" size={26} color="#000000" style={{ marginLeft: 3 }} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.shuffleBtn} activeOpacity={0.7}>
                 <Ionicons name="heart-outline" size={22} color="#ffffff" />
@@ -214,27 +219,48 @@ export const AlbumModal: React.FC<AlbumModalProps> = ({
         {/* Persistent Offline Banner */}
         <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 24 : 0} />
       </View>
+      </View>
     </Modal>
 
   );
 };
 
 const styles = StyleSheet.create({
+  modalBackdrop: {
+    flex: 1,
+  },
+  tabletBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  tabletContainer: {
+    maxWidth: 820,
+    maxHeight: '90%',
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderSpecular,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#050508',
   },
   floatingHeader: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 10 : 0,
+    top: Platform.OS === 'android' ? 12 : 0,
     left: 16,
     zIndex: 50,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -242,21 +268,23 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
   headerGradient: {
-    paddingTop: 60,
+    paddingTop: 68,
     paddingHorizontal: 20,
     paddingBottom: 24,
     alignItems: 'center',
   },
   albumArt: {
-    width: 180,
-    height: 180,
-    borderRadius: 8,
-    marginBottom: 16,
+    width: 190,
+    height: 190,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    marginBottom: 18,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.6,
+    shadowRadius: 20,
+    elevation: 12,
   },
   albumTitle: {
     color: '#ffffff',
@@ -264,12 +292,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: 4,
+    letterSpacing: -0.3,
   },
   artistName: {
-    color: '#b3b3b3',
+    color: 'rgba(255, 255, 255, 0.65)',
     fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 16,
+    fontWeight: '600',
+    marginBottom: 18,
   },
   actionRow: {
     flexDirection: 'row',
@@ -277,20 +306,29 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   shuffleBtn: {
-    padding: 8,
-  },
-  playFab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#1DB954',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1DB954',
+  },
+  playFab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
   },
   loadingBox: {
     paddingVertical: 60,
@@ -299,16 +337,17 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
-    color: '#b3b3b3',
+    color: 'rgba(255, 255, 255, 0.6)',
     fontSize: 13,
   },
   trackListContainer: {
     paddingHorizontal: 16,
   },
   tracksCountText: {
-    color: '#888888',
+    color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 12,
+    letterSpacing: 0.5,
   },
 });

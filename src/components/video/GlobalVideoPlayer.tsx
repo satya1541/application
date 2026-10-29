@@ -6,7 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
+  useWindowDimensions,
   Platform,
   BackHandler,
   Animated,
@@ -23,7 +23,6 @@ import { useAudio } from '@/contexts/AudioContext';
 import { FullscreenVideoOverlay } from '../player/FullscreenVideoOverlay';
 import { YouTubeVideoSearchResult } from '@/services/youtubeVideoSearchService';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const formatTime = (seconds: number): string => {
   if (isNaN(seconds) || seconds < 0) return '0:00';
@@ -103,9 +102,9 @@ const WatchScrubberBar: React.FC<{
         minimumValue={0}
         maximumValue={Math.max(1, duration)}
         value={displayTime}
-        minimumTrackTintColor="#FF0000"
-        maximumTrackTintColor="rgba(255, 255, 255, 0.25)"
-        thumbTintColor="#FF0000"
+        minimumTrackTintColor="#ffffff"
+        maximumTrackTintColor="rgba(255, 255, 255, 0.20)"
+        thumbTintColor="#ffffff"
         onSlidingStart={onSlidingStart}
         onValueChange={onValueChange}
         onSlidingComplete={onSlidingComplete}
@@ -116,6 +115,13 @@ const WatchScrubberBar: React.FC<{
 
 export const GlobalVideoPlayer: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+
+  const isLandscape = windowWidth > windowHeight;
+  const isTablet = windowWidth >= 768 || (windowHeight >= 768 && isLandscape && windowWidth >= 600);
+  const videoCanvasHeight = isLandscape && isTablet
+    ? Math.min(Math.round((windowWidth * 9) / 16), Math.round(windowHeight * 0.62))
+    : Math.round((windowWidth * 9) / 16);
   const {
     player,
     activeVideo,
@@ -154,7 +160,7 @@ export const GlobalVideoPlayer: React.FC = () => {
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Slide-down animation value (starts offscreen at bottom to prevent any initial paint flash)
-  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+  const translateY = useRef(new Animated.Value(windowHeight || 800)).current;
   const isClosingRef = useRef(false);
   const prevModeRef = useRef<VideoPlayerMode>(playerMode);
 
@@ -187,7 +193,7 @@ export const GlobalVideoPlayer: React.FC = () => {
     if (playerMode === 'full' && prevModeRef.current !== 'full') {
       isClosingRef.current = false;
       translateY.stopAnimation();
-      translateY.setValue(SCREEN_HEIGHT);
+      translateY.setValue(windowHeight);
       Animated.spring(translateY, {
         toValue: 0,
         tension: 110,
@@ -199,7 +205,7 @@ export const GlobalVideoPlayer: React.FC = () => {
       resetWatchControlsTimer();
     } else if (playerMode === 'mini' && prevModeRef.current === 'full') {
       // Full watch view remains safely parked offscreen below viewport
-      translateY.setValue(SCREEN_HEIGHT);
+      translateY.setValue(windowHeight);
       // Fluid scale & fade entrance for miniplayer
       miniTranslateX.setValue(0);
       miniTranslateY.setValue(0);
@@ -240,7 +246,7 @@ export const GlobalVideoPlayer: React.FC = () => {
         typeof velocity === 'number' && velocity > 0 ? Math.max(velocity * 1.2, 1.5) : 1.5;
 
       Animated.spring(translateY, {
-        toValue: SCREEN_HEIGHT,
+        toValue: windowHeight,
         tension: 90,
         friction: 12,
         velocity: initialVelocity,
@@ -252,7 +258,7 @@ export const GlobalVideoPlayer: React.FC = () => {
         isClosingRef.current = false;
       });
     },
-    [translateY, collapseToMini]
+    [translateY, collapseToMini, windowHeight]
   );
 
   // Android back button: collapse full watch view to mini player
@@ -593,23 +599,20 @@ export const GlobalVideoPlayer: React.FC = () => {
               </View>
 
               {/* 16:9 Video Canvas Frame */}
-              <View style={styles.watchVideoCanvas}>
+              <View style={[styles.watchVideoCanvas, { height: videoCanvasHeight }]}>
                 {videoStream && player ? (
                   <View style={StyleSheet.absoluteFill}>
-                    <ExpoImage
-                      source={{ uri: activeVideo.thumbnail }}
-                      style={StyleSheet.absoluteFill}
-                      contentFit="cover"
-                    />
+                    {/* Clean black backdrop: eliminates thumbnail peeking behind widescreen letterboxing */}
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
                     <View style={StyleSheet.absoluteFill} pointerEvents="none">
                       <VideoView
                         ref={watchVideoViewRef}
                         key={`watch-video-${activeVideo.videoId}`}
-                        style={StyleSheet.absoluteFill}
+                        style={{ width: '100%', height: '100%' }}
                         player={player}
                         contentFit="contain"
                         nativeControls={false}
-                        surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                        surfaceType={Platform.OS === 'android' ? 'surfaceView' : undefined}
                         allowsPictureInPicture={isPiPAllowed}
                         startsPictureInPictureAutomatically={isPiPAllowed}
                         onPictureInPictureStart={handlePiPStart}
@@ -707,8 +710,8 @@ export const GlobalVideoPlayer: React.FC = () => {
                           >
                             <Ionicons
                               name={isVideoPlaying ? 'pause' : 'play'}
-                              size={36}
-                              color="#ffffff"
+                              size={34}
+                              color="#000000"
                               style={!isVideoPlaying ? { marginLeft: 3 } : undefined}
                             />
                           </TouchableOpacity>
@@ -915,14 +918,16 @@ const styles = StyleSheet.create({
   miniplayerContainer: {
     position: 'absolute',
     right: 14,
-    width: 172,
-    borderRadius: 12,
-    backgroundColor: '#181818',
+    width: 174,
+    borderRadius: 18,
+    backgroundColor: 'rgba(20, 24, 33, 0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     elevation: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.6,
+    shadowRadius: 16,
     overflow: 'hidden',
     zIndex: 99999,
   },
@@ -951,7 +956,7 @@ const styles = StyleSheet.create({
   },
   miniplayerProgressFill: {
     height: '100%',
-    backgroundColor: '#FF0000',
+    backgroundColor: '#ffffff',
   },
   miniplayerControlsBar: {
     flexDirection: 'row',
@@ -1005,11 +1010,11 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 99990,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#050508',
   },
   watchScreenContainer: {
     flex: 1,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#050508',
   },
   gestureHeaderArea: {
     width: '100%',
@@ -1017,7 +1022,7 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#050508',
   },
   dragPillIndicator: {
     width: 40,
@@ -1026,10 +1031,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.35)',
   },
   watchVideoCanvas: {
-    width: SCREEN_WIDTH,
-    height: (SCREEN_WIDTH * 9) / 16,
+    width: '100%',
     backgroundColor: '#000000',
     position: 'relative',
+    overflow: 'hidden',
   },
   watchControlsOverlay: {
     position: 'absolute',
@@ -1072,9 +1077,14 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.85)',
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1136,7 +1146,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 18,
     justifyContent: 'center',
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#050508',
   },
   watchSlider: {
     width: '100%',

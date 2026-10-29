@@ -19,6 +19,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio } from '@/contexts/AudioContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 import {
   getCachedDynamicPlaylists,
@@ -31,8 +33,6 @@ import { YouTubePlaylistModal } from '../explore/YouTubePlaylistModal';
 import { fetchYouTubePlaylist, searchLiveYouTubePlaylists } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 44) / 2;
 
 interface MobileLibraryScreenProps {
   onNavigateHome?: () => void;
@@ -81,6 +81,42 @@ function matchPlaylistItem(p: YouTubePlaylistItem, query: string): boolean {
 }
 
 export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavigateHome }) => {
+  const {
+    width: screenWidth,
+    isTablet,
+    isLandscape,
+    useSidebarNavigation,
+    sidebarWidth,
+    contentMaxWidth,
+  } = useResponsive();
+
+  const availableWidth = useSidebarNavigation
+    ? screenWidth - sidebarWidth
+    : screenWidth;
+
+  const effectiveWidth = isTablet && contentMaxWidth
+    ? Math.min(availableWidth, contentMaxWidth)
+    : availableWidth;
+
+  const GRID_GAP = isTablet ? 16 : 12;
+  const HORIZONTAL_PADDING = 16;
+
+  const numCols = useMemo(() => {
+    if (!isTablet) return 2;
+    // Adapt column count dynamically based on available width:
+    // Optimal playlist card width is 180-210dp on tablets
+    const targetCardWidth = 190;
+    const computedCols = Math.floor(
+      (effectiveWidth - HORIZONTAL_PADDING * 2 + GRID_GAP) / (targetCardWidth + GRID_GAP)
+    );
+    return Math.max(2, Math.min(6, computedCols));
+  }, [isTablet, effectiveWidth, GRID_GAP, HORIZONTAL_PADDING]);
+
+  const dynamicCardWidth = useMemo(() => {
+    return Math.floor(
+      (effectiveWidth - HORIZONTAL_PADDING * 2 - (numCols - 1) * GRID_GAP) / numCols
+    );
+  }, [effectiveWidth, HORIZONTAL_PADDING, numCols, GRID_GAP]);
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
 
@@ -417,18 +453,20 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
       <PlaylistGridCard
         item={item}
         index={index}
+        cardWidth={dynamicCardWidth}
+        isTablet={isTablet}
         isItemLoading={loadingPlayId === item.id}
         isCurrentPlaying={currentSong?.album === item.title && isPlaying}
         onOpen={handleOpenPlaylist}
         onPlay={handleDirectPlay}
       />
     ),
-    [loadingPlayId, currentSong?.album, isPlaying, handleOpenPlaylist, handleDirectPlay]
+    [dynamicCardWidth, isTablet, loadingPlayId, currentSong?.album, isPlaying, handleOpenPlaylist, handleDirectPlay]
   );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
-      <View style={styles.container}>
+      <View style={[styles.container, isTablet && { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}>
         {/* Top Header */}
         <View style={styles.topRow}>
           <View>
@@ -530,14 +568,15 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
 
         {/* Virtualized 2-Column Playlists Grid with Top-to-Bottom Priority */}
         <FlatList
+          key={`playlist-grid-cols-${numCols}`}
           data={filteredPlaylists}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.gridRow}
+          numColumns={numCols}
+          columnWrapperStyle={[styles.gridRow, { gap: GRID_GAP }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent]}
           initialNumToRender={8}
           maxToRenderPerBatch={6}
           windowSize={5}
@@ -575,6 +614,8 @@ export const MobileLibraryScreen: React.FC<MobileLibraryScreenProps> = ({ onNavi
 interface PlaylistGridCardProps {
   item: YouTubePlaylistItem;
   index?: number;
+  cardWidth: number;
+  isTablet?: boolean;
   isItemLoading: boolean;
   isCurrentPlaying: boolean;
   onOpen: (item: YouTubePlaylistItem) => void;
@@ -582,7 +623,7 @@ interface PlaylistGridCardProps {
 }
 
 const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
-  ({ item, index, isItemLoading, isCurrentPlaying, onOpen, onPlay }) => {
+  ({ item, index, cardWidth, isTablet, isItemLoading, isCurrentPlaying, onOpen, onPlay }) => {
     const fallbackCover = useMemo(
       () => getCategoryFallbackCover(item.category),
       [item.category]
@@ -626,11 +667,11 @@ const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
 
     return (
       <TouchableOpacity
-        style={styles.card}
+        style={[styles.card, { width: cardWidth }]}
         activeOpacity={0.82}
         onPress={() => onOpen(item)}
       >
-        <View style={styles.thumbnailWrapper}>
+        <View style={[styles.thumbnailWrapper, { height: cardWidth }]}>
           <ExpoImage
             source={{ uri: imageSource }}
             style={styles.thumbnail}
@@ -675,10 +716,10 @@ const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
         </View>
 
         <View style={styles.cardContent}>
-          <Text style={styles.cardTitle} numberOfLines={1}>
+          <Text style={[styles.cardTitle, isTablet && styles.cardTitleTablet]} numberOfLines={1}>
             {item.title}
           </Text>
-          <Text style={styles.cardDesc} numberOfLines={2}>
+          <Text style={[styles.cardDesc, isTablet && styles.cardDescTablet]} numberOfLines={2}>
             {item.description || item.type}
           </Text>
         </View>
@@ -753,14 +794,14 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#202020',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 42,
+    height: 48,
+    borderRadius: GLASS_THEME.radii.pill,
+    paddingHorizontal: 16,
     marginHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   searchBarFocused: {
     borderColor: '#1DB954',
@@ -831,7 +872,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingBottom: 130, // Clearance for floating MiniPlayer & Tab Bar
+    paddingBottom: 140, // Clearance for floating MiniPlayer & Tab Bar
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -861,7 +902,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   gridRow: {
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginBottom: 16,
   },
   gridContainer: {
@@ -871,16 +912,14 @@ const styles = StyleSheet.create({
     rowGap: 16,
   },
   card: {
-    width: CARD_WIDTH,
-    backgroundColor: '#181818',
-    borderRadius: 10,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderRadius: GLASS_THEME.radii.card,
+    borderColor: GLASS_THEME.colors.borderDefault,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   thumbnailWrapper: {
     width: '100%',
-    height: CARD_WIDTH,
     position: 'relative',
     backgroundColor: '#282828',
   },
@@ -944,6 +983,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#8e8e8e',
     lineHeight: 15,
+  },
+  cardTitleTablet: {
+    fontSize: 14,
+  },
+  cardDescTablet: {
+    fontSize: 12,
   },
   emptyContainer: {
     alignItems: 'center',

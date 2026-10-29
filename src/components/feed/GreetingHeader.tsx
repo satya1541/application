@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface GreetingHeaderProps {
   userName?: string;
@@ -20,7 +21,7 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
   onPressYSearch,
 }) => {
   const { accent, bgHex } = useAppTheme();
-  const { profile, isGuest, openProfileModal, openAuthModal } = useAuth();
+  const { profile, isGuest, openProfileModal } = useAuth();
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -47,14 +48,20 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
           onPress={handleProfilePress}
           activeOpacity={0.8}
         >
-          <Text style={styles.greeting}>
-            {getGreeting()}
-            {effectiveName ? <Text style={styles.userName}>, {effectiveName}</Text> : null}
-          </Text>
+          {effectiveName ? (
+            <>
+              <Text style={styles.greetingSubtitle}>{getGreeting()},</Text>
+              <Text style={styles.userName} numberOfLines={1}>
+                {effectiveName}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.singleGreetingTitle}>{getGreeting()}</Text>
+          )}
         </TouchableOpacity>
 
         <View style={styles.actions}>
-          {/* User Profile / Auth Button */}
+          {/* User Profile Avatar */}
           <TouchableOpacity
             style={styles.avatarButton}
             onPress={handleProfilePress}
@@ -64,7 +71,7 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
           >
             {!isGuest ? (
               <View style={styles.avatarPill}>
-                <View style={[styles.avatarMiniCircle, { backgroundColor: accent.hex }]}>
+                <View style={[styles.avatarMiniCircle, { borderColor: accent.hex }]}>
                   {profile?.avatar_url ? (
                     <Image source={{ uri: profile.avatar_url }} style={styles.avatarMiniImage} />
                   ) : (
@@ -75,41 +82,44 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
               </View>
             ) : (
               <View style={styles.guestLoginPill}>
-                <Ionicons name="person-circle-outline" size={24} color="#FFFFFF" />
+                <Ionicons name="person-circle-outline" size={28} color="#E2E8F0" />
               </View>
             )}
           </TouchableOpacity>
 
+          {/* YouTube Icon Pill */}
           {onPressYSearch && (
             <TouchableOpacity
-              style={styles.iconButton}
+              style={styles.glassIconButton}
               onPress={onPressYSearch}
               activeOpacity={0.7}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityLabel="YSearch Videos"
             >
-              <Ionicons name="logo-youtube" size={21} color="#FF0000" />
+              <Ionicons name="logo-youtube" size={17} color="#FF0000" />
             </TouchableOpacity>
           )}
 
+          {/* Notifications Button */}
           <TouchableOpacity
-            style={styles.iconButton}
+            style={styles.glassIconButton}
             onPress={onPressNotifications}
             activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Notifications"
           >
-            <Ionicons name="notifications-outline" size={22} color="#ffffff" />
+            <Ionicons name="notifications-outline" size={18} color="#FFFFFF" />
           </TouchableOpacity>
 
+          {/* Settings Button */}
           <TouchableOpacity
-            style={styles.iconButton}
+            style={styles.glassIconButton}
             onPress={onPressSettings}
             activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Settings"
           >
-            <Ionicons name="settings-outline" size={22} color="#ffffff" />
+            <Ionicons name="settings-outline" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -120,7 +130,7 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 10,
     paddingBottom: 6,
   },
   topRow: {
@@ -130,48 +140,58 @@ const styles = StyleSheet.create({
   },
   greetingContainer: {
     flex: 1,
-    paddingRight: 8,
+    paddingRight: 10,
+    justifyContent: 'center',
   },
-  greeting: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#ffffff',
-    letterSpacing: -0.4,
+  greetingSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#94A3B8',
+    letterSpacing: -0.1,
+    marginBottom: 1,
   },
   userName: {
-    color: '#ffffff',
+    fontSize: 22,
     fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  singleGreetingTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   avatarButton: {
-    padding: 4,
-    marginRight: 2,
+    padding: 2,
   },
   avatarPill: {
     position: 'relative',
   },
   avatarMiniCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#1DB954',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1E293B',
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
   },
   avatarMiniImage: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   avatarMiniText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#000000',
+    color: '#FFFFFF',
   },
   onlineDot: {
     position: 'absolute',
@@ -180,16 +200,21 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#22C55E',
+    backgroundColor: GLASS_THEME.colors.accentGreen,
     borderWidth: 1.5,
-    borderColor: '#121212',
   },
   guestLoginPill: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  iconButton: {
-    padding: 6,
+  glassIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
-

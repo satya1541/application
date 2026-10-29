@@ -17,6 +17,8 @@ import { INITIAL_SONGS } from '@/services/musicCatalog';
 import { LikedSongsModal } from '../profile/LikedSongsModal';
 import { UserPlaylistModal } from '../profile/UserPlaylistModal';
 import { TrackDetailModal } from './TrackDetailModal';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface QuickAccessGridProps {
   songs?: Song[];
@@ -61,7 +63,7 @@ getUserPlaylists()
 
 export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ songs, playlists }) => {
   const { currentSong, isPlaying, likedSongsList, likedSongIds } = useAudio();
-  const { accent, surfaceHex } = useAppTheme();
+  const { accent } = useAppTheme();
 
   // Initialize directly from in-memory cache so frame 1 has real data with zero flicker
   const [historyItems, setHistoryItems] = useState<HistoryEntry[]>(_cachedHistory);
@@ -89,7 +91,6 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
         _cachedPlaylists = plist;
         _hasLoadedFromStorage = true;
 
-        // Equality checks to prevent unnecessary re-renders and eliminate glitching
         setHistoryItems((prev) => {
           if (
             prev.length === hist.length &&
@@ -111,79 +112,67 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
           }
           return plist;
         });
-      } catch {
-        // silent
+      } catch (e) {
+        // Silent recovery
       }
     };
 
     loadData();
-
+    const interval = setInterval(loadData, 5000);
     return () => {
       isMounted = false;
+      clearInterval(interval);
     };
-  }, [currentSong?.id]);
+  }, []);
 
-  // Compute 6 contextual items based on time of day & listening frequency
-  const tiles: QuickAccessTile[] = useMemo(() => {
+  const tiles = useMemo<QuickAccessTile[]>(() => {
     const result: QuickAccessTile[] = [];
+    const seenSongIds = new Set<string>();
 
-    // ── Tile 1: Liked Songs (Always #1 Top-Left) ──
-    const isLikedPlaying =
-      isPlaying && !!currentSong && likedSongIds.includes(currentSong.id);
-
+    // 1. Liked Songs Card
     result.push({
-      id: 'tile_liked_songs',
+      id: 'liked_songs_tile',
       title: 'Liked Songs',
       subtitle: `${likedSongsList.length} tracks`,
       isLikedSongs: true,
       onCardPress: () => {
         setShowLikedModal(true);
       },
-      isCurrentlyPlaying: isLikedPlaying,
+      isCurrentlyPlaying: false,
     });
 
-    // ── Compute Looped Songs from History ──
-    const songPlayCountMap = new Map<string, { song: Song; count: number; lastPlayed: number }>();
-    for (const entry of historyItems) {
-      if (!entry.song?.id) continue;
-      const existing = songPlayCountMap.get(entry.song.id);
+    // Extract looped songs from history
+    const playCounts = new Map<string, { count: number; song: Song }>();
+    for (const h of historyItems) {
+      if (!h.song) continue;
+      const existing = playCounts.get(h.song.id);
       if (existing) {
         existing.count += 1;
-        existing.lastPlayed = Math.max(existing.lastPlayed, entry.playedAt);
       } else {
-        songPlayCountMap.set(entry.song.id, {
-          song: entry.song,
-          count: 1,
-          lastPlayed: entry.playedAt,
-        });
+        playCounts.set(h.song.id, { count: 1, song: h.song });
       }
     }
+    const sortedLoopedSongs = Array.from(playCounts.values())
+      .sort((a, b) => b.count - a.count)
+      .map((entry) => entry.song);
 
-    // Sort songs by play count descending, then last played descending
-    const sortedLoopedSongs = Array.from(songPlayCountMap.values())
-      .sort((a, b) => b.count - a.count || b.lastPlayed - a.lastPlayed)
-      .map((item) => item.song);
-
-    // ── Contextual Slot Fillers ──
-    const seenSongIds = new Set<string>();
-
-    // Add user custom playlists first if any exist
+    // Add user playlists
     for (const up of userPlaylists) {
       if (result.length >= 6) break;
       if (up.songs && up.songs.length > 0) {
         const isThisPlaylistPlaying =
-          isPlaying && !!currentSong && up.songs.some((s) => s.id === currentSong.id);
+          isPlaying && currentSong && up.songs.some((s) => s.id === currentSong.id);
 
         result.push({
-          id: `plist_${up.id}`,
+          id: `playlist_${up.id}`,
           title: up.name,
-          subtitle: `${up.songs.length} songs`,
+          subtitle: 'Playlist',
           coverUri: up.coverUrl || up.songs[0]?.cover,
           playlist: up,
           onCardPress: () => {
             setSelectedPlaylist(up);
           },
-          isCurrentlyPlaying: isThisPlaylistPlaying,
+          isCurrentlyPlaying: Boolean(isThisPlaylistPlaying),
         });
       }
     }
@@ -240,60 +229,96 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
     songs,
   ]);
 
+  const { quickAccessColumns } = useResponsive();
+
+  // Dynamically chunk tiles into responsive columns (2 on phone, 3 on tablet portrait, 4 on tablet landscape)
+  const tileRows = useMemo(() => {
+    const rows: QuickAccessTile[][] = [];
+    const cols = Math.max(2, quickAccessColumns || 2);
+    for (let i = 0; i < tiles.length; i += cols) {
+      rows.push(tiles.slice(i, i + cols));
+    }
+    return rows;
+  }, [tiles, quickAccessColumns]);
+
   if (tiles.length === 0) {
     return null;
   }
 
   return (
     <View style={styles.gridContainer}>
-      {tiles.map((tile) => {
-        const isCurrent = tile.isCurrentlyPlaying;
+      {tileRows.map((row, rowIndex) => (
+        <View key={`row_${rowIndex}`} style={styles.gridRow}>
+          {row.map((tile, colIndex) => {
+            const isCurrent = tile.isCurrentlyPlaying;
+            const isLastCol = colIndex === row.length - 1;
 
-        return (
-          <TouchableOpacity
-            key={tile.id}
-            style={[styles.card, { backgroundColor: surfaceHex }]}
-            activeOpacity={0.75}
-            onPress={tile.onCardPress}
-          >
-            {/* Left Cover Image or Liked Songs Gradient */}
-            {tile.isLikedSongs ? (
-              <LinearGradient
-                colors={['#450af5', '#8e8ee5']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.likedGradientCover}
+            return (
+              <TouchableOpacity
+                key={tile.id}
+                style={[
+                  styles.card,
+                  !isLastCol && { marginRight: 10 },
+                ]}
+                activeOpacity={0.75}
+                onPress={tile.onCardPress}
               >
-                <Ionicons name="heart" size={24} color="#ffffff" />
-              </LinearGradient>
-            ) : tile.coverUri ? (
-              <Image
-                source={{ uri: tile.coverUri }}
-                style={styles.image}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.image, styles.fallbackImage]}>
-                <Ionicons name="musical-notes" size={22} color="rgba(255,255,255,0.4)" />
-              </View>
-            )}
+                {/* Specular sheen gradient on card surface */}
+                <LinearGradient
+                  colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.01)', 'transparent']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 0.9 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
 
-            {/* Title & Metadata */}
-            <View style={styles.titleContainer}>
-              <Text style={styles.title} numberOfLines={2}>
-                {tile.title}
-              </Text>
-            </View>
+                {/* Inset Artwork or Liked Songs Gradient */}
+                {tile.isLikedSongs ? (
+                  <LinearGradient
+                    colors={['#4F46E5', '#6366F1']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.likedGradientCover}
+                  >
+                    <Ionicons name="heart" size={20} color="#FFFFFF" />
+                  </LinearGradient>
+                ) : tile.coverUri ? (
+                  <Image
+                    source={{ uri: tile.coverUri }}
+                    style={styles.image}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={[styles.image, styles.fallbackImage]}>
+                    <Ionicons name="musical-notes" size={18} color="rgba(255,255,255,0.4)" />
+                  </View>
+                )}
 
-            {/* Subtle Now Playing Equalizer Indicator */}
-            {isCurrent && (
-              <View style={styles.playingIndicator}>
-                <Ionicons name="stats-chart" size={15} color={accent.hex} />
-              </View>
-            )}
-          </TouchableOpacity>
-        );
-      })}
+                {/* Title & Metadata */}
+                <View style={styles.titleContainer}>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {tile.title}
+                  </Text>
+                  <Text style={styles.subtitle} numberOfLines={1}>
+                    {tile.subtitle || (tile.playlist ? 'Playlist' : 'Music')}
+                  </Text>
+                </View>
+
+                {/* Now Playing Indicator or Subtle Chevron */}
+                {isCurrent ? (
+                  <View style={styles.playingIndicator}>
+                    <Ionicons name="stats-chart" size={14} color={accent.hex} />
+                  </View>
+                ) : (
+                  <View style={styles.chevronWrapper}>
+                    <Ionicons name="chevron-forward" size={13} color="rgba(255, 255, 255, 0.35)" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
 
       {/* Sub-modals for deep screen access */}
       <LikedSongsModal
@@ -319,36 +344,42 @@ export const QuickAccessGrid: React.FC<QuickAccessGridProps> = React.memo(({ son
 
 const styles = StyleSheet.create({
   gridContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    rowGap: 8,
-    columnGap: 8,
     marginTop: 6,
-    marginBottom: 16,
+    marginBottom: 20,
+    gap: 10,
+  },
+  gridRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
   },
   card: {
-    width: '48.7%',
-    height: 58,
-    backgroundColor: '#242424',
-    borderRadius: 6,
+    flex: 1,
+    height: 62,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderRadius: GLASS_THEME.radii.card,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: GLASS_THEME.colors.borderDefault,
+    position: 'relative',
   },
   likedGradientCover: {
-    width: 58,
-    height: 58,
+    width: 46,
+    height: 46,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
   },
   image: {
-    width: 58,
-    height: 58,
-    backgroundColor: '#2b2b2b',
+    width: 46,
+    height: 46,
+    borderRadius: 9,
+    marginLeft: 8,
+    backgroundColor: '#1E293B',
   },
   fallbackImage: {
     alignItems: 'center',
@@ -356,17 +387,31 @@ const styles = StyleSheet.create({
   },
   titleContainer: {
     flex: 1,
-    paddingHorizontal: 10,
+    paddingLeft: 8,
+    paddingRight: 4,
     justifyContent: 'center',
   },
   title: {
-    color: '#ffffff',
-    fontSize: 13,
+    color: GLASS_THEME.colors.textPrimary,
+    fontSize: 12.5,
     fontWeight: '700',
-    lineHeight: 17,
+    letterSpacing: -0.2,
+    lineHeight: 16,
+    marginBottom: 1,
+  },
+  subtitle: {
+    color: GLASS_THEME.colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: -0.1,
   },
   playingIndicator: {
     marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chevronWrapper: {
+    marginRight: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

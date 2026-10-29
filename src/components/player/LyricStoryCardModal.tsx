@@ -75,7 +75,7 @@ export const LyricStoryCardModal: React.FC<LyricStoryCardModalProps> = ({
         >
           {/* THE LYRIC CARD */}
           <LinearGradient
-            colors={['#1E1B4B', '#0F172A', '#020617']}
+            colors={['rgba(24, 28, 40, 0.95)', 'rgba(12, 14, 20, 0.98)', '#050508']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={[styles.storyCard, { width: CARD_WIDTH }]}
@@ -96,7 +96,7 @@ export const LyricStoryCardModal: React.FC<LyricStoryCardModalProps> = ({
                 </Text>
               </View>
               <View style={styles.quoteMarkBadge}>
-                <Ionicons name="chatbox-ellipses" size={16} color="#A855F7" />
+                <Ionicons name="chatbox-ellipses" size={16} color="#ffffff" />
               </View>
             </View>
 
@@ -109,7 +109,7 @@ export const LyricStoryCardModal: React.FC<LyricStoryCardModalProps> = ({
             {/* Brand Footer */}
             <View style={styles.cardFooter}>
               <View style={styles.brandBadge}>
-                <Ionicons name="flash" size={12} color="#1DB954" />
+                <Ionicons name="flash" size={12} color="#ffffff" />
                 <Text style={styles.brandText}>SHORTY AUDIO</Text>
               </View>
               <Text style={styles.sourceMeta}>Deluxe Synced Lyrics</Text>
@@ -119,7 +119,7 @@ export const LyricStoryCardModal: React.FC<LyricStoryCardModalProps> = ({
           {/* Action Buttons */}
           <View style={[styles.actionRow, { width: CARD_WIDTH }]}>
             <TouchableOpacity
-              style={[styles.shareBtn, { backgroundColor: accent.hex }]}
+              style={styles.shareBtn}
               onPress={handleShareStory}
               activeOpacity={0.8}
             >
@@ -154,10 +154,12 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   closeBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -175,13 +177,13 @@ const styles = StyleSheet.create({
   storyCard: {
     borderRadius: 24,
     padding: 22,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    shadowColor: '#8B5CF6',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.6,
+    shadowRadius: 24,
+    elevation: 14,
     minHeight: 320,
     justifyContent: 'space-between',
   },
@@ -215,7 +217,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(168, 85, 247, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -223,7 +227,7 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   openQuote: {
-    color: '#A855F7',
+    color: 'rgba(255, 255, 255, 0.45)',
     fontSize: 38,
     fontWeight: '900',
     lineHeight: 38,
@@ -274,6 +278,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 28,
     gap: 8,
+    backgroundColor: '#ffffff',
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
   },
   shareBtnText: {
     color: '#000000',
@@ -282,7 +292,11 @@ const styles = StyleSheet.create({
   },
   cancelBtn: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   cancelBtnText: {
     color: 'rgba(255, 255, 255, 0.6)',

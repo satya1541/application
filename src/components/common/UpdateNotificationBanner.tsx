@@ -93,7 +93,7 @@ export const UpdateNotificationBanner: React.FC = () => {
       >
         <View style={styles.pill}>
           <View style={styles.iconCircle}>
-            <Ionicons name="sparkles" size={16} color="#38bdf8" />
+            <Ionicons name="sparkles" size={16} color="#ffffff" />
           </View>
 
           <View style={styles.textCol}>
@@ -135,29 +135,29 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(18, 24, 38, 0.95)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(18, 22, 30, 0.92)',
+    borderRadius: 24,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.45)',
-    shadowColor: '#38bdf8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 10,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    elevation: 12,
     width: '100%',
     maxWidth: 420,
   },
   successPill: {
-    borderColor: 'rgba(34, 197, 94, 0.45)',
-    shadowColor: '#22c55e',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
+    shadowColor: '#000000',
   },
   iconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
@@ -187,11 +187,16 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   restartBtn: {
-    backgroundColor: '#38bdf8',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 18,
     marginRight: 8,
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   restartBtnText: {
     color: '#000000',

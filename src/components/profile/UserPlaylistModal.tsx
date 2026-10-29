@@ -23,6 +23,7 @@ import {
   renamePlaylist,
 } from '@/services/userPlaylistService';
 import { SongItemRow } from '../common/SongItemRow';
+import { GLASS_THEME } from '@/constants/glassTheme';
 import { getSafeCoverArt } from '@/services/imageUtils';
 import { autoFixImportedPlaylistCovers } from '@/services/playlistImportService';
 import { sharePlaylist } from '@/services/playlistShareService';
@@ -319,7 +320,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -340,7 +343,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1E1E1E',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -365,8 +370,9 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
     marginBottom: 20,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   coverWrapper: {
     width: 140,

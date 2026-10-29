@@ -17,6 +17,7 @@ import { SongItemRow } from '../common/SongItemRow';
 import { getSafeCoverArt } from '@/services/imageUtils';
 import { Song } from '@/types/music';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface QueueModalProps {
   visible?: boolean;
@@ -406,11 +407,11 @@ const styles = StyleSheet.create({
   nowPlayingCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1C1C1C',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceActive,
     padding: 10,
-    borderRadius: 12,
+    borderRadius: GLASS_THEME.radii.card,
     borderWidth: 1,
-    borderColor: '#2C2C2C',
+    borderColor: GLASS_THEME.colors.borderSpecular,
   },
   nowPlayingCover: {
     width: 50,
@@ -436,13 +437,13 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   emptyQueueBox: {
-    backgroundColor: '#181818',
-    borderRadius: 12,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceSubtle,
+    borderRadius: GLASS_THEME.radii.card,
     padding: 16,
     alignItems: 'center',
     gap: 6,
     borderWidth: 1,
-    borderColor: '#242424',
+    borderColor: GLASS_THEME.colors.borderSubtle,
   },
   emptyQueueText: {
     color: '#888888',
@@ -453,12 +454,12 @@ const styles = StyleSheet.create({
   userQueueItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#181818',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
     padding: 8,
-    borderRadius: 10,
+    borderRadius: GLASS_THEME.radii.card,
     marginBottom: 6,
     borderWidth: 1,
-    borderColor: '#242424',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   userQueueSongPress: {
     flex: 1,

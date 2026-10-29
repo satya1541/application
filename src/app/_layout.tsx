@@ -13,7 +13,7 @@ import { MonthlyReplayController } from '@/components/profile/MonthlyReplayContr
 import { UpdateNotificationBanner } from '@/components/common/UpdateNotificationBanner';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { initCacheLifecycle } from '@/services/cacheManager';
-import { lockPortraitAsync } from '@/services/orientationManager';
+import { initOrientationAsync } from '@/services/orientationManager';
 import { initUpdateManager } from '@/services/updateService';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { VideoPlayerProvider } from '@/contexts/VideoPlayerContext';
@@ -28,7 +28,7 @@ export default function RootLayout() {
       document.title = 'Shorty';
     }
     SplashScreen.hideAsync().catch(() => {});
-    lockPortraitAsync();
+    initOrientationAsync();
     initUpdateManager();
     const cleanupCache = initCacheLifecycle();
     return () => {

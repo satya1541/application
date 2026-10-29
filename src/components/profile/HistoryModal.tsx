@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#222222',
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     backgroundColor: '#0D0D0D',
   },
   backBtn: {
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionHeader: {
-    color: '#1DB954',
+    color: 'rgba(255, 255, 255, 0.65)',
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -324,22 +324,22 @@ const styles = StyleSheet.create({
   historyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: '#161616',
-    marginBottom: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#222222',
+    borderColor: 'rgba(255, 255, 255, 0.10)',
   },
   activeHistoryRow: {
-    backgroundColor: 'rgba(29, 185, 84, 0.08)',
-    borderColor: 'rgba(29, 185, 84, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   artwork: {
     width: 44,
     height: 44,
-    borderRadius: 6,
+    borderRadius: 10,
     backgroundColor: '#262626',
     marginRight: 12,
   },
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   activeTitle: {
-    color: '#1DB954',
+    color: '#ffffff',
   },
   artist: {
     color: '#888888',

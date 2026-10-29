@@ -266,11 +266,13 @@ const StorageRow: React.FC<{ color: string; label: string; value: string }> = ({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#101010',
+    backgroundColor: '#050508',
   },
   header: {
     height: 72,
-    backgroundColor: '#181818',
+    backgroundColor: '#050508',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

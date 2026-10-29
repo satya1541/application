@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { GLASS_THEME } from '@/constants/glassTheme';
 import { useAudio } from '@/contexts/AudioContext';
 import { Song } from '@/types/music';
 import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
@@ -552,6 +553,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: CARD_HORIZONTAL_PADDING,
     paddingTop: 8,
+    paddingBottom: 140,
   },
   topHeader: {
     marginBottom: 16,
@@ -629,11 +631,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   cardContainer: {
-    borderRadius: 14,
+    borderRadius: GLASS_THEME.radii.card,
     marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: GLASS_THEME.colors.borderDefault,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
   },
   cardHeader: {
     flexDirection: 'row',

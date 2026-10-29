@@ -8,6 +8,7 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { SourceBadge } from './SourceBadge';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { SongActionController } from '@/services/songActionController';
+import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface SongItemRowProps {
   song: Song;
@@ -17,7 +18,7 @@ interface SongItemRowProps {
   priority?: 'low' | 'normal' | 'high';
 }
 
-const MiniAnimatedEqualizer: React.FC<{ color?: string }> = ({ color = '#1DB954' }) => {
+const MiniAnimatedEqualizer: React.FC<{ color?: string }> = ({ color = '#22C55E' }) => {
   const bar1 = useRef(new Animated.Value(4)).current;
   const bar2 = useRef(new Animated.Value(12)).current;
   const bar3 = useRef(new Animated.Value(8)).current;
@@ -85,11 +86,24 @@ export const SongItemRow: React.FC<SongItemRowProps> = memo(({
     }
   };
 
-  const formatDuration = (secs: number) => {
-    const m = Math.floor(secs / 60);
-    const s = Math.floor(secs % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  const formatDuration = (secs?: number | string): string => {
+    if (!secs) return '';
+    if (typeof secs === 'string') {
+      if (secs.includes(':')) return secs.trim();
+      const parsed = parseInt(secs, 10);
+      if (isNaN(parsed) || parsed <= 0) return '';
+      secs = parsed;
+    }
+    if (typeof secs === 'number') {
+      if (isNaN(secs) || secs <= 0) return '';
+      const m = Math.floor(secs / 60);
+      const s = Math.floor(secs % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+    return '';
   };
+
+  const formattedDuration = formatDuration(song.duration);
 
   const coverUri = imgError
     ? 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80'
@@ -164,15 +178,18 @@ export const SongItemRow: React.FC<SongItemRowProps> = memo(({
           e.stopPropagation?.();
           toggleLike(song.id, song);
         }}
+        accessibilityLabel={liked ? 'Unlike song' : 'Like song'}
       >
         <Ionicons
           name={liked ? 'heart' : 'heart-outline'}
-          size={20}
-          color={liked ? accent.hex : '#b3b3b3'}
+          size={19}
+          color={liked ? '#EF4444' : '#94A3B8'}
         />
       </TouchableOpacity>
 
-      <Text style={styles.duration}>{formatDuration(song.duration)}</Text>
+      {Boolean(formattedDuration) && (
+        <Text style={styles.duration}>{formattedDuration}</Text>
+      )}
 
       <TouchableOpacity
         style={styles.moreButton}
@@ -182,8 +199,9 @@ export const SongItemRow: React.FC<SongItemRowProps> = memo(({
           SongActionController.open(song);
         }}
         activeOpacity={0.7}
+        accessibilityLabel="More options"
       >
-        <Ionicons name="ellipsis-vertical" size={17} color="#9CA3AF" />
+        <Ionicons name="ellipsis-vertical" size={16} color="#94A3B8" />
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -195,11 +213,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
     paddingHorizontal: 12,
-    borderRadius: 8,
-    marginVertical: 2,
+    borderRadius: GLASS_THEME.radii.card,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceSubtle,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderSubtle,
+    marginVertical: 3,
   },
   activeContainer: {
-    backgroundColor: 'rgba(29, 185, 84, 0.08)',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceActive,
+    borderColor: GLASS_THEME.colors.borderSpecular,
   },
   trackNumberCol: {
     width: 24,
@@ -208,9 +230,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   trackNumber: {
-    color: '#b3b3b3',
-    fontSize: 14,
-    fontWeight: '500',
+    color: '#94A3B8',
+    fontSize: 13,
+    fontWeight: '600',
     textAlign: 'center',
   },
   eqContainer: {
@@ -223,15 +245,15 @@ const styles = StyleSheet.create({
   },
   eqBar: {
     width: 3,
-    backgroundColor: '#1DB954',
+    backgroundColor: GLASS_THEME.colors.accentGreen,
     borderRadius: 1,
   },
   coverWrapper: {
     width: 48,
     height: 48,
-    borderRadius: 6,
+    borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#282828',
+    backgroundColor: '#1E293B',
   },
   cover: {
     width: '100%',
@@ -246,10 +268,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 4,
+    color: GLASS_THEME.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginBottom: 3,
   },
   subMeta: {
     flexDirection: 'row',
@@ -257,30 +280,28 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   artist: {
-    color: '#b3b3b3',
-    fontSize: 13,
+    color: GLASS_THEME.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
     marginRight: 8,
   },
   badgeWrapper: {
     marginTop: 1,
   },
-  activeText: {
-    color: '#1DB954',
-    fontWeight: '700',
-  },
   heartButton: {
-    padding: 8,
+    padding: 6,
     marginLeft: 4,
   },
   duration: {
-    color: '#b3b3b3',
-    fontSize: 12,
+    color: GLASS_THEME.colors.textMuted,
+    fontSize: 11.5,
+    fontWeight: '500',
     width: 38,
     textAlign: 'right',
     marginLeft: 4,
   },
   moreButton: {
     padding: 6,
-    marginLeft: 6,
+    marginLeft: 4,
   },
 });

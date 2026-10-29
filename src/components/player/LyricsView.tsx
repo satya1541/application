@@ -126,7 +126,7 @@ export const LyricsView: React.FC = () => {
   if (isLoading) {
     return (
       <View style={styles.floatingLoadingContainer}>
-        <ActivityIndicator size="small" color="#1DB954" />
+        <ActivityIndicator size="small" color="#ffffff" />
         <Text style={styles.floatingLoadingText}>Fetching synced lyrics...</Text>
       </View>
     );
@@ -290,9 +290,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 38,
     letterSpacing: -0.4,
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
+    textShadowColor: 'rgba(255, 255, 255, 0.45)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 16,
   },
   pastFloatingLyricText: {
     color: 'rgba(255, 255, 255, 0.65)',
@@ -338,10 +338,12 @@ const styles = StyleSheet.create({
   quoteToggleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
     gap: 6,
   },
   quoteToggleText: {
@@ -350,11 +352,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   selectedLineWrapper: {
-    borderWidth: 1.5,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,

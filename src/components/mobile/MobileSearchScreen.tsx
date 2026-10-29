@@ -30,6 +30,8 @@ import { useNetwork } from '@/contexts/NetworkContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { fetchTopChartArtists, ChartArtist } from '@/services/youtubeExploreService';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface BrowseCategory {
   id: string;
@@ -148,6 +150,7 @@ interface MobileSearchScreenProps {
 }
 
 export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNavigateHome, onOpenYSearch }) => {
+  const { isTablet, contentMaxWidth } = useResponsive();
   const { bgHex, surfaceHex, accent, themeMode } = useAppTheme();
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -545,7 +548,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: bgHex }]} edges={['top']} {...panResponder.panHandlers}>
-      <View style={styles.content}>
+      <View style={[styles.content, isTablet && { maxWidth: contentMaxWidth || 960, alignSelf: 'center', width: '100%' }]}>
         {/* Top Header Row */}
         <View style={styles.headerRow}>
           <Text style={styles.header}>Search</Text>
@@ -859,6 +862,13 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
                           });
                         }}
                       >
+                        <LinearGradient
+                          colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.01)', 'transparent']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 0, y: 0.9 }}
+                          style={StyleSheet.absoluteFill}
+                          pointerEvents="none"
+                        />
                         {/* Rank & Trend Column */}
                         <View style={styles.artistRankCol}>
                           <Text
@@ -996,10 +1006,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   header: {
-    color: '#ffffff',
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    color: '#FFFFFF',
+    letterSpacing: -0.6,
+  },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   ySearchHeaderBtn: {
     flexDirection: 'row',
@@ -1030,21 +1050,23 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#242424',
-    borderRadius: 24, // Clean capsule shape matching Spotify
-    paddingHorizontal: 16,
     height: 48,
-    marginBottom: 20,
+    borderRadius: GLASS_THEME.radii.pill,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   searchIcon: {
     marginRight: 10,
   },
   input: {
     flex: 1,
-    color: '#ffffff',
-    fontSize: 15,
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '500',
-    height: '100%',
+    paddingVertical: 0,
   },
   // Top Artists from YouTube Music Charts Styles
   chartSection: {
@@ -1071,15 +1093,15 @@ const styles = StyleSheet.create({
   chartOfficialBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   chartOfficialBadgeText: {
-    color: '#38bdf8',
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1100,11 +1122,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderRadius: GLASS_THEME.radii.card,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: GLASS_THEME.colors.borderDefault,
+    overflow: 'hidden',
+    position: 'relative',
+    marginVertical: 2,
   },
   artistRankCol: {
     width: 32,
@@ -1125,11 +1150,12 @@ const styles = StyleSheet.create({
     marginRight: 14,
   },
   artistAvatarImg: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderSpecular,
+    backgroundColor: '#1E293B',
   },
   topArtistTrophy: {
     position: 'absolute',
@@ -1148,20 +1174,26 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   artistMetaName: {
-    color: '#ffffff',
-    fontSize: 16,
+    color: GLASS_THEME.colors.textPrimary,
+    fontSize: 14.5,
     fontWeight: '700',
-    marginBottom: 3,
+    letterSpacing: -0.2,
+    marginBottom: 2,
   },
   artistMetaSubs: {
-    color: '#8e8e93',
-    fontSize: 13,
-    fontWeight: '400',
+    color: GLASS_THEME.colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
   },
   artistSearchQuickBtn: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceSubtle,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Suggestions Flyout
   suggestionsContainer: {

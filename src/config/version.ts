@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.3',
-  releaseTag: 'v5.2.3',
-  releaseName: 'Shorty v5.2.3: Fixed YouTube Subscriptions Feed, Liked Videos sync & 1-tap Google login',
-  releaseDate: '2026-10-28',
+  otaVersion: '5.2.6',
+  releaseTag: 'v5.2.6',
+  releaseName: 'Shorty v5.2.6: Fix MiniPlayer display, tablet playlist grid alignment, artist banner width & YSearch video canvas',
+  releaseDate: '2026-10-29',
   channel: 'preview',
 };

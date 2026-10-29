@@ -26,6 +26,7 @@ import { GreetingHeader } from '../feed/GreetingHeader';
 import { QuickAccessGrid } from '../feed/QuickAccessGrid';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface MobileHomeScreenProps {
   onOpenSettings?: () => void;
@@ -143,6 +144,7 @@ const HomeHeader = React.memo<HomeHeaderProps>(
 );
 
 export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ onOpenSettings, onOpenYSearch }) => {
+  const { isTablet, contentMaxWidth } = useResponsive();
   const { bgHex, accent } = useAppTheme();
   const { playSong, currentSong, isPlaying } = useAudio();
   const { profile } = useAuth();
@@ -354,7 +356,7 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ o
           windowSize={4}
           removeClippedSubviews={Platform.OS === 'android'}
           updateCellsBatchingPeriod={50}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, isTablet && { maxWidth: contentMaxWidth, alignSelf: 'center', width: '100%' }]}
           style={styles.container}
           refreshControl={
             <RefreshControl
@@ -373,7 +375,7 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ o
 const styles = StyleSheet.create({
   screenWrapper: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
   },
   container: {
     flex: 1,

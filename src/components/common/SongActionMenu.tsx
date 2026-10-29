@@ -16,6 +16,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Song } from '@/types/music';
+import { GLASS_THEME } from '@/constants/glassTheme';
 import { useAudio } from '@/contexts/AudioContext';
 import { SongActionController } from '@/services/songActionController';
 import { getSafeCoverArt } from '@/services/imageUtils';
@@ -366,11 +367,13 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#181818',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: GLASS_THEME.colors.glassNavBg,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 20,
     maxHeight: '85%',
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   handleContainer: {
     alignItems: 'center',
@@ -409,7 +412,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: '#2A2A2A',
+    backgroundColor: GLASS_THEME.colors.borderDefault,
     marginVertical: 12,
   },
   menuContainer: {
@@ -424,7 +427,9 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#242424',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -571,9 +576,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   closeBtn: {
-    backgroundColor: '#242424',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
     paddingVertical: 13,
-    borderRadius: 14,
+    borderRadius: GLASS_THEME.radii.pill,
     alignItems: 'center',
     marginTop: 10,
   },

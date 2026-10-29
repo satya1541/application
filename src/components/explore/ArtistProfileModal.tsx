@@ -8,11 +8,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Dimensions,
   Platform,
   BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio } from '@/contexts/AudioContext';
@@ -36,8 +36,9 @@ import {
 import { YOUTUBE_OPUS_BADGE } from '@/services/youtubeMusicApi';
 import { Song } from '@/types/music';
 import { SafeStorage } from '@/services/storage';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
-const { width } = Dimensions.get('window');
 
 interface ArtistProfileModalProps {
   visible: boolean;
@@ -56,6 +57,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
   onClose,
   onOpenAlbum,
 }) => {
+  const { isTablet } = useResponsive();
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
 
@@ -298,7 +300,10 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
 
   if (!visible) return null;
 
-  const topSongs: Song[] = details?.topSongs ? (details.topSongs as unknown as Song[]) : [];
+  const topSongs: Song[] = (details?.topSongs || []).map((s: any) => ({
+    ...s,
+    duration: typeof s.duration === 'string' ? parseDurationToSeconds(s.duration) : (s.duration || 0),
+  })) as Song[];
   const displayedTopSongs = showAllPopular ? topSongs : topSongs.slice(0, 5);
 
   const displayedReleases =
@@ -319,10 +324,12 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle={isTablet ? 'overFullScreen' : 'fullScreen'}
+      transparent={isTablet}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <View style={[styles.modalBackdrop, isTablet && styles.tabletBackdrop]}>
+        <View style={[styles.container, isTablet && styles.tabletContainer]}>
         {/* Floating Top Back / Return Button */}
         <SafeAreaView style={styles.floatingHeader}>
           <TouchableOpacity
@@ -351,7 +358,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
             contentContainerStyle={styles.scrollContent}
           >
             <LinearGradient
-              colors={['#193725', '#121212']}
+              colors={['rgba(28, 34, 48, 0.90)', 'rgba(12, 14, 20, 0.95)', '#050508']}
               style={styles.releaseHeaderGradient}
             >
               <Image
@@ -387,7 +394,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                     }
                   }}
                 >
-                  <Ionicons name="shuffle" size={24} color="#1DB954" />
+                  <Ionicons name="shuffle" size={20} color="#ffffff" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -400,7 +407,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                     }
                   }}
                 >
-                  <Ionicons name="play" size={28} color="#000000" />
+                  <Ionicons name="play" size={28} color="#000000" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
               </View>
             </LinearGradient>
@@ -440,10 +447,25 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
             contentContainerStyle={styles.scrollContent}
           >
             {/* Hero Artist Banner */}
-            <View style={styles.heroContainer}>
-              <Image source={{ uri: heroImage }} style={styles.heroImage} />
+            <View style={[styles.heroContainer, isTablet && styles.heroContainerTablet]}>
+              {/* Atmospheric blurred ambient backdrop */}
+              <ExpoImage
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                blurRadius={30}
+                cachePolicy="memory-disk"
+              />
+              {/* Crisp main cover spanning 100% of banner width */}
+              <ExpoImage
+                source={{ uri: heroImage }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={200}
+                cachePolicy="memory-disk"
+              />
               <LinearGradient
-                colors={['transparent', 'rgba(18, 18, 18, 0.7)', '#121212']}
+                colors={['transparent', 'rgba(8, 10, 16, 0.7)', '#050508']}
                 locations={[0.2, 0.75, 1]}
                 style={styles.heroGradient}
               >
@@ -485,7 +507,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                     }
                   }}
                 >
-                  <Ionicons name="shuffle" size={24} color="#1DB954" />
+                  <Ionicons name="shuffle" size={20} color="#ffffff" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -497,7 +519,7 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                     }
                   }}
                 >
-                  <Ionicons name="play" size={26} color="#000000" />
+                  <Ionicons name="play" size={26} color="#000000" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -739,14 +761,33 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
         {/* Persistent Offline Banner */}
         <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 24 : 0} />
       </View>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  modalBackdrop: {
+    flex: 1,
+  },
+  tabletBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  tabletContainer: {
+    maxWidth: 880,
+    maxHeight: '92%',
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderSpecular,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#050508',
   },
   floatingHeader: {
     position: 'absolute',
@@ -763,12 +804,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   scrollContent: {
+    width: '100%',
     paddingBottom: 120,
   },
   heroContainer: {
-    width: width,
+    width: '100%',
     height: 320,
     position: 'relative',
+    overflow: 'hidden',
+  },
+  heroContainerTablet: {
+    height: 360,
   },
   heroImage: {
     width: '100%',
@@ -827,8 +873,8 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
   },
   followingBtn: {
-    borderColor: '#1DB954',
-    backgroundColor: 'rgba(29, 185, 84, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
   },
   followBtnText: {
     color: '#ffffff',
@@ -836,7 +882,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   followingBtnText: {
-    color: '#1DB954',
+    color: '#ffffff',
   },
   rightActions: {
     flexDirection: 'row',
@@ -844,20 +890,29 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   shuffleBtn: {
-    padding: 6,
-  },
-  playFab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#1DB954',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1DB954',
+  },
+  playFab: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.85)',
   },
   bodyContent: {
     paddingHorizontal: 20,
@@ -875,9 +930,11 @@ const styles = StyleSheet.create({
   },
   spotlightCard: {
     flexDirection: 'row',
-    backgroundColor: '#1e1e1e',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    padding: 14,
     alignItems: 'center',
     gap: 14,
   },
@@ -890,7 +947,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   spotlightTag: {
-    color: '#1DB954',
+    color: 'rgba(255, 255, 255, 0.75)',
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -948,7 +1005,9 @@ const styles = StyleSheet.create({
   albumCover: {
     width: 130,
     height: 130,
-    borderRadius: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     marginBottom: 8,
     backgroundColor: '#242424',
   },
@@ -973,7 +1032,9 @@ const styles = StyleSheet.create({
   videoThumbWrapper: {
     width: 200,
     height: 112,
-    borderRadius: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
     backgroundColor: '#242424',
     position: 'relative',
@@ -1020,6 +1081,8 @@ const styles = StyleSheet.create({
     height: 90,
     borderRadius: 45,
     backgroundColor: '#242424',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     marginBottom: 8,
   },
   relatedArtistName: {
@@ -1038,11 +1101,11 @@ const styles = StyleSheet.create({
   },
   /* Bio Card */
   bioCard: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 10,
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#282828',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
   },
   bioText: {
     color: '#cccccc',
@@ -1050,7 +1113,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   bioToggleText: {
-    color: '#1DB954',
+    color: '#ffffff',
     fontSize: 12,
     fontWeight: '700',
     marginTop: 8,
@@ -1063,9 +1126,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   releaseCoverArt: {
-    width: 180,
-    height: 180,
-    borderRadius: 8,
+    width: 190,
+    height: 190,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     marginBottom: 16,
     backgroundColor: '#242424',
     shadowColor: '#000000',
@@ -1090,14 +1155,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   releaseBadgeWrapper: {
-    backgroundColor: 'rgba(29, 185, 84, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
     marginBottom: 16,
   },
   releaseTypeBadge: {
-    color: '#1DB954',
+    color: '#ffffff',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,

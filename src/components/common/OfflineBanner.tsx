@@ -85,9 +85,9 @@ const styles = StyleSheet.create({
   banner: {
     width: '100%',
     height: 40,
-    backgroundColor: '#121212',
+    backgroundColor: 'rgba(18, 22, 30, 0.92)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 90,

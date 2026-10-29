@@ -10,11 +10,15 @@ import {
   Dimensions,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudio, useAudioProgress } from '@/contexts/AudioContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { getSafeCoverArt, isYouTubeCover } from '@/services/imageUtils';
 import { triggerOpenFullPlayer } from '@/services/playerSheetController';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const { width } = Dimensions.get('window');
 
@@ -43,7 +47,7 @@ const progressStyles = StyleSheet.create({
   progressBarBackground: {
     width: '100%',
     height: 2,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   progressBarFill: {
     height: '100%',
@@ -56,7 +60,8 @@ interface MiniPlayerProps {
 }
 
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
-  const { surfaceHex, accent, themeMode } = useAppTheme();
+  const { isTablet } = useResponsive();
+  const { accent } = useAppTheme();
   const {
     currentSong,
     isPlaying,
@@ -92,84 +97,64 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Activate horizontal swipe only if horizontal movement dominates and exceeds threshold
-        const isHorizontal =
-          Math.abs(gestureState.dx) > 14 &&
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.5;
-        return isHorizontal && !isDismissing.current;
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
       },
       onPanResponderGrant: () => {
         isDragging.current = true;
       },
       onPanResponderMove: (_, gestureState) => {
-        if (!isDismissing.current) {
-          translateX.setValue(gestureState.dx);
-        }
+        translateX.setValue(gestureState.dx);
       },
       onPanResponderRelease: (_, gestureState) => {
-        setTimeout(() => {
-          isDragging.current = false;
-        }, 50);
+        isDragging.current = false;
+        const swipeThreshold = width * 0.3;
 
-        if (isDismissing.current) return;
-
-        // Slide Right Dismiss Threshold
-        if (gestureState.dx > 80 || gestureState.vx > 0.4) {
-          isDismissing.current = true;
-          Animated.parallel([
+        if (gestureState.dx < -swipeThreshold) {
+          Animated.timing(translateX, {
+            toValue: -width,
+            duration: 180,
+            useNativeDriver: true,
+          }).start(() => {
+            translateX.setValue(width);
+            nextSong();
             Animated.timing(translateX, {
-              toValue: width,
-              duration: 160,
-              useNativeDriver: true,
-            }),
-            Animated.timing(fadeAnim, {
               toValue: 0,
-              duration: 160,
+              duration: 200,
               useNativeDriver: true,
-            }),
-          ]).start(() => {
-            dismissPlayer();
+            }).start();
           });
-        }
-        // Slide Left Dismiss Threshold
-        else if (gestureState.dx < -80 || gestureState.vx < -0.4) {
-          isDismissing.current = true;
-          Animated.parallel([
+        } else if (gestureState.dx > swipeThreshold) {
+          Animated.timing(translateX, {
+            toValue: width,
+            duration: 180,
+            useNativeDriver: true,
+          }).start(() => {
+            translateX.setValue(-width);
+            prevSong();
             Animated.timing(translateX, {
-              toValue: -width,
-              duration: 160,
-              useNativeDriver: true,
-            }),
-            Animated.timing(fadeAnim, {
               toValue: 0,
-              duration: 160,
+              duration: 200,
               useNativeDriver: true,
-            }),
-          ]).start(() => {
-            dismissPlayer();
+            }).start();
           });
-        }
-        // Snap back to center
-        else {
+        } else {
           Animated.spring(translateX, {
             toValue: 0,
-            friction: 7,
-            tension: 40,
             useNativeDriver: true,
+            friction: 7,
           }).start();
         }
       },
     })
   ).current;
 
-  if (!currentSong) return null;
+  if (!currentSong) {
+    return null;
+  }
 
-  const handleDismiss = (e?: any) => {
-    e?.stopPropagation?.();
-    if (isDismissing.current) return;
+  const handleDismiss = (e: any) => {
+    e.stopPropagation?.();
     isDismissing.current = true;
-
-    // Single-pass, smooth dismiss animation without snapping back
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -186,11 +171,9 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
     });
   };
 
-  // Directly flush with the bottom navigation bar (iOS: 84, Android: 64) with ZERO gap
   const computedBottom =
-    bottomOffset !== undefined ? bottomOffset : Platform.OS === 'ios' ? 84 : 64;
+    bottomOffset !== undefined ? bottomOffset : Platform.OS === 'ios' ? 88 : 74;
 
-  // Fade out slightly as user drags left or right, multiplied by fadeAnim
   const swipeOpacity = translateX.interpolate({
     inputRange: [-width * 0.7, 0, width * 0.7],
     outputRange: [0.15, 1, 0.15],
@@ -210,20 +193,25 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
       ]}
       {...panResponder.panHandlers}
     >
-      <View
-        style={[
-          styles.container,
-          {
-            backgroundColor: themeMode === 'oled' ? '#080808' : surfaceHex,
-            borderTopColor: themeMode === 'oled' ? '#181818' : 'rgba(255, 255, 255, 0.12)',
-          },
-        ]}
-      >
-        {/* Top 2px Progress bar - isolated to prevent 500ms re-renders */}
+      <View style={styles.container}>
+        <BlurView
+          intensity={GLASS_THEME.blur.navIntensity}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.14)', 'rgba(255, 255, 255, 0.02)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 0.8 }}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+
+        {/* Top 2px Progress bar */}
         <MiniPlayerProgressBar />
 
         <View style={styles.contentRow}>
-          {/* Main Tappable Area: Left Thumbnail + Center Info */}
+          {/* Main Tappable Area */}
           <TouchableOpacity
             style={styles.mainTouchArea}
             activeOpacity={0.88}
@@ -255,9 +243,8 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
             </View>
           </TouchableOpacity>
 
-          {/* Right Action Buttons (Previous, Play/Pause, Next, Like) */}
+          {/* Right Action Buttons */}
           <View style={styles.actions}>
-            {/* Previous Track */}
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={(e) => {
@@ -265,11 +252,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
                 prevSong();
               }}
               activeOpacity={0.7}
+              accessibilityLabel="Previous track"
             >
-              <Ionicons name="play-skip-back" size={20} color="#ffffff" />
+              <Ionicons name="play-skip-back" size={19} color="#E2E8F0" />
             </TouchableOpacity>
 
-            {/* Play / Pause Toggle */}
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={(e) => {
@@ -277,19 +264,19 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
                 togglePlay();
               }}
               activeOpacity={0.7}
+              accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
             >
               {isLoading ? (
-                <Ionicons name="sync" size={24} color="#ffffff" />
+                <Ionicons name="sync" size={22} color="#FFFFFF" />
               ) : (
                 <Ionicons
                   name={isPlaying ? 'pause' : 'play'}
-                  size={26}
-                  color="#ffffff"
+                  size={24}
+                  color="#FFFFFF"
                 />
               )}
             </TouchableOpacity>
 
-            {/* Next Track */}
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={(e) => {
@@ -297,11 +284,11 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
                 nextSong();
               }}
               activeOpacity={0.7}
+              accessibilityLabel="Next track"
             >
-              <Ionicons name="play-skip-forward" size={20} color="#ffffff" />
+              <Ionicons name="play-skip-forward" size={19} color="#E2E8F0" />
             </TouchableOpacity>
 
-            {/* Queue Button */}
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={(e) => {
@@ -310,22 +297,19 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({ bottomOffset }) => {
               }}
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+              accessibilityLabel="View queue"
             >
-              <Ionicons name="list" size={20} color={accent.hex} />
+              <Ionicons name="list" size={19} color={accent.hex} />
             </TouchableOpacity>
 
-            {/* Close / Dismiss Cross Button */}
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={handleDismiss}
               activeOpacity={0.6}
               hitSlop={{ top: 12, bottom: 12, left: 10, right: 12 }}
+              accessibilityLabel="Dismiss player"
             >
-              <Ionicons
-                name="close"
-                size={22}
-                color="#b3b3b3"
-              />
+              <Ionicons name="close" size={20} color="#94A3B8" />
             </TouchableOpacity>
           </View>
         </View>
@@ -340,48 +324,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  tabletOuterWrapper: {
+    maxWidth: 760,
+    alignSelf: 'center',
+    width: '100%',
+    left: undefined,
+    right: undefined,
+  },
   outerWrapper: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 1000,
+    left: 12,
+    right: 12,
+    zIndex: 9999,
+    elevation: 25,
   },
   container: {
-    backgroundColor: '#202020',
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    backgroundColor: GLASS_THEME.colors.glassMiniPlayerBg,
+    borderRadius: GLASS_THEME.radii.card,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderDefault,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
     elevation: 10,
-    borderTopWidth: 0.6,
-    borderTopColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  progressBarBackground: {
-    height: 2.5,
-    width: '100%',
-    backgroundColor: '#333333',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: '#ffffff',
   },
   contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 7,
   },
   coverWrapper: {
     width: 42,
     height: 42,
-    borderRadius: 6,
+    borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#181818',
+    backgroundColor: '#1E293B',
   },
   cover: {
     width: '100%',
@@ -397,21 +377,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: {
-    color: '#ffffff',
+    color: GLASS_THEME.colors.textPrimary,
     fontSize: 13,
     fontWeight: '700',
+    letterSpacing: -0.2,
     marginBottom: 2,
   },
   artist: {
-    color: '#b3b3b3',
-    fontSize: 12,
+    color: GLASS_THEME.colors.textSecondary,
+    fontSize: 11.5,
+    fontWeight: '500',
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   actionBtn: {
-    padding: 6,
+    padding: 5,
   },
 });

@@ -2,16 +2,59 @@ import { Platform, Dimensions, AppState } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 
 /**
- * Locks orientation to portrait (top-up).
+ * Detects whether the current device is a tablet.
+ * Uses iPad check on iOS and minDimension >= 600 (standard Android sw600dp threshold) on Android.
+ */
+export function isTabletDevice(): boolean {
+  if (Platform.OS === 'web') return true;
+  if (Platform.OS === 'ios' && (Platform as any).isPad) return true;
+  const { width, height } = Dimensions.get('window');
+  const minDimension = Math.min(width, height);
+  return minDimension >= 600;
+}
+
+/**
+ * Locks orientation to portrait (top-up) on phones.
+ * On tablets, orientation is unlocked to allow smooth auto-rotation.
  */
 export async function lockPortraitAsync(): Promise<void> {
   if (Platform.OS === 'web') return;
+  // Never lock tablets to portrait - allow auto-rotation in portrait and landscape
+  if (isTabletDevice()) {
+    try {
+      if (ScreenOrientation && typeof ScreenOrientation.unlockAsync === 'function') {
+        await ScreenOrientation.unlockAsync();
+      }
+    } catch {}
+    return;
+  }
   try {
     if (ScreenOrientation && typeof ScreenOrientation.lockAsync === 'function') {
       await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
     }
   } catch (err) {
     console.warn('[OrientationManager] lockPortraitAsync failed:', err);
+  }
+}
+
+/**
+ * Initializes orientation on app launch.
+ * Unlocks orientation for tablets, locks to portrait for phones.
+ */
+export async function initOrientationAsync(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    if (isTabletDevice()) {
+      if (ScreenOrientation && typeof ScreenOrientation.unlockAsync === 'function') {
+        await ScreenOrientation.unlockAsync();
+      }
+    } else {
+      if (ScreenOrientation && typeof ScreenOrientation.lockAsync === 'function') {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      }
+    }
+  } catch (err) {
+    console.warn('[OrientationManager] initOrientationAsync failed:', err);
   }
 }
 

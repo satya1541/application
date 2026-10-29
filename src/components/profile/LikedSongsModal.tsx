@@ -15,6 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Song } from '@/types/music';
 import { useAudio } from '@/contexts/AudioContext';
 import { SongItemRow } from '../common/SongItemRow';
+import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface LikedSongsModalProps {
   visible: boolean;
@@ -252,12 +253,12 @@ const styles = StyleSheet.create({
   shuffleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
     paddingHorizontal: 22,
     paddingVertical: 10,
-    borderRadius: 24,
+    borderRadius: GLASS_THEME.radii.pill,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   shuffleText: {
     color: '#FFFFFF',
@@ -267,13 +268,13 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#181818',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderRadius: GLASS_THEME.radii.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   searchInput: {
     flex: 1,

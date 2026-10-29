@@ -33,6 +33,8 @@ import {
   resolveDirectYouTubeVideoDetails,
 } from '@/services/youtubeStreamResolver';
 import { lockPortraitAsync } from '@/services/orientationManager';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const { width, height } = Dimensions.get('window');
 
@@ -98,8 +100,8 @@ const PlayerScrubber: React.FC<PlayerScrubberProps> = React.memo(({ primaryColor
         onSlidingStart={handleSlidingStart}
         onValueChange={handleValueChange}
         onSlidingComplete={handleSlidingComplete}
-        minimumTrackTintColor={primaryColor}
-        maximumTrackTintColor="rgba(255, 255, 255, 0.2)"
+        minimumTrackTintColor="#ffffff"
+        maximumTrackTintColor="rgba(255, 255, 255, 0.18)"
         thumbTintColor="#ffffff"
       />
       <View style={styles.timeRow}>
@@ -165,6 +167,8 @@ export const FullPlayerModal: React.FC = () => {
   const hasVideoAvailable = Boolean(canvasVideoUrl);
 
   const { height: windowHeight } = useWindowDimensions();
+  const { isTablet, isLandscape } = useResponsive();
+  const isTabletLandscape = isTablet && isLandscape;
   const screenHeight = windowHeight || height || 800;
 
   // Vertical drag & glide animation for instant modal opening & swipe-down collapse
@@ -380,7 +384,7 @@ export const FullPlayerModal: React.FC = () => {
           gradientColors={currentSong?.gradientColors}
           isPlaying={isPlaying}
         >
-          <SafeAreaView style={styles.safeArea}>
+          <SafeAreaView style={[styles.safeArea, isTablet && { maxWidth: isTabletLandscape ? 1160 : 620, alignSelf: 'center', width: '100%' }]}>
             <View>
               {/* Top Swipe Handle (Tappable & Swipable) */}
               <TouchableOpacity
@@ -539,13 +543,13 @@ export const FullPlayerModal: React.FC = () => {
             <View style={styles.controlsRow}>
               <TouchableOpacity
                 onPress={toggleShuffle}
-                style={styles.auxBtn}
+                style={[styles.auxBtn, shuffle && styles.auxBtnActive]}
                 activeOpacity={0.7}
               >
                 <Ionicons
                   name="shuffle"
-                  size={22}
-                  color={shuffle ? palette.primary : 'rgba(255,255,255,0.4)'}
+                  size={20}
+                  color={shuffle ? '#ffffff' : 'rgba(255, 255, 255, 0.45)'}
                 />
               </TouchableOpacity>
 
@@ -554,27 +558,22 @@ export const FullPlayerModal: React.FC = () => {
                 style={styles.skipBtn}
                 activeOpacity={0.7}
               >
-                <Ionicons name="play-skip-back" size={30} color="#ffffff" />
+                <Ionicons name="play-skip-back" size={28} color="#ffffff" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={togglePlay}
-                style={[
-                  styles.playPauseFab,
-                  {
-                    backgroundColor: palette.primary,
-                    shadowColor: palette.primary,
-                  },
-                ]}
-                activeOpacity={0.8}
+                style={styles.playPauseFab}
+                activeOpacity={0.85}
               >
                 {isLoading ? (
-                  <Ionicons name="sync" size={32} color="#000000" />
+                  <Ionicons name="sync" size={30} color="#000000" />
                 ) : (
                   <Ionicons
                     name={isPlaying ? 'pause' : 'play'}
-                    size={36}
+                    size={34}
                     color="#000000"
+                    style={!isPlaying ? { marginLeft: 3 } : undefined}
                   />
                 )}
               </TouchableOpacity>
@@ -584,20 +583,18 @@ export const FullPlayerModal: React.FC = () => {
                 style={styles.skipBtn}
                 activeOpacity={0.7}
               >
-                <Ionicons name="play-skip-forward" size={30} color="#ffffff" />
+                <Ionicons name="play-skip-forward" size={28} color="#ffffff" />
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={toggleRepeat}
-                style={styles.auxBtn}
+                style={[styles.auxBtn, repeatMode !== 'off' && styles.auxBtnActive]}
                 activeOpacity={0.7}
               >
                 <Ionicons
                   name={repeatMode === 'one' ? 'repeat-outline' : 'repeat'}
-                  size={22}
-                  color={
-                    repeatMode !== 'off' ? palette.primary : 'rgba(255,255,255,0.4)'
-                  }
+                  size={20}
+                  color={repeatMode !== 'off' ? '#ffffff' : 'rgba(255, 255, 255, 0.45)'}
                 />
               </TouchableOpacity>
             </View>
@@ -608,7 +605,7 @@ export const FullPlayerModal: React.FC = () => {
               <TouchableOpacity
                 style={[
                   styles.utilityPill,
-                  showLyrics && { backgroundColor: palette.primary, borderColor: palette.primary },
+                  showLyrics && styles.utilityPillActive,
                 ]}
                 onPress={() => {
                   setShowLyrics((prev) => !prev);
@@ -674,15 +671,17 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
   },
   modalWrapper: {
     flex: 1,
     width: '100%',
     height: '100%',
-    backgroundColor: '#121212',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    backgroundColor: '#050508',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
   },
   gradientContainer: {
@@ -690,14 +689,14 @@ const styles = StyleSheet.create({
   },
   dragHandleContainer: {
     alignItems: 'center',
-    paddingTop: 6,
+    paddingTop: 8,
     paddingBottom: 6,
   },
   dragHandlePill: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    width: 38,
+    height: 4.5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255, 255, 255, 0.32)',
   },
   safeArea: {
     flex: 1,
@@ -712,11 +711,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   topRightActions: {
-    width: 36,
-    height: 36,
+    width: 38,
+    height: 38,
   },
   topIconBtn: {
-    padding: 6,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitleContainer: {
     alignItems: 'center',
@@ -738,34 +744,37 @@ const styles = StyleSheet.create({
   segmentedToggleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(18, 22, 30, 0.72)',
+    borderRadius: 22,
     padding: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   segmentedOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 5,
-    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 6,
+    borderRadius: 18,
   },
   segmentedOptionActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 18,
   },
   segmentedOptionDisabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
   segmentedText: {
     fontSize: 12,
     fontWeight: '700',
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: 'rgba(255, 255, 255, 0.6)',
   },
   segmentedTextActive: {
     color: '#ffffff',
     fontWeight: '800',
   },
   segmentedTextDisabled: {
-    color: 'rgba(255, 255, 255, 0.38)',
+    color: 'rgba(255, 255, 255, 0.3)',
   },
   eqBadge: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -821,7 +830,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: '#ffffff',
-    marginBottom: 6,
+    marginBottom: 4,
     letterSpacing: -0.3,
   },
   artistSourceRow: {
@@ -831,12 +840,19 @@ const styles = StyleSheet.create({
   },
   artistName: {
     fontSize: 15,
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: 'rgba(255, 255, 255, 0.65)',
     fontWeight: '600',
     maxWidth: width * 0.55,
   },
   likeBtn: {
-    padding: 6,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrubberContainer: {
     marginBottom: 12,
@@ -853,50 +869,67 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 11,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: 'rgba(255, 255, 255, 0.45)',
     fontWeight: '600',
   },
   controlsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     marginBottom: 16,
   },
   auxBtn: {
-    padding: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  auxBtnActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderColor: 'rgba(255, 255, 255, 0.25)',
   },
   skipBtn: {
-    padding: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   playPauseFab: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 70,
+    height: 70,
+    borderRadius: 35,
     backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#ffffff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.28,
+    shadowRadius: 16,
+    elevation: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   bottomUtilitiesRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
+    gap: 14,
   },
   utilityPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 22,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
   },
   utilityPillActive: {
     backgroundColor: '#ffffff',

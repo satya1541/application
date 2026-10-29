@@ -522,8 +522,8 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
             >
               <Ionicons
                 name={isPlaying ? 'pause' : 'play'}
-                size={40}
-                color="#ffffff"
+                size={38}
+                color="#000000"
                 style={!isPlaying ? { marginLeft: 4 } : undefined}
               />
             </TouchableOpacity>
@@ -712,34 +712,36 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 34,
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    backgroundColor: '#ffffff',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.4)',
-    shadowColor: '#000',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
     elevation: 8,
   },
   secondaryControlBtn: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(18, 22, 30, 0.78)',
     paddingHorizontal: 16,
     paddingVertical: 6,
     borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     gap: 12,
   },
   slider: {

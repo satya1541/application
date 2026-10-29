@@ -7,7 +7,7 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, Dimensions } from 'react-native';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useAudio } from '@/contexts/AudioContext';
@@ -91,6 +91,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const appStateRef = useRef(AppState.currentState);
   const hasAdvancedRef = useRef<boolean>(false);
+  const userExitedFullscreenRef = useRef<boolean>(false);
   const watchVideoViewRef = useRef<VideoView | null>(null);
   const miniVideoViewRef = useRef<VideoView | null>(null);
   const isPiPActiveRef = useRef<boolean>(false);
@@ -244,6 +245,11 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     async (item: YouTubeVideoSearchResult, queue?: YouTubeVideoSearchResult[]) => {
       if (activeVideo?.videoId === item.videoId && videoStream) {
         setPlayerMode('full');
+        const { width: winW, height: winH } = Dimensions.get('window');
+        const { width: scrW, height: scrH } = Dimensions.get('screen');
+        if ((winW > winH || scrW > scrH) && !isFullscreen) {
+          enterFullscreen().catch(() => {});
+        }
         if (player && !isVideoPlaying) {
           if (isAudioPlaying) pauseBackgroundAudio();
           player.play();
@@ -256,10 +262,18 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         pauseBackgroundAudio();
       }
 
+      userExitedFullscreenRef.current = false;
       setActiveVideo(item);
       setPlayerMode('full');
       setCurrentTime(0);
       setDuration(item.durationSeconds || 0);
+
+      // If device is in landscape (e.g. tablet landscape), immediately trigger fullscreen
+      const { width: winW, height: winH } = Dimensions.get('window');
+      const { width: scrW, height: scrH } = Dimensions.get('screen');
+      if (winW > winH || scrW > scrH) {
+        enterFullscreen().catch(() => {});
+      }
 
       if (queue && queue.length > 0) {
         setPlaylist(queue);
@@ -437,11 +451,13 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [player, isFullscreen]);
 
   const enterFullscreen = useCallback(async () => {
+    userExitedFullscreenRef.current = false;
     await lockLandscapeAsync();
     setIsFullscreen(true);
   }, []);
 
   const exitFullscreen = useCallback(async () => {
+    userExitedFullscreenRef.current = true;
     await lockPortraitAsync();
     setIsFullscreen(false);
   }, []);
@@ -485,14 +501,24 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Physical screen orientation listener
   useEffect(() => {
     if (playerMode === 'hidden') return;
+
+    // Check current orientation immediately on active player mode if user hasn't explicitly exited fullscreen
+    const { width: winW, height: winH } = Dimensions.get('window');
+    const { width: scrW, height: scrH } = Dimensions.get('screen');
+    if ((winW > winH || scrW > scrH) && !isFullscreen && !isPiPActiveRef.current && !userExitedFullscreenRef.current) {
+      enterFullscreen().catch(() => {});
+    }
+
     const unsub = addOrientationListener((isLand) => {
       // Never trigger orientation changes while app is in background, in PiP, or during PiP restore cooldown
       if (appStateRef.current !== 'active' || isPiPActiveRef.current || pipExitCooldownRef.current) {
         return;
       }
       if (isLand && !isFullscreen) {
+        userExitedFullscreenRef.current = false;
         enterFullscreen().catch(() => {});
       } else if (!isLand && isFullscreen) {
+        userExitedFullscreenRef.current = false;
         exitFullscreen().catch(() => {});
       }
     });

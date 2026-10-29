@@ -876,7 +876,7 @@ export const ProfileModal: React.FC = () => {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.sectionTitleRow}>
-                <Ionicons name="cloud-download-outline" size={18} color="#38bdf8" />
+                <Ionicons name="cloud-download-outline" size={18} color="#ffffff" />
                 <Text style={styles.sectionTitle}>App Version & Updates</Text>
               </View>
               <View style={styles.activeChannelPill}>
@@ -968,7 +968,7 @@ export const ProfileModal: React.FC = () => {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#050508',
   },
   toastContainer: {
     position: 'absolute',
@@ -1003,16 +1003,18 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#222222',
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#050508',
   },
   backButton: {
     padding: 4,
   },
   closeIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1E1E1E',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1060,10 +1062,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   profileHeroCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
     marginBottom: 18,
     position: 'relative',
     overflow: 'hidden',
@@ -1074,8 +1077,7 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     height: 2,
-    backgroundColor: '#1DB954',
-    opacity: 0.8,
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
   },
   avatarRow: {
     flexDirection: 'row',
@@ -1090,7 +1092,7 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 38,
     borderWidth: 2,
-    borderColor: '#1DB954',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
     padding: 2,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1125,7 +1127,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -2,
     right: -2,
-    backgroundColor: '#1DB954',
+    backgroundColor: '#ffffff',
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -1355,7 +1357,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
     alignItems: 'center',
   },
   statIconBadge: {
@@ -1369,7 +1372,7 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#1DB954',
+    color: '#ffffff',
   },
   statLabel: {
     fontSize: 10,
@@ -1379,11 +1382,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   topArtistsContainer: {
-    backgroundColor: '#161616',
-    borderRadius: 16,
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
+    borderRadius: 18,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#242424',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   topArtistsHeader: {
     flexDirection: 'row',
@@ -1501,10 +1504,10 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   qualityList: {
-    backgroundColor: '#161616',
-    borderRadius: 16,
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
   },
   qualityItem: {
@@ -1517,7 +1520,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#262626',
   },
   qualityItemSelected: {
-    backgroundColor: 'rgba(29, 185, 84, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
   },
   qualityLeft: {
     flex: 1,
@@ -1545,7 +1548,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   qualityLabelSelected: {
-    color: '#1DB954',
+    color: '#ffffff',
   },
   bitrateBadge: {
     backgroundColor: '#242424',
@@ -1554,7 +1557,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   bitrateBadgeSelected: {
-    backgroundColor: '#1DB954',
+    backgroundColor: '#ffffff',
   },
   bitrateBadgeText: {
     fontSize: 10,
@@ -1580,8 +1583,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   radioCircleSelected: {
-    backgroundColor: '#1DB954',
-    borderColor: '#1DB954',
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
   tagsContainer: {
     flexDirection: 'row',
@@ -1591,16 +1594,16 @@ const styles = StyleSheet.create({
   languageTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#181818',
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   languageTagSelected: {
-    backgroundColor: '#1DB954',
-    borderColor: '#1DB954',
+    backgroundColor: '#ffffff',
+    borderColor: '#ffffff',
   },
   languageTagText: {
     fontSize: 13,
@@ -1623,9 +1626,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1DB954',
+    backgroundColor: '#ffffff',
     paddingVertical: 14,
-    borderRadius: 16,
+    borderRadius: 24,
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
   },
   signInButtonText: {
     fontSize: 15,
@@ -1648,25 +1656,25 @@ const styles = StyleSheet.create({
     color: '#EF4444',
   },
   activeChannelPill: {
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(56, 189, 248, 0.3)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   activeChannelText: {
-    color: '#38bdf8',
+    color: '#ffffff',
     fontSize: 11,
     fontWeight: '800',
   },
   updateCard: {
-    backgroundColor: '#18181b',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: 'rgba(20, 24, 33, 0.72)',
+    borderRadius: 20,
+    padding: 18,
     borderWidth: 1,
-    borderColor: '#27272a',
-    gap: 14,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    gap: 16,
   },
   updateRow: {
     flexDirection: 'row',
@@ -1718,9 +1726,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#38bdf8',
-    paddingVertical: 12,
-    borderRadius: 14,
+    backgroundColor: '#ffffff',
+    paddingVertical: 13,
+    borderRadius: 22,
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.85)',
   },
   checkUpdateBtnLoading: {
     opacity: 0.8,

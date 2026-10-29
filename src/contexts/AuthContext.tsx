@@ -32,6 +32,7 @@ import {
 WebBrowser.maybeCompleteAuthSession();
 
 const LOCAL_GUEST_PROFILE_KEY = '@shorty_guest_profile_v1';
+const GUEST_MODE_ENABLED_KEY = '@shorty_guest_mode_enabled_v1';
 
 interface AuthContextType {
   user: User | null;
@@ -39,6 +40,8 @@ interface AuthContextType {
   profile: UserProfile | null;
   isLoading: boolean;
   isGuest: boolean;
+  guestModeEnabled: boolean;
+  continueAsGuest: () => Promise<void>;
   stats: SoundStats | null;
   isAuthModalVisible: boolean;
   isProfileModalVisible: boolean;
@@ -82,6 +85,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [authModalTab, setAuthModalTab] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [googleYoutubeToken, setGoogleYoutubeToken] = useState<string | null>(null);
   const [isYouTubeLinkedState, setIsYouTubeLinkedState] = useState<boolean>(false);
+  const [guestModeEnabled, setGuestModeEnabled] = useState<boolean>(false);
 
   const isGuest = useMemo(() => !user, [user]);
   const isYouTubeLinked = useMemo(
@@ -167,6 +171,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       try {
+        const storedGuest = await SafeStorage.getItem(GUEST_MODE_ENABLED_KEY);
+        if (storedGuest === 'true' && isMounted) {
+          setGuestModeEnabled(true);
+        }
+
         const { data, error } = await supabase.auth.getSession();
         if (!error && data?.session) {
           if (isMounted) {
@@ -250,6 +259,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             await clearGoogleYouTubeTokens();
             if (isMounted) {
               setGoogleYoutubeToken(null);
+    setGuestModeEnabled(false);
+    await SafeStorage.removeItem(GUEST_MODE_ENABLED_KEY).catch(() => {});
               setIsYouTubeLinkedState(false);
             }
           }
@@ -825,6 +836,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     [isGuest, user, profile]
   );
 
+  const continueAsGuest = useCallback(async () => {
+    setGuestModeEnabled(true);
+    await SafeStorage.setItem(GUEST_MODE_ENABLED_KEY, 'true').catch(() => {});
+  }, []);
+
   const openAuthModal = useCallback((tab?: 'signin' | 'signup' | 'forgot') => {
     if (tab) {
       setAuthModalTab(tab);
@@ -842,6 +858,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       profile,
       isLoading,
       isGuest,
+      guestModeEnabled,
+      continueAsGuest,
       stats,
       isAuthModalVisible,
       isProfileModalVisible,
@@ -868,6 +886,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       profile,
       isLoading,
       isGuest,
+      guestModeEnabled,
+      continueAsGuest,
       stats,
       isAuthModalVisible,
       isProfileModalVisible,

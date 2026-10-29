@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,8 @@ import { ShortyReplayModal } from '../profile/ShortyReplayModal';
 import { autoFixImportedPlaylistCovers } from '@/services/playlistImportService';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 const { width } = Dimensions.get('window');
 const PLAYLIST_CARD_WIDTH = (width - 44) / 2;
@@ -53,6 +55,37 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
   const { likedSongsList, playSong } = useAudio();
   const { user } = useAuth();
   const { bgHex, surfaceHex, accent } = useAppTheme();
+  const {
+    width: screenWidth,
+    isTablet,
+    useSidebarNavigation,
+    sidebarWidth,
+    contentMaxWidth,
+  } = useResponsive();
+
+  const availableWidth = useSidebarNavigation
+    ? screenWidth - sidebarWidth
+    : screenWidth;
+
+  const effectiveWidth = isTablet && contentMaxWidth
+    ? Math.min(availableWidth, contentMaxWidth)
+    : availableWidth;
+
+  const GRID_GAP = 12;
+  const cols = useMemo(() => {
+    if (!isTablet) return 2;
+    const targetCardWidth = 190;
+    const computedCols = Math.floor(
+      (effectiveWidth - 32 + GRID_GAP) / (targetCardWidth + GRID_GAP)
+    );
+    return Math.max(2, Math.min(6, computedCols));
+  }, [isTablet, effectiveWidth, GRID_GAP]);
+
+  const dynamicCardWidth = useMemo(() => {
+    return Math.floor(
+      (effectiveWidth - 32 - (cols - 1) * GRID_GAP) / cols
+    );
+  }, [effectiveWidth, cols, GRID_GAP]);
 
   const [activeFilter, setActiveFilter] = useState<FilterChip>('All');
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
@@ -282,7 +315,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
             <View style={styles.playlistsGrid}>
               {/* Create Playlist Action Tile */}
               <TouchableOpacity
-                style={styles.createPlaylistTile}
+                style={[styles.createPlaylistTile, { width: dynamicCardWidth }]}
                 onPress={() => setShowCreateModal(true)}
                 activeOpacity={0.7}
               >
@@ -295,7 +328,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
 
               {/* Import from URL Action Tile */}
               <TouchableOpacity
-                style={styles.createPlaylistTile}
+                style={[styles.createPlaylistTile, { width: dynamicCardWidth }]}
                 onPress={() => setShowImportModal(true)}
                 activeOpacity={0.7}
               >
@@ -317,7 +350,7 @@ export const MyLibScreen: React.FC<MyLibScreenProps> = ({
                 return (
                   <TouchableOpacity
                     key={pl.id}
-                    style={styles.playlistTile}
+                    style={[styles.playlistTile, { width: dynamicCardWidth }]}
                     onPress={() => setSelectedPlaylist(pl)}
                     activeOpacity={0.8}
                   >
@@ -742,11 +775,11 @@ const styles = StyleSheet.create({
   },
   createPlaylistTile: {
     width: PLAYLIST_CARD_WIDTH,
-    backgroundColor: '#161616',
-    borderRadius: 14,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceSubtle,
+    borderRadius: GLASS_THEME.radii.card,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#262626',
+    borderColor: GLASS_THEME.colors.borderDefault,
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -773,11 +806,11 @@ const styles = StyleSheet.create({
   },
   playlistTile: {
     width: PLAYLIST_CARD_WIDTH,
-    backgroundColor: '#161616',
-    borderRadius: 14,
+    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
+    borderRadius: GLASS_THEME.radii.card,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#222222',
+    borderColor: GLASS_THEME.colors.borderDefault,
   },
   playlistTileCoverWrapper: {
     width: '100%',

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Image as ExpoImage } from 'expo-image';
 import { Song } from '@/types/music';
 import { getHighResCoverArt, isYouTubeCover } from '@/services/imageUtils';
@@ -98,6 +99,7 @@ export const Deck3DCarousel: React.FC<Deck3DCarouselProps> = React.memo(({
       <View style={styles.mainCard} pointerEvents="none">
         <View style={styles.mainClipper}>
           <DeckArtworkImage song={currentSong} isMain={true} />
+          <LinearGradient colors={['rgba(255, 255, 255, 0.16)', 'rgba(255, 255, 255, 0.02)', 'transparent']} locations={[0, 0.18, 0.45]} style={StyleSheet.absoluteFill} pointerEvents="none" />
         </View>
       </View>
 
@@ -130,21 +132,23 @@ const styles = StyleSheet.create({
   mainCard: {
     width: MAIN_CARD_SIZE,
     height: MAIN_CARD_SIZE,
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 18,
-    elevation: 16,
+    borderRadius: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.65,
+    shadowRadius: 24,
+    elevation: 20,
     zIndex: 10,
-    backgroundColor: '#181818',
+    backgroundColor: '#12141c',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   mainClipper: {
     width: '100%',
     height: '100%',
-    borderRadius: 14,
+    borderRadius: 23,
     overflow: 'hidden',
-    backgroundColor: '#181818',
+    backgroundColor: '#12141c',
   },
   mainArtwork: {
     width: '100%',
@@ -154,15 +158,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: SIDE_CARD_SIZE,
     height: SIDE_CARD_SIZE,
-    borderRadius: 10,
+    borderRadius: 18,
     overflow: 'hidden',
     zIndex: 2,
-    opacity: 0.45,
+    opacity: 0.5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
   },
   sideClipper: {
     width: '100%',
     height: '100%',
-    borderRadius: 10,
+    borderRadius: 17,
     overflow: 'hidden',
   },
   sideArtwork: {
@@ -182,7 +193,7 @@ const styles = StyleSheet.create({
   },
   sideOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: 'rgba(10, 12, 18, 0.55)',
   },
 });
 

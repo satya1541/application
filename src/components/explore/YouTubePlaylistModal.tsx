@@ -24,6 +24,8 @@ import { useNetwork } from '@/contexts/NetworkContext';
 import { fetchYouTubePlaylist, getCachedPlaylistSongs } from '@/services/youtubeMusicApi';
 import { resolveLivePlaylistCover } from '@/services/youtubePlaylistsCatalog';
 import { Song } from '@/types/music';
+import { GLASS_THEME } from '@/constants/glassTheme';
+import { useResponsive } from '@/hooks/useResponsive';
 
 interface YouTubePlaylistModalProps {
   visible: boolean;
@@ -44,6 +46,7 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
   playlistBadge = 'YouTube Music',
   onClose,
 }) => {
+  const { isTablet } = useResponsive();
   const { playSong } = useAudio();
   const { isOffline, refreshNetwork } = useNetwork();
   const [songs, setSongs] = useState<Song[]>([]);
@@ -159,7 +162,7 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
   const renderHeader = useMemo(() => (
     <>
       <LinearGradient
-        colors={['#2a1836', '#1a1024', '#121212']}
+        colors={['rgba(28, 34, 48, 0.90)', 'rgba(12, 14, 20, 0.95)', '#050508']}
         style={styles.headerGradient}
       >
         <View style={styles.coverWrapper}>
@@ -201,7 +204,7 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
             activeOpacity={0.7}
             onPress={handleShufflePlay}
           >
-            <Ionicons name="shuffle" size={22} color="#1DB954" />
+            <Ionicons name="shuffle" size={20} color="#ffffff" />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -211,11 +214,11 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
               if (songs.length > 0) playSong(songs[0], songs);
             }}
           >
-            <Ionicons name="play" size={28} color="#000000" />
+            <Ionicons name="play" size={28} color="#000000" style={{ marginLeft: 3 }} />
           </TouchableOpacity>
 
           <View style={styles.actionIconBtn}>
-            <Ionicons name="musical-notes" size={20} color="#ff4e45" />
+            <Ionicons name="musical-notes" size={20} color="#ffffff" />
           </View>
         </View>
       </LinearGradient>
@@ -248,10 +251,12 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="fullScreen"
+      presentationStyle={isTablet ? 'overFullScreen' : 'fullScreen'}
+      transparent={isTablet}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <View style={[styles.modalBackdrop, isTablet && styles.tabletBackdrop]}>
+        <View style={[styles.container, isTablet && styles.tabletContainer]}>
         <SafeAreaView style={styles.floatingHeader}>
           <TouchableOpacity onPress={onClose} style={styles.backBtn} activeOpacity={0.8}>
             <Ionicons name="chevron-down" size={26} color="#ffffff" />
@@ -310,26 +315,47 @@ export const YouTubePlaylistModal: React.FC<YouTubePlaylistModalProps> = ({
         {/* Persistent Offline Banner */}
         <OfflineBanner positionAbsolute={true} bottomOffset={Platform.OS === 'ios' ? 24 : 0} />
       </View>
+      </View>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
+  modalBackdrop: {
+    flex: 1,
+  },
+  tabletBackdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  tabletContainer: {
+    maxWidth: 820,
+    maxHeight: '90%',
+    width: '100%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: GLASS_THEME.colors.borderSpecular,
+    overflow: 'hidden',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#050508',
   },
   floatingHeader: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 10 : 0,
+    top: Platform.OS === 'android' ? 12 : 0,
     left: 16,
     zIndex: 50,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -344,35 +370,37 @@ const styles = StyleSheet.create({
   },
   coverWrapper: {
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 12,
-    marginBottom: 18,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.65,
+    shadowRadius: 22,
+    elevation: 16,
+    marginBottom: 20,
   },
   albumArt: {
     width: 220,
     height: 220,
-    borderRadius: 12,
-    backgroundColor: '#282828',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: '#141720',
   },
   badgePill: {
     position: 'absolute',
     bottom: 10,
     right: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(18, 22, 30, 0.85)',
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   badgePillText: {
     color: '#ffffff',
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
   albumTitle: {
     fontSize: 22,
@@ -381,21 +409,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 6,
     paddingHorizontal: 12,
+    letterSpacing: -0.3,
   },
   descriptionText: {
     fontSize: 13,
-    color: '#b3b3b3',
+    color: 'rgba(255, 255, 255, 0.65)',
     textAlign: 'center',
-    lineHeight: 18,
+    lineHeight: 19,
     marginBottom: 10,
     paddingHorizontal: 16,
   },
   artistName: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#ff4e45',
+    color: 'rgba(255, 255, 255, 0.5)',
     textAlign: 'center',
     marginBottom: 20,
+    letterSpacing: 0.3,
   },
   actionRow: {
     flexDirection: 'row',
@@ -408,7 +438,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -416,14 +448,16 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: '#1DB954',
+    backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#1DB954',
+    shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 10,
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
     elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.85)',
   },
   trackListHeader: {
     paddingHorizontal: 16,
@@ -437,10 +471,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   tracksCountText: {
-    fontSize: 13,
-    color: '#b3b3b3',
-    fontWeight: '600',
+    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
 });
