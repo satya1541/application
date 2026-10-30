@@ -22,7 +22,7 @@ import { MobileLibraryScreen } from './MobileLibraryScreen';
 import { MobilePostsScreen } from './MobilePostsScreen';
 import { MobileSearchScreen } from './MobileSearchScreen';
 import { MyLibScreen } from './MyLibScreen';
-import { SettingsScreen } from './SettingsScreen';
+import { useAuth } from '@/contexts/AuthContext';
 import { YSearchScreen } from '../video/YSearchScreen';
 import { SongActionMenu } from '../common/SongActionMenu';
 import { QueueModal } from '../explore/QueueModal';
@@ -48,6 +48,7 @@ const TABS: Array<{
 
 export const MobileMainNavigator: React.FC = () => {
   const { bgHex, accent } = useAppTheme();
+  const { openProfileModal } = useAuth();
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [visitedTabs, setVisitedTabs] = useState<Record<TabKey, boolean>>({
     home: true,
@@ -58,7 +59,7 @@ export const MobileMainNavigator: React.FC = () => {
     my_lib: false,
   });
   const [myLibRefreshTrigger, setMyLibRefreshTrigger] = useState(0);
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  // Settings modal is handled globally via openProfileModal('settings')
   const [ySearchVisible, setYSearchVisible] = useState(false);
   const { isOffline } = useNetwork();
 
@@ -142,10 +143,7 @@ export const MobileMainNavigator: React.FC = () => {
   // Global Android Back Button / Edge Gesture fallback:
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (settingsVisible) {
-        setSettingsVisible(false);
-        return true;
-      }
+      
       if (ySearchVisible) {
         setYSearchVisible(false);
         return true;
@@ -157,17 +155,13 @@ export const MobileMainNavigator: React.FC = () => {
       return false;
     });
     return () => subscription.remove();
-  }, [activeTab, settingsVisible, ySearchVisible, visitedTabs]);
+  }, [activeTab, ySearchVisible, visitedTabs]);
 
   const { isTablet, useSidebarNavigation, sidebarWidth, navMaxWidth } = useResponsive();
 
-  const handleOpenSettings = useCallback(() => {
-    setSettingsVisible(true);
-  }, []);
-
-  const handleCloseSettings = useCallback(() => {
-    setSettingsVisible(false);
-  }, []);
+    const handleOpenSettings = useCallback(() => {
+    openProfileModal('settings');
+  }, [openProfileModal]);
 
   const handleOpenYSearch = useCallback(() => {
     setYSearchVisible(true);
@@ -373,7 +367,7 @@ export const MobileMainNavigator: React.FC = () => {
         </Animated.View>
 
         {/* Floating MiniPlayer sitting directly above floating tab bar or docked in right pane */}
-        {!ySearchVisible && !settingsVisible && (
+        {!ySearchVisible && (
           <View
             style={[
               useSidebarNavigation ? styles.sidebarMiniPlayerWrapper : styles.miniPlayerFloatingHost,
@@ -447,12 +441,6 @@ export const MobileMainNavigator: React.FC = () => {
         </View>
       )}
 
-      {/* Settings Screen Full Overlay */}
-      {settingsVisible && (
-        <View style={[StyleSheet.absoluteFill, { zIndex: 1100, backgroundColor: bgHex }]}>
-          <SettingsScreen onBack={handleCloseSettings} />
-        </View>
-      )}
 
       {/* Global Modals Mounted at Root */}
       <FullPlayerModal />

@@ -50,7 +50,8 @@ interface AuthContextType {
   isYouTubeLinked: boolean;
   openAuthModal: (tab?: 'signin' | 'signup' | 'forgot') => void;
   closeAuthModal: () => void;
-  openProfileModal: () => void;
+  profileModalInitialTab: 'profile' | 'settings';
+  openProfileModal: (tab?: 'profile' | 'settings') => void;
   closeProfileModal: () => void;
   signIn: (email: string, pass: string) => Promise<{ error?: string }>;
   signUp: (email: string, pass: string, displayName: string) => Promise<{ error?: string }>;
@@ -848,7 +849,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setIsAuthModalVisible(true);
   }, []);
   const closeAuthModal = useCallback(() => setIsAuthModalVisible(false), []);
-  const openProfileModal = useCallback(() => setIsProfileModalVisible(true), []);
+  const [profileModalInitialTab, setProfileModalInitialTab] = useState<'profile' | 'settings'>('profile');
+  const openProfileModal = useCallback((tab?: 'profile' | 'settings') => {
+    if (tab) {
+      setProfileModalInitialTab(tab);
+    } else {
+      setProfileModalInitialTab('profile');
+    }
+    setIsProfileModalVisible(true);
+  }, []);
   const closeProfileModal = useCallback(() => setIsProfileModalVisible(false), []);
 
   const value = useMemo(
@@ -868,6 +877,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       isYouTubeLinked,
       openAuthModal,
       closeAuthModal,
+      profileModalInitialTab,
       openProfileModal,
       closeProfileModal,
       signIn,

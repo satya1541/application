@@ -31,7 +31,21 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
   };
 
   const effectiveName = propUserName || (!isGuest && profile?.display_name ? profile.display_name : undefined);
-  const handleProfilePress = onPressProfile || openProfileModal;
+  const handleProfilePress = () => {
+    if (onPressProfile) {
+      onPressProfile();
+    } else {
+      openProfileModal('profile');
+    }
+  };
+
+  const handleSettingsPress = () => {
+    if (onPressSettings) {
+      onPressSettings();
+    } else {
+      openProfileModal('settings');
+    }
+  };
 
   const initials = (profile?.display_name || 'U')
     .split(' ')
@@ -114,7 +128,7 @@ export const GreetingHeader: React.FC<GreetingHeaderProps> = ({
           {/* Settings Button */}
           <TouchableOpacity
             style={styles.glassIconButton}
-            onPress={onPressSettings}
+            onPress={handleSettingsPress}
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityLabel="Settings"
