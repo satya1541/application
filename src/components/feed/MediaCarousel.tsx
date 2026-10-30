@@ -1,23 +1,29 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
+  Animated,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Platform,
 } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Song, Playlist, Artist } from '@/types/music';
 import { CanonicalAlbum, CanonicalArtist, AudioSourcePlatform } from '@/types/explore';
 import { SourceBadge } from '../common/SourceBadge';
 import { SongActionController } from '@/services/songActionController';
+import { useAppTheme } from '@/contexts/ThemeContext';
 
 const LOSSLESS_LOGO_WHITE = require('@/assets/images/lossless_white.png');
 const LOSSLESS_LOGO_BLACK = require('@/assets/images/lossless_black.png');
 const OPUS_LOGO_CIRCLE = require('@/assets/images/opus_circle.png');
+
+const CARD_WIDTH_SONG = 148;
+const CARD_WIDTH_ARTIST = 132;
+const CARD_GAP = 12;
 
 interface MediaCarouselProps {
   title: string;
@@ -35,19 +41,35 @@ interface MediaCarouselProps {
   isPlaying?: boolean;
 }
 
-interface CarouselCardProps {
+interface CoverflowCardProps {
   item: any;
   index: number;
+  scrollX: Animated.Value;
+  interval: number;
+  cardWidth: number;
   type: string;
   showRank: boolean;
   isCurrentSong: boolean;
   isPlaying: boolean;
+  accentHex: string;
   onPress: (item: any) => void;
 }
 
-// Highly optimized memoized card: skips re-rendering untouched cards when playback changes
-const CarouselCard = memo<CarouselCardProps>(
-  ({ item, index, type, showRank, isCurrentSong, isPlaying, onPress }) => {
+// 3D Liquid Glass Coverflow Card Component
+const CoverflowCard = memo<CoverflowCardProps>(
+  ({
+    item,
+    index,
+    scrollX,
+    interval,
+    cardWidth,
+    type,
+    showRank,
+    isCurrentSong,
+    isPlaying,
+    accentHex,
+    onPress,
+  }) => {
     const isArtist = type === 'artist' || item.type === 'artist' || 'monthlyListeners' in item;
     const isAlbum = type === 'album' || item.type === 'album';
     const isSong = !isArtist && !isAlbum && (type === 'song' || 'streamUrl' in item || 'artist' in item);
@@ -61,6 +83,47 @@ const CarouselCard = memo<CarouselCardProps>(
       : item.artist || item.description || 'Deluxe Track';
 
     const rank = index + 1;
+
+    // 3D Coverflow Interpolation based on distance from center viewport
+    const inputRange = [
+      (index - 2) * interval,
+      (index - 1) * interval,
+      index * interval,
+      (index + 1) * interval,
+      (index + 2) * interval,
+    ];
+
+    const scale = scrollX.interpolate({
+      inputRange,
+      outputRange: [0.88, 0.94, 1.04, 0.94, 0.88],
+      extrapolate: 'clamp',
+    });
+
+    const rotateY = scrollX.interpolate({
+      inputRange: [
+        (index - 1) * interval,
+        index * interval,
+        (index + 1) * interval,
+      ],
+      outputRange: ['24deg', '0deg', '-24deg'],
+      extrapolate: 'clamp',
+    });
+
+    const opacity = scrollX.interpolate({
+      inputRange,
+      outputRange: [0.65, 0.85, 1, 0.85, 0.65],
+      extrapolate: 'clamp',
+    });
+
+    const translateY = scrollX.interpolate({
+      inputRange: [
+        (index - 1) * interval,
+        index * interval,
+        (index + 1) * interval,
+      ],
+      outputRange: [5, -4, 5],
+      extrapolate: 'clamp',
+    });
 
     const handleMorePress = useCallback(
       (e: any) => {
@@ -83,113 +146,158 @@ const CarouselCard = memo<CarouselCardProps>(
     );
 
     return (
-      <TouchableOpacity
-        style={[styles.card, isArtist && styles.artistCard]}
-        onPress={() => onPress(item)}
-        onLongPress={() => {
-          if (isSong) {
-            handleMorePress({ stopPropagation: () => {} });
-          }
-        }}
-        activeOpacity={0.8}
+      <Animated.View
+        style={[
+          styles.coverflowCardWrapper,
+          {
+            width: cardWidth,
+            marginRight: CARD_GAP,
+            opacity,
+            transform: [
+              { perspective: 850 },
+              { rotateY },
+              { scale },
+              { translateY },
+            ],
+          },
+        ]}
       >
-        <View style={styles.imageWrapper}>
-          <ExpoImage
-            source={{ uri: imageUri }}
-            style={[styles.image, isArtist && styles.artistImage]}
-            contentFit="cover"
-            transition={80}
-            cachePolicy="memory-disk"
-            recyclingKey={item.id || imageUri}
+        <TouchableOpacity
+          style={[
+            styles.glassCard,
+            isArtist && styles.artistGlassCard,
+            isCurrentSong && {
+              borderColor: accentHex,
+              shadowColor: accentHex,
+              shadowOpacity: 0.6,
+              shadowRadius: 14,
+            },
+          ]}
+          onPress={() => onPress(item)}
+          onLongPress={() => {
+            if (isSong) {
+              handleMorePress({ stopPropagation: () => {} });
+            }
+          }}
+          activeOpacity={0.82}
+        >
+          {/* Liquid Glass Top Highlight Sheen */}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.16)', 'rgba(255, 255, 255, 0.03)', 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 0.7 }}
+            style={styles.cardSpecularOverlay}
+            pointerEvents="none"
           />
 
-          {/* Sleek Glowing Rank Badge on Top-Left Corner */}
-          {showRank && !isArtist && (
-            <View
-              style={[
-                styles.rankBadge,
-                rank === 1
-                  ? styles.rankGold
-                  : rank === 2
-                  ? styles.rankSilver
-                  : rank === 3
-                  ? styles.rankBronze
-                  : styles.rankStandard,
-              ]}
-            >
-              <Text
+          {/* Image Wrapper */}
+          <View style={[styles.imageWrapper, isArtist && styles.artistImageWrapper]}>
+            <ExpoImage
+              source={{ uri: imageUri }}
+              style={[styles.image, isArtist && styles.artistImage]}
+              contentFit="cover"
+              transition={80}
+              cachePolicy="memory-disk"
+              recyclingKey={item.id || imageUri}
+            />
+
+            {/* Subtle bottom shadow vignette on image */}
+            <LinearGradient
+              colors={['transparent', 'rgba(0, 0, 0, 0.45)']}
+              style={styles.imageBottomShade}
+              pointerEvents="none"
+            />
+
+            {/* Sleek Glowing Rank Badge on Top-Left Corner */}
+            {showRank && !isArtist && (
+              <View
                 style={[
-                  styles.rankText,
+                  styles.rankBadge,
                   rank === 1
-                    ? styles.rankTextGold
+                    ? styles.rankGold
                     : rank === 2
-                    ? styles.rankTextSilver
+                    ? styles.rankSilver
                     : rank === 3
-                    ? styles.rankTextBronze
-                    : styles.rankTextStandard,
+                    ? styles.rankBronze
+                    : styles.rankStandard,
                 ]}
               >
-                #{rank}
+                <Text
+                  style={[
+                    styles.rankText,
+                    rank === 1
+                      ? styles.rankTextGold
+                      : rank === 2
+                      ? styles.rankTextSilver
+                      : rank === 3
+                      ? styles.rankTextBronze
+                      : styles.rankTextStandard,
+                  ]}
+                >
+                  #{rank}
+                </Text>
+              </View>
+            )}
+
+            {/* Quality / Platform Source Badge on Top-Right Corner */}
+            {!isArtist && 'source' in item && (
+              <View style={styles.badgePosition}>
+                <SourceBadge source={item.source} quality={item.quality} />
+              </View>
+            )}
+
+            {/* Verified Artist Checkmark */}
+            {isArtist && (
+              <View style={styles.verifiedBadge}>
+                <Ionicons name="checkmark-circle" size={18} color="#1DB954" />
+              </View>
+            )}
+
+            {/* Active Equalizer Overlay when playing */}
+            {isCurrentSong && (
+              <View style={[styles.activePlayingOverlay, { borderColor: accentHex }]}>
+                <Ionicons
+                  name={isPlaying ? 'musical-notes' : 'pause'}
+                  size={18}
+                  color="#FFFFFF"
+                />
+              </View>
+            )}
+          </View>
+
+          {/* Caption Container */}
+          <View style={styles.captionContainer}>
+            <View style={styles.titleRow}>
+              <Text
+                style={[
+                  styles.itemTitle,
+                  isCurrentSong && { color: accentHex, fontWeight: '800' },
+                  isSong && styles.itemTitleWithMenu,
+                ]}
+                numberOfLines={1}
+              >
+                {itemTitle}
               </Text>
+
+              {isSong && (
+                <TouchableOpacity
+                  style={styles.moreButton}
+                  onPress={handleMorePress}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.65}
+                  accessibilityLabel={`More options for ${itemTitle}`}
+                >
+                  <Ionicons name="ellipsis-vertical" size={14} color="#94A3B8" />
+                </TouchableOpacity>
+              )}
             </View>
-          )}
 
-          {/* Quality / Platform Source Badge on Top-Right Corner */}
-          {!isArtist && 'source' in item && (
-            <View style={styles.badgePosition}>
-              <SourceBadge source={item.source} quality={item.quality} />
-            </View>
-          )}
-
-          {/* Verified Artist Checkmark */}
-          {isArtist && (
-            <View style={styles.verifiedBadge}>
-              <Ionicons name="checkmark-circle" size={18} color="#1DB954" />
-            </View>
-          )}
-
-          {/* Active Equalizer Overlay when playing */}
-          {isCurrentSong && (
-            <View style={styles.activePlayingOverlay}>
-              <Ionicons
-                name={isPlaying ? 'musical-notes' : 'pause'}
-                size={20}
-                color="#1DB954"
-              />
-            </View>
-          )}
-        </View>
-
-        {/* Title & 3-Dot Options Row */}
-        <View style={styles.titleRow}>
-          <Text
-            style={[
-              styles.itemTitle,
-              isCurrentSong && styles.activeText,
-              isSong && styles.itemTitleWithMenu,
-            ]}
-            numberOfLines={1}
-          >
-            {itemTitle}
-          </Text>
-
-          {isSong && (
-            <TouchableOpacity
-              style={styles.moreButton}
-              onPress={handleMorePress}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.65}
-              accessibilityLabel={`More options for ${itemTitle}`}
-            >
-              <Ionicons name="ellipsis-vertical" size={15} color="#9E9E9E" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <Text style={styles.itemSubtitle} numberOfLines={1}>
-          {itemSubtitle}
-        </Text>
-      </TouchableOpacity>
+            <Text style={styles.itemSubtitle} numberOfLines={1}>
+              {itemSubtitle}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
   },
   (prev, next) => {
@@ -199,6 +307,7 @@ const CarouselCard = memo<CarouselCardProps>(
     if (next.isCurrentSong && prev.isPlaying !== next.isPlaying) return false;
     if (prev.showRank !== next.showRank) return false;
     if (prev.type !== next.type) return false;
+    if (prev.accentHex !== next.accentHex) return false;
     return true;
   }
 );
@@ -218,6 +327,12 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
   currentSongId,
   isPlaying = false,
 }) => {
+  const { accent } = useAppTheme();
+  const scrollX = useRef(new Animated.Value(0)).current;
+
+  const cardWidth = type === 'artist' ? CARD_WIDTH_ARTIST : CARD_WIDTH_SONG;
+  const cardInterval = cardWidth + CARD_GAP;
+
   const handleItemPress = useCallback(
     (item: any) => {
       if (type === 'artist' || item.type === 'artist' || 'monthlyListeners' in item) {
@@ -239,24 +354,21 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
       }
 
       if ('streamUrl' in item) {
-        // It's a Song
         onPlaySong?.(item, items.filter((i): i is Song => 'streamUrl' in i));
       } else if ('songs' in item && item.songs.length > 0) {
-        // It's a Playlist
         onPlaySong?.(item.songs[0], item.songs);
       }
     },
     [type, items, onPressArtist, onPressAlbum, onPlaySong]
   );
 
-  const cardWidth = type === 'artist' ? 126 + 14 : 144 + 14;
   const getItemLayout = useCallback(
     (_: any, index: number) => ({
-      length: cardWidth,
-      offset: cardWidth * index,
+      length: cardInterval,
+      offset: cardInterval * index,
       index,
     }),
-    [cardWidth]
+    [cardInterval]
   );
 
   const keyExtractor = useCallback(
@@ -266,20 +378,24 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
 
   const renderItem = useCallback(
     ({ item, index }: { item: any; index: number }) => (
-      <CarouselCard
+      <CoverflowCard
         item={item}
         index={index}
+        scrollX={scrollX}
+        interval={cardInterval}
+        cardWidth={cardWidth}
         type={type}
         showRank={showRank}
         isCurrentSong={'streamUrl' in item && !!currentSongId && currentSongId === item.id}
         isPlaying={isPlaying}
+        accentHex={accent.hex}
         onPress={handleItemPress}
       />
     ),
-    [type, showRank, currentSongId, isPlaying, handleItemPress]
+    [scrollX, cardInterval, cardWidth, type, showRank, currentSongId, isPlaying, accent.hex, handleItemPress]
   );
 
-  // If loading with no items yet, render skeleton placeholder
+  // Skeleton view during loading
   if (loading && (!items || items.length === 0)) {
     return (
       <View style={styles.section}>
@@ -315,7 +431,7 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
 
         <View style={styles.skeletonContainer}>
           {[0, 1, 2, 3].map((i) => (
-            <View key={`skel-${i}`} style={styles.card}>
+            <View key={`skel-${i}`} style={[styles.glassCard, { width: cardWidth, marginRight: CARD_GAP }]}>
               <View style={[styles.image, styles.skeletonImage]}>
                 <ActivityIndicator size="small" color="#444444" />
               </View>
@@ -392,8 +508,8 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
         )}
       </View>
 
-      {/* Virtualized Horizontal FlatList */}
-      <FlatList
+      {/* 3D Liquid Glass Coverflow FlatList */}
+      <Animated.FlatList
         data={items}
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -401,11 +517,18 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         getItemLayout={getItemLayout}
-        initialNumToRender={4}
-        maxToRenderPerBatch={3}
-        windowSize={3}
-        removeClippedSubviews={Platform.OS === 'android'}
+        snapToInterval={cardInterval}
+        snapToAlignment="start"
         decelerationRate="fast"
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+          { useNativeDriver: true }
+        )}
+        initialNumToRender={4}
+        maxToRenderPerBatch={4}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS === 'android'}
       />
     </View>
   );
@@ -417,7 +540,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -494,38 +617,66 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   carouselContainer: {
-    paddingHorizontal: 16,
-    gap: 14,
+    paddingLeft: 16,
+    paddingRight: 28,
+    paddingVertical: 10,
   },
-  card: {
-    width: 146,
-    marginRight: 2,
+  coverflowCardWrapper: {
+    paddingVertical: 4,
   },
-  artistCard: {
-    width: 126,
+  glassCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 18,
+    padding: 7,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  artistGlassCard: {
     alignItems: 'center',
+    borderRadius: 22,
+  },
+  cardSpecularOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 44,
   },
   imageWrapper: {
     position: 'relative',
-    marginBottom: 8,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
+    backgroundColor: '#161B22',
+  },
+  artistImageWrapper: {
+    borderRadius: 60,
+    alignSelf: 'center',
   },
   image: {
-    width: 146,
-    height: 146,
-    borderRadius: 16,
-    backgroundColor: '#242424',
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: 14,
+    backgroundColor: '#1E293B',
   },
   artistImage: {
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    backgroundColor: '#242424',
+    width: 116,
+    height: 116,
+    borderRadius: 58,
+    backgroundColor: '#1E293B',
   },
-  // Glowing Rank Badges
+  imageBottomShade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 38,
+  },
   rankBadge: {
     position: 'absolute',
     top: 6,
@@ -537,20 +688,20 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   rankGold: {
-    backgroundColor: 'rgba(245, 158, 11, 0.22)',
-    borderColor: 'rgba(245, 158, 11, 0.55)',
+    backgroundColor: 'rgba(245, 158, 11, 0.3)',
+    borderColor: 'rgba(245, 158, 11, 0.65)',
   },
   rankSilver: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    borderColor: 'rgba(255, 255, 255, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderColor: 'rgba(255, 255, 255, 0.55)',
   },
   rankBronze: {
-    backgroundColor: 'rgba(217, 119, 6, 0.22)',
-    borderColor: 'rgba(217, 119, 6, 0.55)',
+    backgroundColor: 'rgba(217, 119, 6, 0.3)',
+    borderColor: 'rgba(217, 119, 6, 0.65)',
   },
   rankStandard: {
-    backgroundColor: 'rgba(15, 20, 28, 0.78)',
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    backgroundColor: 'rgba(15, 20, 28, 0.85)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   rankText: {
     fontSize: 10,
@@ -558,16 +709,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   rankTextGold: {
-    color: '#ffd700',
+    color: '#FDE68A',
   },
   rankTextSilver: {
-    color: '#ffffff',
+    color: '#FFFFFF',
   },
   rankTextBronze: {
-    color: '#f59e0b',
+    color: '#FDBA74',
   },
   rankTextStandard: {
-    color: '#d1d5db',
+    color: '#CBD5E1',
   },
   badgePosition: {
     position: 'absolute',
@@ -577,68 +728,66 @@ const styles = StyleSheet.create({
   },
   verifiedBadge: {
     position: 'absolute',
-    bottom: 2,
+    bottom: 6,
     right: 6,
-    backgroundColor: '#121212',
-    borderRadius: 10,
-    padding: 1,
+    backgroundColor: '#000000',
+    borderRadius: 9,
   },
   activePlayingOverlay: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.45)',
-    justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 16,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderRadius: 14,
+  },
+  captionContainer: {
+    paddingTop: 8,
+    paddingHorizontal: 3,
+    paddingBottom: 2,
   },
   titleRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 20,
+    alignItems: 'center',
   },
   itemTitle: {
-    color: '#ffffff',
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '700',
-    marginBottom: 2,
-    lineHeight: 17,
+    color: '#F8FAFC',
+    letterSpacing: -0.2,
+    flex: 1,
   },
   itemTitleWithMenu: {
-    flex: 1,
     marginRight: 4,
-    marginBottom: 0,
-  },
-  moreButton: {
-    paddingVertical: 2,
-    paddingHorizontal: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   itemSubtitle: {
+    fontSize: 11,
     color: '#94A3B8',
-    fontSize: 11.5,
-    lineHeight: 15,
-    marginTop: 1,
+    marginTop: 2,
+    letterSpacing: -0.1,
   },
-  activeText: {
-    color: '#1DB954',
+  moreButton: {
+    padding: 3,
   },
-  // Skeleton styles
   skeletonContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 14,
+    paddingLeft: 16,
+    paddingVertical: 10,
   },
   skeletonImage: {
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1e1e1e',
+    justifyContent: 'center',
   },
   skeletonTextLine: {
-    height: 12,
+    height: 10,
     backgroundColor: '#242424',
-    borderRadius: 4,
-    marginTop: 6,
-    width: '85%',
+    borderRadius: 5,
+    marginTop: 8,
+    width: '80%',
   },
 });
