@@ -624,6 +624,7 @@ interface PlaylistGridCardProps {
 
 const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
   ({ item, index, cardWidth, isTablet, isItemLoading, isCurrentPlaying, onOpen, onPlay }) => {
+    const { accent } = useAppTheme();
     const fallbackCover = useMemo(
       () => getCategoryFallbackCover(item.category),
       [item.category]
@@ -665,36 +666,115 @@ const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
       }
     }, [item.id, imageSource, fallbackCover]);
 
+    const cardHeight = Math.round(cardWidth * 1.18);
+
     return (
       <TouchableOpacity
-        style={[styles.card, { width: cardWidth }]}
-        activeOpacity={0.82}
+        style={[
+          styles.folderCard,
+          { width: cardWidth, height: cardHeight },
+          isCurrentPlaying && {
+            borderColor: accent.hex,
+            shadowColor: accent.hex,
+            shadowOpacity: 0.5,
+          },
+        ]}
+        activeOpacity={0.84}
         onPress={() => onOpen(item)}
       >
-        <View style={[styles.thumbnailWrapper, { height: cardWidth }]}>
-          <ExpoImage
-            source={{ uri: imageSource }}
-            style={styles.thumbnail}
-            contentFit="cover"
-            transition={120}
-            cachePolicy="memory-disk"
-            priority={index !== undefined && index < 8 ? 'high' : 'normal'}
-            recyclingKey={item.id}
-            onError={handleImageError}
-          />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.85)']}
-            style={styles.thumbGradient}
-          />
-
-          {/* Badge Pill */}
-          <View style={styles.cardBadge}>
-            <Text style={styles.cardBadgeText}>{item.badge.toUpperCase()}</Text>
+        {/* Layer 1: Back Panel with Folder Tab */}
+        <View style={styles.folderBackContainer}>
+          {/* Top Folder Tab Header */}
+          <View style={[styles.folderTab, isCurrentPlaying && { borderColor: accent.hex }]}>
+            <Ionicons name="folder-outline" size={10} color="#94A3B8" style={{ marginRight: 4 }} />
+            <Text style={styles.folderTabText} numberOfLines={1}>
+              {item.category?.toUpperCase() || 'PLAYLIST'}
+            </Text>
           </View>
 
-          {/* Play Button on Thumbnail */}
+          {/* Back Art Panel */}
+          <View style={styles.folderBackPlate}>
+            <ExpoImage
+              source={{ uri: imageSource }}
+              style={styles.folderArt}
+              contentFit="cover"
+              transition={120}
+              cachePolicy="memory-disk"
+              priority={index !== undefined && index < 8 ? 'high' : 'normal'}
+              recyclingKey={item.id}
+              onError={handleImageError}
+            />
+            {/* Dark gradient over back artwork */}
+            <LinearGradient
+              colors={['rgba(0,0,0,0.25)', 'rgba(0,0,0,0.85)']}
+              style={styles.folderBackShade}
+            />
+            {/* Specular top rim sheen */}
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.25)', 'transparent']}
+              style={styles.folderBackRim}
+              pointerEvents="none"
+            />
+          </View>
+        </View>
+
+        {/* Layer 2: Inner Stacked Sheets (files/record sleeves peeking out) */}
+        <View style={styles.folderSheetsContainer} pointerEvents="none">
+          {/* Back Sheet: tilted left */}
+          <View style={[styles.folderSheet, styles.folderSheetBack]} />
+          {/* Front Sheet: tilted right with preview track lines */}
+          <View style={[styles.folderSheet, styles.folderSheetFront]}>
+            <View style={styles.sheetLines}>
+              <View style={[styles.sheetLine, { width: '75%' }]} />
+              <View style={[styles.sheetLine, { width: '50%' }]} />
+            </View>
+          </View>
+        </View>
+
+        {/* Layer 3: Front Frosted Glass Panel (Hinged Pocket) */}
+        <View
+          style={[
+            styles.folderFrontGlass,
+            isCurrentPlaying && { borderColor: accent.hex },
+          ]}
+        >
+          {/* Glass Top Edge Specular Sheen */}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.32)', 'rgba(255, 255, 255, 0.05)', 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 0.7 }}
+            style={styles.frontGlassSpecular}
+            pointerEvents="none"
+          />
+
+          {/* Badge Pill on Glass */}
+          <View style={styles.folderBadge}>
+            <Text style={styles.folderBadgeText}>{item.badge.toUpperCase()}</Text>
+          </View>
+
+          {/* Label Area */}
+          <View style={styles.folderLabelArea}>
+            <Text
+              style={[
+                styles.folderTitle,
+                isCurrentPlaying && { color: accent.hex, fontWeight: '800' },
+                isTablet && styles.cardTitleTablet,
+              ]}
+              numberOfLines={1}
+            >
+              {item.title}
+            </Text>
+            <Text style={[styles.folderMeta, isTablet && styles.cardDescTablet]} numberOfLines={1}>
+              {item.description || (item.category ? item.category + ' • Official Mix' : 'Curated Mix')}
+            </Text>
+          </View>
+
+          {/* Floating Action Key Button (.gf-key) */}
           <TouchableOpacity
-            style={[styles.cardPlayBtn, isCurrentPlaying && styles.cardPlayBtnActive]}
+            style={[
+              styles.folderKeyBtn,
+              isCurrentPlaying && [styles.folderKeyBtnActive, { backgroundColor: accent.hex }],
+            ]}
             activeOpacity={0.85}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             onPress={(e) => {
@@ -703,25 +783,16 @@ const PlaylistGridCard: React.FC<PlaylistGridCardProps> = React.memo(
             }}
           >
             {isItemLoading ? (
-              <ActivityIndicator size="small" color="#000000" />
+              <ActivityIndicator size="small" color={isCurrentPlaying ? '#000000' : '#FFFFFF'} />
             ) : (
               <Ionicons
                 name={isCurrentPlaying ? 'pause' : 'play'}
-                size={16}
-                color="#000000"
+                size={15}
+                color={isCurrentPlaying ? '#000000' : '#FFFFFF'}
                 style={{ marginLeft: isCurrentPlaying ? 0 : 2 }}
               />
             )}
           </TouchableOpacity>
-        </View>
-
-        <View style={styles.cardContent}>
-          <Text style={[styles.cardTitle, isTablet && styles.cardTitleTablet]} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={[styles.cardDesc, isTablet && styles.cardDescTablet]} numberOfLines={2}>
-            {item.description || item.type}
-          </Text>
         </View>
       </TouchableOpacity>
     );
@@ -1077,5 +1148,192 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  folderCard: {
+    position: 'relative',
+    borderRadius: 20,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 8,
+    marginVertical: 4,
+  },
+  folderBackContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  folderTab: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    width: '52%',
+    height: 18,
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    zIndex: 2,
+  },
+  folderTabText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#94A3B8',
+    letterSpacing: 0.4,
+  },
+  folderBackPlate: {
+    position: 'absolute',
+    top: 15,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#18181B',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+  },
+  folderArt: {
+    width: '100%',
+    height: '100%',
+  },
+  folderBackShade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  folderBackRim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 30,
+  },
+  folderSheetsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 4,
+  },
+  folderSheet: {
+    position: 'absolute',
+    borderRadius: 12,
+  },
+  folderSheetBack: {
+    top: 19,
+    left: 14,
+    right: 14,
+    height: 48,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    transform: [{ rotate: '-2.4deg' }],
+  },
+  folderSheetFront: {
+    top: 24,
+    left: 18,
+    right: 18,
+    height: 44,
+    backgroundColor: 'rgba(255, 255, 255, 0.13)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
+    transform: [{ rotate: '1.8deg' }],
+    padding: 8,
+    justifyContent: 'center',
+  },
+  sheetLines: {
+    gap: 4,
+  },
+  sheetLine: {
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  folderFrontGlass: {
+    position: 'absolute',
+    top: 48,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(18, 22, 32, 0.82)',
+    borderWidth: 1.2,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    zIndex: 10,
+    padding: 10,
+    justifyContent: 'space-between',
+  },
+  frontGlassSpecular: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 40,
+  },
+  folderBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  folderBadgeText: {
+    color: '#E2E8F0',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  folderLabelArea: {
+    paddingRight: 38,
+    marginBottom: 2,
+  },
+  folderTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+    marginBottom: 2,
+  },
+  folderMeta: {
+    fontSize: 10.5,
+    color: '#94A3B8',
+    letterSpacing: -0.1,
+  },
+  folderKeyBtn: {
+    position: 'absolute',
+    bottom: 9,
+    right: 9,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  folderKeyBtnActive: {
+    borderColor: 'rgba(255, 255, 255, 0.4)',
+  },
+
 });
 
