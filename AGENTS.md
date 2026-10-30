@@ -8,7 +8,8 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   - Update `releaseName` with a concise summary of the changes.
   - Update `releaseDate` with the current date (YYYY-MM-DD).
 
-## OTA Updates (EAS Update)
+## OTA Updates (EAS Update) & Builds
+- **CRITICAL PERMISSION GATE**: NEVER run an OTA update (`eas update`) or a build (`eas build`) automatically. ALWAYS ask the user for explicit confirmation first before running any deployment or build command.
 - Always target **Android only** (`--platform android`) when pushing OTA updates. Never build or push iOS bundles unless explicitly requested.
 - Standard deployment command:
   `npx eas-cli update --branch preview --environment preview --platform android --message "<message>" --non-interactive`
