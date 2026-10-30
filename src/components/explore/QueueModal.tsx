@@ -39,6 +39,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
     moveInUserQueue,
     clearUserQueue,
     autoplayEnabled,
+    recommendationSource,
     toggleAutoplay,
     refreshRecommendationsQueue,
     playSong,
@@ -245,9 +246,30 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                 <Ionicons name="musical-notes-outline" size={16} color="#888888" />
                 <Text style={styles.sectionTitle}>
                   {autoplayEnabled
-                    ? `UP NEXT (PLAYLIST & AUTOPLAY) • ${upcomingContextSongs.length}`
+                    ? `UP NEXT • ${upcomingContextSongs.length}`
                     : `UP NEXT FROM PLAYLIST • ${upcomingContextSongs.length}`}
                 </Text>
+
+                {recommendationSource === 'gorse' && (
+                  <View style={styles.recsysBadgeGorse}>
+                    <Ionicons name="sparkles" size={10} color="#22C55E" style={{ marginRight: 3 }} />
+                    <Text style={styles.recsysBadgeGorseText}>GORSE ML</Text>
+                  </View>
+                )}
+
+                {recommendationSource === 'fallback' && (
+                  <View style={styles.recsysBadgeFallback}>
+                    <Ionicons name="flash-outline" size={10} color="#60A5FA" style={{ marginRight: 3 }} />
+                    <Text style={styles.recsysBadgeFallbackText}>SMART DIVERSE</Text>
+                  </View>
+                )}
+
+                {recommendationSource === 'playlist' && (
+                  <View style={styles.recsysBadgePlaylist}>
+                    <Ionicons name="albums-outline" size={10} color="#A7A7A7" style={{ marginRight: 3 }} />
+                    <Text style={styles.recsysBadgePlaylistText}>PLAYLIST</Text>
+                  </View>
+                )}
               </View>
 
               <TouchableOpacity
@@ -520,5 +542,56 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 13,
     fontWeight: '700',
+  },
+  recsysBadgeGorse: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(34, 197, 94, 0.15)',
+    borderColor: 'rgba(34, 197, 94, 0.4)',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  recsysBadgeGorseText: {
+    color: '#22C55E',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  recsysBadgeFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(96, 165, 250, 0.15)',
+    borderColor: 'rgba(96, 165, 250, 0.4)',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  recsysBadgeFallbackText: {
+    color: '#60A5FA',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  recsysBadgePlaylist: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 6,
+  },
+  recsysBadgePlaylistText: {
+    color: '#D1D5DB',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
 });

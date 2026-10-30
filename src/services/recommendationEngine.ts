@@ -454,12 +454,12 @@ export class ClientRecommendationEngine {
 
       const songArtistNorm = normalizeString(song.artist?.split(/[,/&|]/)[0]);
 
-      // Feature 1: Artist Affinity
+      // Feature 1: Artist Affinity (Balanced: favor seed artist gently without monopolizing)
       const isSameArtist = songArtistNorm === seedArtistNorm && !!songArtistNorm;
-      const artistAffinity = isSameArtist ? 0.9 : 0.2;
+      const artistAffinity = isSameArtist ? 0.65 : 0.35;
 
       // Feature 2: Session Affinity
-      const sessionAffinity = isSameArtist ? 0.8 : 0.4;
+      const sessionAffinity = isSameArtist ? 0.65 : 0.40;
 
       // Feature 3: Novelty
       const novelty = 0.85;
@@ -545,9 +545,24 @@ export class ClientRecommendationEngine {
     // In-memory re-scoring (< 2ms) with strict deduplication
     const rankedCandidates = this.scoreCandidateBank(currentSong, intent, weights, excludedKeys);
 
+    // Strict Artist Diversity Capping (Spotify/Apple Music model):
+    // Maximum 2 tracks from the same primary artist in the 20-track queue to prevent artist monopoly
+    const maxTracksPerArtist = intent === 'DEEP_FOCUS_ARTIST' ? 4 : 2;
+    const artistCounts = new Map<string, number>();
+
+    const diverseCandidates: ExploreSong[] = [];
+    for (const c of rankedCandidates) {
+      const primaryArtist = normalizeString(c.artist?.split(/[,/&|]/)[0]);
+      const count = artistCounts.get(primaryArtist) || 0;
+      if (count < maxTracksPerArtist) {
+        artistCounts.set(primaryArtist, count + 1);
+        diverseCandidates.push(c);
+      }
+    }
+
     // Balanced Multi-Source Blending: Guarantee both Lossless (JioSaavn) and Opus (YouTube Music)
-    const lossless = rankedCandidates.filter((c) => c.source !== 'youtube' && c.quality !== 'Opus');
-    const opus = rankedCandidates.filter((c) => c.source === 'youtube' || c.quality === 'Opus');
+    const lossless = diverseCandidates.filter((c) => c.source !== 'youtube' && c.quality !== 'Opus');
+    const opus = diverseCandidates.filter((c) => c.source === 'youtube' || c.quality === 'Opus');
 
     const blendedCandidates: ExploreSong[] = [];
     let l = 0;

@@ -236,7 +236,6 @@ export const TrackDetailModal: React.FC<TrackDetailModalProps> = ({
                 key={`${item.id}_${idx}`}
                 song={item}
                 index={idx}
-                playlistContext={[song, ...recommendations]}
                 showTrackNumber={true}
               />
             ))}

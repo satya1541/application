@@ -502,7 +502,8 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                   activeOpacity={0.8}
                   onPress={() => {
                     if (topSongs.length > 0) {
-                      const shuffled = [...topSongs].sort(() => Math.random() - 0.5);
+                      const topSlice = topSongs.slice(0, 10);
+                      const shuffled = [...topSlice].sort(() => Math.random() - 0.5);
                       playSong(shuffled[0], shuffled);
                     }
                   }}
@@ -515,7 +516,8 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                   activeOpacity={0.85}
                   onPress={() => {
                     if (topSongs.length > 0) {
-                      playSong(topSongs[0], topSongs);
+                      const topSlice = topSongs.slice(0, 10);
+                      playSong(topSlice[0], topSlice);
                     }
                   }}
                 >
@@ -573,7 +575,6 @@ export const ArtistProfileModal: React.FC<ArtistProfileModalProps> = ({
                         key={`${song.id}-${idx}`}
                         song={song}
                         index={idx}
-                        playlistContext={topSongs}
                         showTrackNumber={true}
                       />
                     ))}

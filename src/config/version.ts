@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.14',
-  releaseTag: 'v5.2.14',
-  releaseName: 'Shorty v5.2.14: Fix profile display name persistence across Google login & logout',
+  otaVersion: '5.2.15',
+  releaseTag: 'v5.2.15',
+  releaseName: 'Shorty v5.2.15: Gorse ML RecSys integration, Queue Engine Badge & Artist Diversity Capping',
   releaseDate: '2026-10-30',
   channel: 'preview',
 };

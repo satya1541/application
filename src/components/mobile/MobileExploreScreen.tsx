@@ -231,10 +231,10 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
   const handlePlayTrendingSong = useCallback(
     (item: ExploreSong) => {
       const song = exploreSongToSong(item);
-      const queue = trendingSongs.map(exploreSongToSong);
-      playSong(song, queue);
+      // Play song as seed so ML / diversity recommendation engine builds a tailored queue
+      playSong(song);
     },
-    [trendingSongs, playSong]
+    [playSong]
   );
 
   // Play a song or music video directly from category shelves

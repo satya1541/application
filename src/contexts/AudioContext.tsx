@@ -27,6 +27,11 @@ import {
 } from '@/services/cloudSyncService';
 import { recordHistoryEntry } from '@/services/historyService';
 import {
+  recordGorseFeedback,
+  getGorseRecommendedSongs,
+  getGorseSimilarSongs,
+} from '@/services/gorseService';
+import {
   getStoredLikedSongs,
   saveStoredLikedSong,
   removeStoredLikedSong,
@@ -138,6 +143,7 @@ interface AudioContextType {
   isLyricsOpen: boolean;
   isQueueModalOpen: boolean;
   autoplayEnabled: boolean;
+  recommendationSource: 'gorse' | 'fallback' | 'playlist' | null;
   crossfadeDuration: number;
   gaplessEnabled: boolean;
 
@@ -290,6 +296,9 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Global Queue Modal Visibility
   const [isQueueModalOpen, setIsQueueModalOpen] = useState<boolean>(false);
+
+  // Active Recommendation Engine Source ('gorse' | 'fallback' | 'playlist' | null)
+  const [recommendationSource, setRecommendationSource] = useState<'gorse' | 'fallback' | 'playlist' | null>(null);
 
   // Load cached full liked songs metadata on mount
   useEffect(() => {
@@ -723,6 +732,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         1.0,
         durationRef.current
       );
+      recordGorseFeedback(userIdRef.current || 'guest', currentSongRef.current, 'finish');
       recordListeningHistory(
         userIdRef.current,
         currentSongRef.current,
@@ -1029,6 +1039,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     syncLockScreenControls(incoming, incomingSong);
     ClientRecommendationEngine.recordAction(incomingSong, 'play', 0, 0);
+    recordGorseFeedback(userIdRef.current || 'guest', incomingSong, 'play');
     notifyProgressListeners(0, incomingSong.duration || 0);
 
     // Consume from user queue if applicable
@@ -1061,6 +1072,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Record outgoing track completion
     if (currentSongRef.current) {
       ClientRecommendationEngine.recordAction(currentSongRef.current, 'complete', 1.0, durationRef.current);
+      recordGorseFeedback(userIdRef.current || 'guest', currentSongRef.current, 'finish');
       recordListeningHistory(userIdRef.current, currentSongRef.current, Math.round(durationRef.current || 180)).catch(() => {});
       recordHistoryEntry(currentSongRef.current, durationRef.current, durationRef.current, userIdRef.current).catch(() => {});
     }
@@ -1374,6 +1386,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playSong = async (song: Song, newQueue?: Song[], autoOpenFullPlayer: boolean = true) => {
     // Record behavioral listening signal
     ClientRecommendationEngine.recordAction(song, 'play', 0, 0);
+    recordGorseFeedback(userIdRef.current || 'guest', song, 'play');
 
     // 1. Immediate synchronous state updates for instant 0ms UI transition
     if (autoOpenFullPlayer) {
@@ -1396,6 +1409,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setQueue(newQueue);
       queueRef.current = newQueue;
       setHistory([]);
+      setRecommendationSource('playlist');
     } else {
       // User manually changed the song (e.g. selected a new song from Search, Home, or Artist):
       // Start with the selected song in queue and immediately generate fresh recommendations tailored to it
@@ -1403,12 +1417,30 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setQueue(baseQueue);
       queueRef.current = baseQueue;
 
-      ClientRecommendationEngine.getNextRecommendations(song, baseQueue, 0, history)
-        .then((extended) => {
-          if (currentSongRef.current?.id === song.id && extended.length > 1) {
-            setQueue(extended);
-            queueRef.current = extended;
+      // ── Priority 1: Gorse ML RecSys (Similar Songs / Song Radio) ──
+      getGorseSimilarSongs(song.id, 10)
+        .then((gorseList) => {
+          if (currentSongRef.current?.id === song.id && gorseList && gorseList.length > 0) {
+            const queueIds = new Set(baseQueue.map((s) => s.id));
+            const newRecs = gorseList.filter((s) => !queueIds.has(s.id));
+            if (newRecs.length > 0) {
+              const extended = [...baseQueue, ...newRecs];
+              setQueue(extended);
+              queueRef.current = extended;
+              setRecommendationSource('gorse');
+              console.log(`[RecSys] 🤖 Seeded by Gorse ML RecSys (${newRecs.length} songs)`);
+              return;
+            }
           }
+          // Fallback to client engine if Gorse has 0 neighbors yet
+          return ClientRecommendationEngine.getNextRecommendations(song, baseQueue, 0, history).then((extended) => {
+            if (currentSongRef.current?.id === song.id && extended.length > 1) {
+              setQueue(extended);
+              queueRef.current = extended;
+              setRecommendationSource('fallback');
+              console.log(`[RecSys] ⚡ Seeded by Smart Fallback Engine (${extended.length - 1} songs, diversity capped)`);
+            }
+          });
         })
         .catch(() => { });
     }
@@ -1467,6 +1499,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (currentActiveSong) {
       const prog = durationRef.current > 0 ? positionRef.current / durationRef.current : 0;
       ClientRecommendationEngine.recordAction(currentActiveSong, 'skip', prog, positionRef.current);
+      recordGorseFeedback(userIdRef.current || 'guest', currentActiveSong, 'skip');
       if (positionRef.current >= 10) {
         recordListeningHistory(
           userIdRef.current,
@@ -1518,19 +1551,46 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!nextTrack || tracksAhead < 4) {
         try {
-          const extended = await ClientRecommendationEngine.getNextRecommendations(
-            nextTrack || currentActiveSong,
-            activeQueue,
-            currentIndex !== -1 ? currentIndex : activeQueue.length - 1,
-            history
-          );
-          if (extended.length > activeQueue.length) {
-            setQueue(extended);
-            queueRef.current = extended;
-            if (!nextTrack) {
-              const newIdx = extended.findIndex((s) => s.id === currentActiveSong?.id);
-              if (newIdx !== -1 && newIdx < extended.length - 1) {
-                nextTrack = extended[newIdx + 1];
+          // ── Priority 1: Gorse ML RecSys Engine ──
+          let gorseAdded = false;
+          const gorseSongs = await getGorseRecommendedSongs(userIdRef.current || 'guest', 10);
+          if (gorseSongs && gorseSongs.length > 0) {
+            const queueIds = new Set(activeQueue.map((s) => s.id));
+            const filteredGorse = gorseSongs.filter((s) => !queueIds.has(s.id));
+            if (filteredGorse.length > 0) {
+              const updatedQueue = [...activeQueue, ...filteredGorse];
+              setQueue(updatedQueue);
+              queueRef.current = updatedQueue;
+              gorseAdded = true;
+              setRecommendationSource('gorse');
+              console.log(`[RecSys] 🤖 Queue auto-extended by Gorse ML (${filteredGorse.length} songs)`);
+              if (!nextTrack) {
+                const newIdx = updatedQueue.findIndex((s) => s.id === currentActiveSong?.id);
+                if (newIdx !== -1 && newIdx < updatedQueue.length - 1) {
+                  nextTrack = updatedQueue[newIdx + 1];
+                }
+              }
+            }
+          }
+
+          // Fallback if Gorse is warming up with 0 items yet
+          if (!gorseAdded) {
+            const extended = await ClientRecommendationEngine.getNextRecommendations(
+              nextTrack || currentActiveSong,
+              activeQueue,
+              currentIndex !== -1 ? currentIndex : activeQueue.length - 1,
+              history
+            );
+            if (extended.length > activeQueue.length) {
+              setQueue(extended);
+              queueRef.current = extended;
+              setRecommendationSource('fallback');
+              console.log(`[RecSys] ⚡ Queue auto-extended by Smart Fallback (${extended.length - activeQueue.length} songs)`);
+              if (!nextTrack) {
+                const newIdx = extended.findIndex((s) => s.id === currentActiveSong?.id);
+                if (newIdx !== -1 && newIdx < extended.length - 1) {
+                  nextTrack = extended[newIdx + 1];
+                }
               }
             }
           }
@@ -1656,6 +1716,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (target) {
           saveStoredLikedSong(target).then((list) => setLikedSongsList(list)).catch(() => {});
           ClientRecommendationEngine.recordAction(target, 'like', 1.0, durationRef.current);
+          recordGorseFeedback(userIdRef.current || 'guest', target, 'like');
           if (userIdRef.current) {
             addCloudLikedSong(userIdRef.current, target).catch(() => {});
           }
@@ -1770,6 +1831,23 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentIdx = activeQueue.findIndex((s) => s.id === currentActiveSong.id);
     const validIdx = currentIdx !== -1 ? currentIdx : 0;
     try {
+      // 1. First priority: Fresh Gorse ML Recommendations
+      const gorseRecs = await getGorseRecommendedSongs(userIdRef.current || 'guest', 20);
+      if (gorseRecs && gorseRecs.length > 0) {
+        const base = activeQueue.slice(0, validIdx + 1);
+        const baseIds = new Set(base.map((s) => s.id));
+        const filtered = gorseRecs.filter((s) => !baseIds.has(s.id));
+        if (filtered.length > 0) {
+          const newQueue = [...base, ...filtered];
+          setQueue(newQueue);
+          queueRef.current = newQueue;
+          setRecommendationSource('gorse');
+          console.log(`[RecSys] 🤖 Queue refreshed by Gorse ML (${filtered.length} songs)`);
+          return;
+        }
+      }
+
+      // 2. Fallback to client engine if Gorse has 0 items yet
       const refreshed = await ClientRecommendationEngine.getNextRecommendations(
         currentActiveSong,
         activeQueue.slice(0, validIdx + 1),
@@ -1778,6 +1856,8 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (refreshed && refreshed.length > 0) {
         setQueue(refreshed);
         queueRef.current = refreshed;
+        setRecommendationSource('fallback');
+        console.log(`[RecSys] ⚡ Queue refreshed by Smart Fallback Engine (${refreshed.length - validIdx - 1} songs)`);
       }
     } catch (err) {
       console.warn('Failed to refresh recommendation queue:', err);
@@ -1803,6 +1883,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isLyricsOpen,
     isQueueModalOpen,
     autoplayEnabled,
+    recommendationSource,
     crossfadeDuration,
     gaplessEnabled,
     playSong,
@@ -1837,7 +1918,7 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }), [
     currentSong, isPlaying, isLoading, queue, userQueue, history, shuffle,
     repeatMode, currentProfile, volume, likedSongIds, likedSongsList, isLyricsOpen,
-    isQueueModalOpen, autoplayEnabled, crossfadeDuration, gaplessEnabled,
+    isQueueModalOpen, autoplayEnabled, recommendationSource, crossfadeDuration, gaplessEnabled,
     setCrossfadeDuration, setGaplessEnabled,
     addToUserQueue, playNext, removeFromUserQueue,
     moveInUserQueue, clearUserQueue, openQueueModal, closeQueueModal, toggleAutoplay,

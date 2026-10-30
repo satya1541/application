@@ -86,10 +86,10 @@ export const SpotlightHeroCard: React.FC<SpotlightHeroCardProps> = React.memo(({
     if (isCurrentActive) {
       togglePlay();
     } else {
-      const contextPlaylist = songs && songs.length > 0 ? songs : [heroSong];
-      playSong(heroSong, contextPlaylist);
+      // Play hero song as seed so ML / smart recommendation engine builds a tailored queue
+      playSong(heroSong);
     }
-  }, [heroSong, isCurrentActive, isThisPlaying, togglePlay, playSong, songs]);
+  }, [heroSong, isCurrentActive, togglePlay, playSong]);
 
   const handleOpenDetails = useCallback(() => {
     if (heroSong) {

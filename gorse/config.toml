@@ -1,0 +1,104 @@
+# =============================================================================
+# GORSE RECOMMENDATION SYSTEM CONFIGURATION FOR SHORTY MUSIC
+# Database: Supabase PostgreSQL (Project Ref: zdutzfrojytvjxpdffsv)
+# Mode: gorse-in-one (Managed via PM2)
+# =============================================================================
+
+[database]
+# Primary data store for items, users, and feedback
+# Replace [YOUR_SUPABASE_DB_PASSWORD] with your actual Supabase database password
+# Found in: Supabase Dashboard -> Project Settings -> Database -> Database Password
+data_store = "postgres://postgres.zdutzfrojytvjxpdffsv:QA6vqxmCy223mkae@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+
+# Cache store for computed recommendations & similar songs
+cache_store = "postgres://postgres.zdutzfrojytvjxpdffsv:QA6vqxmCy223mkae@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres?sslmode=require"
+
+# Table prefix prevents any conflict with existing Shorty tables (profiles, user_liked_songs, etc.)
+table_prefix = "gorse_"
+
+[master]
+port = 8086
+http_port = 8088
+n_jobs = 2
+# Run model training job every 1 hour
+meta_fit_period = "60m"
+ranking_fit_period = "60m"
+
+[server]
+# Port for Shorty App REST API and Web Dashboard
+api_port = 8088
+default_n = 20
+# Optional API Key if you want to secure requests from the app
+api_key = ""
+
+# -----------------------------------------------------------------------------
+# RECOMMENDATION ALGORITHMS TUNED FOR MUSIC STREAMING
+# -----------------------------------------------------------------------------
+
+# Collaborative Filtering (Matrix Factorization)
+[recommend.collaborative]
+type = "mf"
+model_search_epoch = 100
+model_search_trials = 10
+enable_index = true
+index_setup_epoch = 10
+index_search_epoch = 100
+index_search_trials = 10
+
+# Item-to-Item Similarity (Powers "Start Song Radio" & "More Songs Like This")
+[[recommend.item-to-item]]
+name = "similar_items"
+type = "tags"
+
+[[recommend.item-to-item]]
+name = "collaborative"
+type = "users"
+
+# Non-personalized leaderboards (Popular / Trending songs)
+[[recommend.non-personalized]]
+name = "popular"
+score = "len(feedback)"
+
+# -----------------------------------------------------------------------------
+# RECFLOW PIPELINE: RANKER & FALLBACK (Connects all nodes into Recommend)
+# -----------------------------------------------------------------------------
+[recommend.ranker]
+type = "fm"
+recommenders = [
+  "collaborative",
+  "item-to-item/similar_items",
+  "item-to-item/collaborative",
+  "non-personalized/popular",
+  "latest"
+]
+
+[recommend.fallback]
+recommenders = [
+  "non-personalized/popular",
+  "latest"
+]
+
+# User-to-User Similarity (Powers "Users with similar music taste")
+[recommend.user_neighbors]
+neighbor_type = "auto"
+enable_index = true
+index_search_epoch = 100
+
+# Popularity / Trending ranking cache
+[recommend.popular]
+popular_window = "720h" # 30 days window for trending songs
+
+# -----------------------------------------------------------------------------
+# SHORTY MUSIC FEEDBACK SIGNALS & WEIGHTS
+# -----------------------------------------------------------------------------
+[recommend.data_source]
+# Positive signals recorded by Shorty player
+positive_feedback_types = ["like", "finish", "play"]
+
+# Negative / skip signals recorded by Shorty player
+read_feedback_types = ["skip"]
+
+# 0 means feedback and tracks never expire
+positive_feedback_ttl = 0
+item_ttl = 0
+
