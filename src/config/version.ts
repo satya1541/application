@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.12',
-  releaseTag: 'v5.2.12',
-  releaseName: 'Shorty v5.2.12: 3D Liquid Glass Folder Cards for Playlists catalog and integrate glass-folder-cards',
+  otaVersion: '5.2.13',
+  releaseTag: 'v5.2.13',
+  releaseName: 'Shorty v5.2.13: 3D Liquid Glass Coverflow homepage & Glass Folder Cards for Playlists',
   releaseDate: '2026-10-30',
   channel: 'preview',
 };
