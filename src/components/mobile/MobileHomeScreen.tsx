@@ -23,7 +23,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoInternetView } from '../common/NoInternetView';
 import { GreetingHeader } from '../feed/GreetingHeader';
-import { QuickAccessGrid } from '../feed/QuickAccessGrid';
+import { SpotlightHeroCard } from '../feed/SpotlightHeroCard';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -137,7 +137,7 @@ const HomeHeader = React.memo<HomeHeaderProps>(
     return (
       <View>
         <GreetingHeader onPressSettings={onOpenSettings} onPressYSearch={onOpenYSearch} />
-        <QuickAccessGrid songs={fallbackSongs} />
+        <SpotlightHeroCard songs={fallbackSongs} />
       </View>
     );
   }

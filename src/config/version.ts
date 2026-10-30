@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.8',
-  releaseTag: 'v5.2.8',
-  releaseName: 'Shorty v5.2.8: Strict artist/duration matching to eliminate fake lyrics & transparent active lyric highlight',
-  releaseDate: '2026-10-29',
+  otaVersion: '5.2.9',
+  releaseTag: 'v5.2.9',
+  releaseName: "Shorty v5.2.9: Apple Music 'Listen Now' Spotlight Hero replaces redundant quick access grid",
+  releaseDate: '2026-10-30',
   channel: 'preview',
 };
