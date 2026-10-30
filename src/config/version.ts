@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.13',
-  releaseTag: 'v5.2.13',
-  releaseName: 'Shorty v5.2.13: 3D Liquid Glass Coverflow homepage & Glass Folder Cards for Playlists',
+  otaVersion: '5.2.14',
+  releaseTag: 'v5.2.14',
+  releaseName: 'Shorty v5.2.14: Fix profile display name persistence across Google login & logout',
   releaseDate: '2026-10-30',
   channel: 'preview',
 };

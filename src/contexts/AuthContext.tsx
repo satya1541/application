@@ -111,30 +111,52 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // Fetch full user profile from Supabase profiles table
   const fetchUserProfile = useCallback(async (userId: string, userEmail?: string) => {
     try {
+      // 1. Instantly restore from local cache if available for 0ms visual continuity
+      let cached: UserProfile | null = null;
+      try {
+        const raw = await SafeStorage.getItem(`user_profile_${userId}`);
+        if (raw) {
+          cached = JSON.parse(raw);
+          if (cached && cached.display_name) {
+            setProfile(cached);
+          }
+        }
+      } catch {}
+
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
+      if (error && error.code !== 'PGRST116') {
+        console.warn('[AuthContext] Error fetching profile:', error);
+        return;
+      }
+
+      if (!data) {
         // If profile row doesn't exist yet, create a default one
+        const defaultName = cached?.display_name || (userEmail ? userEmail.split('@')[0] : 'Music Lover');
         const fallback: UserProfile = {
           id: userId,
           email: userEmail,
-          display_name: userEmail ? userEmail.split('@')[0] : 'Music Lover',
-          avatar_url: null,
-          bio: 'Vibing with Shorty 🎧',
-          streaming_quality: 'very_high',
-          preferred_languages: ['hindi', 'punjabi', 'english', 'sambalpuri'],
+          display_name: defaultName,
+          avatar_url: cached?.avatar_url || null,
+          bio: cached?.bio || 'Vibing with Shorty 🎧',
+          streaming_quality: cached?.streaming_quality || 'very_high',
+          preferred_languages: cached?.preferred_languages || ['hindi', 'punjabi', 'english', 'sambalpuri'],
+          updated_at: new Date().toISOString(),
         };
-        await supabase.from('profiles').upsert(fallback);
+        await supabase.from('profiles').upsert(fallback, { onConflict: 'id' });
         setProfile(fallback);
+        await SafeStorage.setItem(`user_profile_${userId}`, JSON.stringify(fallback)).catch(() => {});
         return;
       }
 
       if (data) {
-        setProfile(data as UserProfile);
+        const fullProfile = data as UserProfile;
+        setProfile(fullProfile);
+        await SafeStorage.setItem(`user_profile_${userId}`, JSON.stringify(fullProfile)).catch(() => {});
       }
     } catch (err) {
       console.warn('[AuthContext] Error fetching profile:', err);
@@ -351,27 +373,68 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const syncGoogleUserProfile = useCallback(async (authUser: User) => {
     try {
-      const googleName =
+      // 1. Check if profile already exists in Supabase profiles table
+      const { data: existingProfile, error: profileFetchError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .maybeSingle();
+
+      if (profileFetchError && profileFetchError.code !== 'PGRST116') {
+        console.warn('[AuthContext] Error querying existing profile during Google sync:', profileFetchError);
+      }
+
+      // 2. Check local persistent storage for any previously saved profile
+      let cachedProfile: UserProfile | null = null;
+      try {
+        const raw = await SafeStorage.getItem(`user_profile_${authUser.id}`);
+        if (raw) cachedProfile = JSON.parse(raw);
+      } catch {}
+
+      // Priority order for display name:
+      // A. Existing customized display_name in Supabase DB (e.g., user changed it to "Satya")
+      // B. Locally cached display_name (saved before logout)
+      // C. authUser.user_metadata?.custom_name (if updated via auth.updateUser)
+      // D. Fallback to Google Account name (full_name / name / email prefix) ONLY on first login
+      const existingSavedName =
+        (existingProfile?.display_name && existingProfile.display_name.trim()) ||
+        (cachedProfile?.display_name && cachedProfile.display_name.trim()) ||
+        (authUser.user_metadata?.custom_name && authUser.user_metadata.custom_name.trim());
+
+      const googleFallbackName =
         authUser.user_metadata?.full_name ||
         authUser.user_metadata?.name ||
         (authUser.email ? authUser.email.split('@')[0] : 'Music Lover');
-      const googleAvatar =
+
+      const finalDisplayName = existingSavedName || googleFallbackName;
+
+      // Similarly for avatar: preserve custom uploaded avatar if present
+      const finalAvatar =
+        existingProfile?.avatar_url ||
+        cachedProfile?.avatar_url ||
         authUser.user_metadata?.avatar_url ||
         authUser.user_metadata?.picture ||
         null;
 
-      const profilePayload: Partial<UserProfile> = {
+      const profilePayload: UserProfile = {
         id: authUser.id,
         email: authUser.email,
-        display_name: googleName,
-        avatar_url: googleAvatar,
+        display_name: finalDisplayName,
+        avatar_url: finalAvatar,
+        bio: existingProfile?.bio || cachedProfile?.bio || 'Vibing with Shorty 🎧',
+        streaming_quality: existingProfile?.streaming_quality || cachedProfile?.streaming_quality || 'very_high',
+        preferred_languages: existingProfile?.preferred_languages || cachedProfile?.preferred_languages || [
+          'hindi',
+          'punjabi',
+          'english',
+          'sambalpuri',
+        ],
+        updated_at: new Date().toISOString(),
       };
 
-      await supabase.from('profiles').upsert(profilePayload);
-      setProfile((prev) => ({
-        ...(prev || DEFAULT_GUEST_PROFILE),
-        ...profilePayload,
-      } as UserProfile));
+      await supabase.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+      setProfile(profilePayload);
+      await SafeStorage.setItem(`user_profile_${authUser.id}`, JSON.stringify(profilePayload)).catch(() => {});
     } catch (err) {
       console.warn('[AuthContext] Error syncing Google user profile:', err);
     }
@@ -816,19 +879,42 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (!isSupabaseConfigured()) return {};
 
       try {
-        const payload = {
+        const payload: UserProfile = {
+          ...(profile || DEFAULT_GUEST_PROFILE),
+          id: user.id,
+          email: user.email,
           ...updates,
           updated_at: new Date().toISOString(),
         };
 
+        // 1. Optimistic state & local disk cache update immediately
+        setProfile(payload);
+        await SafeStorage.setItem(`user_profile_${user.id}`, JSON.stringify(payload)).catch(() => {});
+
+        // 2. Persist to Supabase profiles table using upsert (handles both insert and update safely)
         const { error } = await supabase
           .from('profiles')
-          .update(payload)
-          .eq('id', user.id);
+          .upsert(payload, { onConflict: 'id' });
 
-        if (error) return { error: error.message };
+        if (error) {
+          console.warn('[AuthContext] Error updating profiles table:', error);
+          return { error: error.message };
+        }
 
-        setProfile((prev) => (prev ? { ...prev, ...updates } : null));
+        // 3. Keep Supabase auth user_metadata in sync so auth session itself holds the custom name
+        if (updates.display_name) {
+          await supabase.auth
+            .updateUser({
+              data: {
+                display_name: updates.display_name,
+                custom_name: updates.display_name,
+                full_name: updates.display_name,
+                ...(updates.avatar_url ? { avatar_url: updates.avatar_url } : {}),
+              },
+            })
+            .catch((e) => console.warn('[AuthContext] updateUser metadata warning:', e));
+        }
+
         return {};
       } catch (err: any) {
         return { error: err?.message || 'Failed to update profile.' };
