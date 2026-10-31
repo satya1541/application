@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.17',
-  releaseTag: 'v5.2.17',
-  releaseName: 'Shorty v5.2.17: Thermal & CPU performance fix, unpaused animation pause on minimize, I/O throttle, and parallel RecSys resolution',
+  otaVersion: '5.2.18',
+  releaseTag: 'v5.2.18',
+  releaseName: 'Shorty v5.2.18: Apple Music-grade native vector badges, frosted glass capsules, and refined iconography',
   releaseDate: '2026-10-31',
   channel: 'preview',
 };

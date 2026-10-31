@@ -17,9 +17,6 @@ import { SourceBadge } from '../common/SourceBadge';
 import { SongActionController } from '@/services/songActionController';
 import { useAppTheme } from '@/contexts/ThemeContext';
 
-const LOSSLESS_LOGO_WHITE = require('@/assets/images/lossless_white.png');
-const LOSSLESS_LOGO_BLACK = require('@/assets/images/lossless_black.png');
-const OPUS_LOGO_CIRCLE = require('@/assets/images/opus_circle.png');
 
 const CARD_WIDTH_SONG = 148;
 const CARD_WIDTH_ARTIST = 132;
@@ -407,22 +404,19 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
           {onToggleSource && activeSource && (
             <View style={styles.sourceToggleRow}>
               <View style={[styles.toggleBtn, activeSource === 'jiosaavn' && styles.activeLosslessBtn]}>
-                <ExpoImage
-                  source={activeSource === 'jiosaavn' ? LOSSLESS_LOGO_BLACK : LOSSLESS_LOGO_WHITE}
-                  style={[styles.toggleLosslessLogo, activeSource !== 'jiosaavn' && styles.inactiveToggleLogo]}
-                  contentFit="contain"
-                />
+                <View style={styles.toggleContent}>
+                  <View style={styles.waveformContainer}>
+                    <View style={[styles.waveBar, { height: 4.5, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                    <View style={[styles.waveBar, { height: 8.5, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                    <View style={[styles.waveBar, { height: 6, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                  </View>
+                  <Text style={[styles.toggleText, activeSource === 'jiosaavn' && styles.activeLosslessText]}>Lossless</Text>
+                </View>
               </View>
               <View style={[styles.toggleBtn, activeSource === 'youtube' && styles.activeOpusBtn]}>
-                <View style={styles.toggleOpusContent}>
-                  <ExpoImage
-                    source={OPUS_LOGO_CIRCLE}
-                    style={[styles.toggleOpusIcon, activeSource !== 'youtube' && styles.inactiveToggleLogo]}
-                    contentFit="contain"
-                  />
-                  <Text style={[styles.toggleText, activeSource === 'youtube' && styles.activeOpusText]}>
-                    Opus
-                  </Text>
+                <View style={styles.toggleContent}>
+                  <Ionicons name="play" size={7.5} color={activeSource === 'youtube' ? '#FF4E45' : '#64748B'} style={{ marginRight: 3 }} />
+                  <Text style={[styles.toggleText, activeSource === 'youtube' && styles.activeOpusText]}>Opus</Text>
                 </View>
               </View>
             </View>
@@ -465,15 +459,14 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
               onPress={() => onToggleSource('jiosaavn')}
               activeOpacity={0.8}
             >
-              <ExpoImage
-                source={activeSource === 'jiosaavn' ? LOSSLESS_LOGO_BLACK : LOSSLESS_LOGO_WHITE}
-                style={[
-                  styles.toggleLosslessLogo,
-                  activeSource !== 'jiosaavn' && styles.inactiveToggleLogo,
-                ]}
-                contentFit="contain"
-                transition={80}
-              />
+              <View style={styles.toggleContent}>
+                <View style={styles.waveformContainer}>
+                  <View style={[styles.waveBar, { height: 4.5, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                  <View style={[styles.waveBar, { height: 8.5, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                  <View style={[styles.waveBar, { height: 6, backgroundColor: activeSource === 'jiosaavn' ? '#22C55E' : '#64748B' }]} />
+                </View>
+                <Text style={[styles.toggleText, activeSource === 'jiosaavn' && styles.activeLosslessText]}>Lossless</Text>
+              </View>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -484,24 +477,9 @@ export const MediaCarousel: React.FC<MediaCarouselProps> = memo(({
               onPress={() => onToggleSource('youtube')}
               activeOpacity={0.8}
             >
-              <View style={styles.toggleOpusContent}>
-                <ExpoImage
-                  source={OPUS_LOGO_CIRCLE}
-                  style={[
-                    styles.toggleOpusIcon,
-                    activeSource !== 'youtube' && styles.inactiveToggleLogo,
-                  ]}
-                  contentFit="contain"
-                  transition={80}
-                />
-                <Text
-                  style={[
-                    styles.toggleText,
-                    activeSource === 'youtube' && styles.activeOpusText,
-                  ]}
-                >
-                  Opus
-                </Text>
+              <View style={styles.toggleContent}>
+                <Ionicons name="play" size={7.5} color={activeSource === 'youtube' ? '#FF4E45' : '#64748B'} style={{ marginRight: 3 }} />
+                <Text style={[styles.toggleText, activeSource === 'youtube' && styles.activeOpusText]}>Opus</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -565,56 +543,58 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    padding: 3,
+    padding: 2.5,
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    gap: 3,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    gap: 2,
   },
   toggleBtn: {
     paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: 14,
     backgroundColor: 'transparent',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 26,
+    minHeight: 25,
   },
   activeLosslessBtn: {
-    backgroundColor: '#1DB954',
+    backgroundColor: 'rgba(34, 197, 94, 0.18)',
+    borderColor: 'rgba(34, 197, 94, 0.42)',
   },
   activeOpusBtn: {
-    backgroundColor: '#ff4e45',
+    backgroundColor: 'rgba(255, 78, 69, 0.18)',
+    borderColor: 'rgba(255, 78, 69, 0.42)',
   },
-  toggleLosslessLogo: {
-    width: 48,
-    height: 12.5,
-  },
-  toggleOpusContent: {
+  toggleContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
   },
-  toggleOpusIcon: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+    gap: 1.5,
   },
-  inactiveToggleLogo: {
-    opacity: 0.5,
+  waveBar: {
+    width: 1.5,
+    borderRadius: 1,
   },
   toggleText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#999999',
+    color: '#94A3B8',
+    letterSpacing: 0.3,
   },
   activeLosslessText: {
-    color: '#000000',
-    fontWeight: '800',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   activeOpusText: {
-    color: '#ffffff',
-    fontWeight: '800',
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   carouselContainer: {
     paddingLeft: 16,

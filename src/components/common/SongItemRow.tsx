@@ -183,7 +183,7 @@ export const SongItemRow: React.FC<SongItemRowProps> = memo(({
         <Ionicons
           name={liked ? 'heart' : 'heart-outline'}
           size={19}
-          color={liked ? '#EF4444' : '#94A3B8'}
+          color={liked ? '#FF2D55' : 'rgba(255, 255, 255, 0.45)'}
         />
       </TouchableOpacity>
 
@@ -201,7 +201,7 @@ export const SongItemRow: React.FC<SongItemRowProps> = memo(({
         activeOpacity={0.7}
         accessibilityLabel="More options"
       >
-        <Ionicons name="ellipsis-vertical" size={16} color="#94A3B8" />
+        <Ionicons name="ellipsis-horizontal" size={17} color="rgba(255, 255, 255, 0.45)" />
       </TouchableOpacity>
     </TouchableOpacity>
   );

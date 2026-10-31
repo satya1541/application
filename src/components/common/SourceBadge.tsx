@@ -1,112 +1,167 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Image as ExpoImage } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { AudioSourcePlatform } from '@/types/music';
-
-const LOSSLESS_LOGO_WHITE = require('@/assets/images/lossless_white.png');
-const OPUS_LOGO_CIRCLE = require('@/assets/images/opus_circle.png');
 
 interface SourceBadgeProps {
   source?: AudioSourcePlatform | string;
   quality?: string;
   size?: 'small' | 'medium';
+  isExplicit?: boolean;
 }
 
+/**
+ * Apple Music / Tidal Studio-Grade Native Vector Audio Badge
+ * 100% Vector rendering with sub-pixel hairlineWidth borders, optical typography,
+ * and zero raster image scaling artifacts.
+ */
 export const SourceBadge: React.FC<SourceBadgeProps> = ({
   source = 'jiosaavn',
   quality = 'Lossless',
   size = 'small',
+  isExplicit = false,
 }) => {
-  const isOpus = source === 'youtube' || quality === 'Opus' || quality === '160kbps';
-  const isLossless = !isOpus && (source === 'jiosaavn' || quality === 'Lossless' || quality === '320kbps');
   const isMedium = size === 'medium';
+  const qLower = (quality || '').toLowerCase();
+  const isOpus = source === 'youtube' || qLower.includes('opus') || qLower.includes('160kbps');
+  const isHiRes = qLower.includes('hi-res') || qLower.includes('24-bit') || qLower.includes('96khz');
+  const isDolby = qLower.includes('dolby') || qLower.includes('atmos') || qLower.includes('spatial');
 
-  if (isLossless) {
+  // 1. Dolby Atmos / Spatial Audio Badge
+  if (isDolby) {
     return (
-      <View style={[styles.badgeBase, styles.losslessBadge, isMedium && styles.badgeMedium]}>
-        <ExpoImage
-          source={LOSSLESS_LOGO_WHITE}
-          style={[styles.losslessLogo, isMedium && styles.losslessLogoMedium]}
-          contentFit="contain"
-          transition={100}
+      <View style={[styles.badgeBase, styles.dolbyBadge, isMedium && styles.badgeMedium]}>
+        <Ionicons
+          name="radio"
+          size={isMedium ? 9 : 7.5}
+          color="#38BDF8"
+          style={styles.iconMargin}
         />
+        <Text style={[styles.badgeText, styles.dolbyText, isMedium && styles.badgeTextMedium]}>
+          ATMOS
+        </Text>
       </View>
     );
   }
 
+  // 2. Hi-Res Lossless (Gold / Amber Accent)
+  if (isHiRes) {
+    return (
+      <View style={[styles.badgeBase, styles.hiResBadge, isMedium && styles.badgeMedium]}>
+        <View style={styles.waveformContainer}>
+          <View style={[styles.waveBar, { height: isMedium ? 6.5 : 5, backgroundColor: '#F59E0B' }]} />
+          <View style={[styles.waveBar, { height: isMedium ? 10.5 : 8.5, backgroundColor: '#F59E0B' }]} />
+          <View style={[styles.waveBar, { height: isMedium ? 8 : 6, backgroundColor: '#F59E0B' }]} />
+        </View>
+        <Text style={[styles.badgeText, styles.hiResText, isMedium && styles.badgeTextMedium]}>
+          HI-RES
+        </Text>
+      </View>
+    );
+  }
+
+  // 3. Lossless (Apple Emerald Waveform Mark)
+  if (!isOpus) {
+    return (
+      <View style={[styles.badgeBase, styles.losslessBadge, isMedium && styles.badgeMedium]}>
+        <View style={styles.waveformContainer}>
+          <View style={[styles.waveBar, { height: isMedium ? 6 : 4.5, backgroundColor: '#22C55E' }]} />
+          <View style={[styles.waveBar, { height: isMedium ? 10 : 8, backgroundColor: '#22C55E' }]} />
+          <View style={[styles.waveBar, { height: isMedium ? 7.5 : 5.5, backgroundColor: '#22C55E' }]} />
+        </View>
+        <Text style={[styles.badgeText, styles.losslessText, isMedium && styles.badgeTextMedium]}>
+          LOSSLESS
+        </Text>
+      </View>
+    );
+  }
+
+  // 4. Opus / YouTube (Coral Red Micro-Play)
   return (
     <View style={[styles.badgeBase, styles.opusBadge, isMedium && styles.badgeMedium]}>
-      <ExpoImage
-        source={OPUS_LOGO_CIRCLE}
-        style={[styles.opusLogo, isMedium && styles.opusLogoMedium]}
-        contentFit="contain"
-        transition={100}
+      <Ionicons
+        name="play"
+        size={isMedium ? 8 : 6.5}
+        color="#FF4E45"
+        style={styles.iconMargin}
       />
-      <Text style={[styles.opusText, isMedium && styles.opusTextMedium]}>OPUS</Text>
+      <Text style={[styles.badgeText, styles.opusText, isMedium && styles.badgeTextMedium]}>
+        OPUS
+      </Text>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   badgeBase: {
-    borderRadius: 4,
-    borderWidth: 0.8,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.35,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  losslessBadge: {
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
-    borderColor: 'rgba(29, 185, 84, 0.55)',
-    paddingHorizontal: 4.5,
-    paddingVertical: 2,
-  },
-  losslessLogo: {
-    width: 42,
-    height: 11,
-  },
-  losslessLogoMedium: {
-    width: 55,
-    height: 14,
-  },
-  opusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3.5,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
-    borderColor: 'rgba(255, 78, 69, 0.55)',
-    paddingHorizontal: 4.5,
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 5,
     paddingVertical: 1.5,
   },
-  opusLogo: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  opusLogoMedium: {
-    width: 15,
-    height: 15,
-    borderRadius: 7.5,
-  },
-  opusText: {
-    fontSize: 8.5,
-    fontWeight: '800',
-    color: '#ffffff',
-    letterSpacing: 0.5,
-  },
-  opusTextMedium: {
-    fontSize: 10,
-    letterSpacing: 0.6,
-  },
   badgeMedium: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
     borderRadius: 5,
   },
+  // Apple Music Lossless: Subtle translucent emerald dark glass
+  losslessBadge: {
+    backgroundColor: 'rgba(20, 32, 25, 0.78)',
+    borderColor: 'rgba(34, 197, 94, 0.38)',
+  },
+  // Apple Music Hi-Res: Subtle amber glass
+  hiResBadge: {
+    backgroundColor: 'rgba(36, 28, 16, 0.82)',
+    borderColor: 'rgba(245, 158, 11, 0.42)',
+  },
+  // Opus / YouTube: Subtle coral dark glass
+  opusBadge: {
+    backgroundColor: 'rgba(34, 20, 22, 0.8)',
+    borderColor: 'rgba(255, 78, 69, 0.36)',
+  },
+  // Dolby Atmos: Subtle spatial blue glass
+  dolbyBadge: {
+    backgroundColor: 'rgba(16, 28, 38, 0.82)',
+    borderColor: 'rgba(56, 189, 248, 0.4)',
+  },
+  // Optical 3-bar miniature audio waveform
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 4,
+    gap: 1.5,
+  },
+  waveBar: {
+    width: 1.5,
+    borderRadius: 1,
+  },
+  iconMargin: {
+    marginRight: 3,
+  },
+  badgeText: {
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    includeFontPadding: false,
+  },
+  badgeTextMedium: {
+    fontSize: 9.5,
+    letterSpacing: 0.9,
+  },
+  losslessText: {
+    color: '#E5E7EB',
+  },
+  hiResText: {
+    color: '#FDE68A',
+  },
+  opusText: {
+    color: '#E5E7EB',
+  },
+  dolbyText: {
+    color: '#BAE6FD',
+  },
 });
-

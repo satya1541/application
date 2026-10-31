@@ -532,7 +532,7 @@ export const FullPlayerModal: React.FC = () => {
                 <Ionicons
                   name={liked ? 'heart' : 'heart-outline'}
                   size={26}
-                  color={liked ? '#FF3366' : '#ffffff'}
+                  color={liked ? '#FF2D55' : 'rgba(255, 255, 255, 0.75)'}
                 />
               </TouchableOpacity>
             </View>
