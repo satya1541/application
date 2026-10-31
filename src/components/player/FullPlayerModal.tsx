@@ -383,6 +383,7 @@ export const FullPlayerModal: React.FC = () => {
           artistName={currentSong?.artist}
           gradientColors={currentSong?.gradientColors}
           isPlaying={isPlaying}
+          isVisible={visible}
         >
           <SafeAreaView style={[styles.safeArea, isTablet && { maxWidth: isTabletLandscape ? 1160 : 620, alignSelf: 'center', width: '100%' }]}>
             <View>

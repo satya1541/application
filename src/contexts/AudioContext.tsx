@@ -850,9 +850,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         notifyProgressListeners(positionRef.current, durationRef.current);
       }
 
-      if (status.playing) {
-        persistPlaybackState(false);
-      }
 
       const songDuration = status.duration || durationRef.current || 0;
       const timeLeft = songDuration > 0 ? songDuration - currentPos : 999;
@@ -1373,15 +1370,19 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Pre-warm upcoming tracks in queue in the background
+  // Pre-warm upcoming tracks in queue in the background (debounced 3.5s to avoid competing with audio start & UI)
   useEffect(() => {
     if (!currentSong || queue.length === 0) return;
     const currentIdx = queue.findIndex((s) => s.id === currentSong.id);
-    if (currentIdx !== -1) {
+    if (currentIdx === -1) return;
+
+    const timer = setTimeout(() => {
       const targetQuality = authContext?.profile?.streaming_quality || 'very_high';
-      prewarmUpcomingQueue(queue, currentIdx, targetQuality);
-    }
-  }, [currentSong?.id, queue]);
+      prewarmUpcomingQueue(queueRef.current, currentIdx, targetQuality);
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [currentSong?.id]);
 
   const playSong = async (song: Song, newQueue?: Song[], autoOpenFullPlayer: boolean = true) => {
     // 0. Duration-aware signal for outgoing track

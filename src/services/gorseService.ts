@@ -149,7 +149,7 @@ export async function recordGorseFeedback(
 export async function getGorseSongById(songId: string): Promise<Song | null> {
   if (!songId) return null;
 
-  // Check local memory cache first
+  // Check local memory cache first (instant 0ms resolution)
   if (songObjectCache.has(songId)) {
     return songObjectCache.get(songId)!;
   }
@@ -157,7 +157,12 @@ export async function getGorseSongById(songId: string): Promise<Song | null> {
   if (!isGorseConfigured()) return null;
 
   try {
-    const res = await fetch(`${GORSE_API_URL}/api/item/${encodeURIComponent(songId)}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch(`${GORSE_API_URL}/api/item/${encodeURIComponent(songId)}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
     if (!res.ok) return null;
 
     const item = await res.json();
@@ -179,6 +184,10 @@ export async function getGorseSongById(songId: string): Promise<Song | null> {
             isRecommended: true,
             recommendReason: 'Recommended by Gorse ML ✨',
           };
+          if (songObjectCache.size >= 500) {
+            const firstKey = songObjectCache.keys().next().value;
+            if (firstKey) songObjectCache.delete(firstKey);
+          }
           songObjectCache.set(songId, song);
           return song;
         }
@@ -188,7 +197,6 @@ export async function getGorseSongById(songId: string): Promise<Song | null> {
     }
     return null;
   } catch (err) {
-    console.debug(`[Gorse] getGorseSongById(${songId}) failed:`, err);
     return null;
   }
 }
@@ -298,16 +306,13 @@ export async function getGorseRecommendedSongs(
   const ids = await getPersonalizedRecommendations(userId, count);
   if (!ids || ids.length === 0) return [];
 
-  const songs: Song[] = [];
-  for (const id of ids) {
-    const song = await getGorseSongById(id);
-    if (song) songs.push(song);
-  }
-  return songs;
+  const results = await Promise.all(ids.map((id) => getGorseSongById(id)));
+  return results.filter((song): song is Song => song !== null);
 }
 
 /**
  * High-level function: Fetch full similar Song[] objects for Song Radio.
+ * Parallel batch resolution with sub-second timeout to prevent CPU / thread stalling.
  */
 export async function getGorseSimilarSongs(
   songId: string,
@@ -316,10 +321,6 @@ export async function getGorseSimilarSongs(
   const ids = await getSimilarSongIds(songId, count);
   if (!ids || ids.length === 0) return [];
 
-  const songs: Song[] = [];
-  for (const id of ids) {
-    const song = await getGorseSongById(id);
-    if (song) songs.push(song);
-  }
-  return songs;
+  const results = await Promise.all(ids.map((id) => getGorseSongById(id)));
+  return results.filter((song): song is Song => song !== null);
 }

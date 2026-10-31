@@ -165,12 +165,14 @@ export interface AmbientPlayerBackgroundProps {
   artistName?: string;
   gradientColors?: [string, string];
   isPlaying?: boolean;
+  isVisible?: boolean;
   children: React.ReactNode;
 }
 
 export const AmbientPlayerBackground: React.FC<AmbientPlayerBackgroundProps> = ({
   coverUrl,
   isPlaying = false,
+  isVisible = true,
   children,
 }) => {
   // Active and previous covers for silky smooth 750ms crossfading between tracks
@@ -222,9 +224,9 @@ export const AmbientPlayerBackground: React.FC<AmbientPlayerBackgroundProps> = (
     }
   }, [coverUrl, activeCover, crossfadeAnim]);
 
-  // Start continuous 60fps native-driven ambient floating animations ONLY when active
+  // Start continuous 60fps native-driven ambient floating animations ONLY when active & visible
   useEffect(() => {
-    if (!isAppActive) return;
+    if (!isAppActive || !isVisible) return;
     // 1. Orb 1 organic figure-8 drift
     const orb1Loop = Animated.loop(
       Animated.sequence([
@@ -339,11 +341,11 @@ export const AmbientPlayerBackground: React.FC<AmbientPlayerBackgroundProps> = (
       orb2Loop.stop();
       if (rotationLoop) rotationLoop.stop();
     };
-  }, [isAppActive, orb1Translate, orb1Scale, orb2Translate, orb2Scale, rotationAnim]);
+  }, [isAppActive, isVisible, orb1Translate, orb1Scale, orb2Translate, orb2Scale, rotationAnim]);
 
-  // Breathing pulse animation when music is actively playing
+  // Breathing pulse animation when music is actively playing and visible
   useEffect(() => {
-    if (!isAppActive) return;
+    if (!isAppActive || !isVisible) return;
     let pulseLoop: Animated.CompositeAnimation | null = null;
     if (isPlaying) {
       pulseLoop = Animated.loop(
@@ -374,7 +376,7 @@ export const AmbientPlayerBackground: React.FC<AmbientPlayerBackgroundProps> = (
     return () => {
       if (pulseLoop) pulseLoop.stop();
     };
-  }, [isPlaying, pulseAnim]);
+  }, [isAppActive, isVisible, isPlaying, pulseAnim]);
 
   const rotationInterpolate = rotationAnim.interpolate({
     inputRange: [0, 1],
