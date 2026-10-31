@@ -65,7 +65,7 @@ export const SpotlightHeroCard: React.FC<SpotlightHeroCardProps> = React.memo(({
         heroSong: recentHistory[0].song,
         mode: 'jump_back_in' as const,
         badgeLabel: 'JUMP BACK IN',
-        badgeIcon: 'sparkles',
+        badgeIcon: 'time-outline',
       };
     }
 
@@ -74,7 +74,7 @@ export const SpotlightHeroCard: React.FC<SpotlightHeroCardProps> = React.memo(({
     return {
       heroSong: topSong,
       mode: 'chart_topper' as const,
-      badgeLabel: "TODAY'S #1 SPOTLIGHT",
+      badgeLabel: 'TOP CHARTS #1',
       badgeIcon: 'flame',
     };
   }, [currentSong, isPlaying, recentHistory, songs]);

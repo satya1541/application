@@ -557,9 +557,8 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
             onPress={onOpenYSearch}
             activeOpacity={0.8}
           >
-            <Ionicons name="logo-youtube" size={18} color="#FF0000" style={{ marginRight: 6 }} />
+            <Ionicons name="logo-youtube" size={16} color="#FF0000" style={{ marginRight: 6 }} />
             <Text style={styles.ySearchHeaderText}>YSearch</Text>
-            <Ionicons name="sparkles" size={12} color="#f59e0b" style={{ marginLeft: 5 }} />
           </TouchableOpacity>
         </View>
 
@@ -842,11 +841,11 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
                     const isTop3 = artist.rank <= 3;
                     const rankBadgeColor =
                       artist.rank === 1
-                        ? '#F59E0B'
+                        ? '#FBBF24'
                         : artist.rank === 2
-                        ? '#94A3B8'
+                        ? '#E2E8F0'
                         : artist.rank === 3
-                        ? '#D97706'
+                        ? '#FDBA74'
                         : '#64748B';
 
                     return (
@@ -901,11 +900,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ onNaviga
                             cachePolicy="memory-disk"
                             transition={150}
                           />
-                          {artist.rank === 1 && (
-                            <View style={styles.topArtistTrophy}>
-                              <Ionicons name="trophy" size={9} color="#000000" />
-                            </View>
-                          )}
+                          {/* Rank indicated by typographic chart styling */}
                         </View>
 
                         {/* Artist Info */}
@@ -1024,17 +1019,17 @@ const styles = StyleSheet.create({
   ySearchHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 0, 0, 0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 0, 0, 0.45)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
   },
   ySearchHeaderText: {
     color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12.5,
+    fontWeight: '700',
     letterSpacing: -0.2,
   },
   profileBtn: {

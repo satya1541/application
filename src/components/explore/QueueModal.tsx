@@ -101,7 +101,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
           <TouchableOpacity
             style={[
               styles.autoplayPill,
-              autoplayEnabled && [styles.autoplayPillActive, { backgroundColor: accent.hex, borderColor: accent.hex }],
+              autoplayEnabled && styles.autoplayPillActive,
             ]}
             onPress={toggleAutoplay}
             activeOpacity={0.8}
@@ -109,7 +109,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
             <Ionicons
               name={autoplayEnabled ? 'infinite' : 'infinite-outline'}
               size={15}
-              color={autoplayEnabled ? '#000000' : '#888888'}
+              color={autoplayEnabled ? '#34C759' : '#888888'}
             />
             <Text
               style={[styles.autoplayText, autoplayEnabled && styles.autoplayTextActive]}
@@ -252,21 +252,21 @@ export const QueueModal: React.FC<QueueModalProps> = ({
 
                 {recommendationSource === 'gorse' && (
                   <View style={styles.recsysBadgeGorse}>
-                    <Ionicons name="sparkles" size={10} color="#22C55E" style={{ marginRight: 3 }} />
-                    <Text style={styles.recsysBadgeGorseText}>GORSE ML</Text>
+                    <Ionicons name="disc-outline" size={10} color="#34C759" style={{ marginRight: 3 }} />
+                    <Text style={styles.recsysBadgeGorseText}>FOR YOU</Text>
                   </View>
                 )}
 
                 {recommendationSource === 'fallback' && (
                   <View style={styles.recsysBadgeFallback}>
-                    <Ionicons name="flash-outline" size={10} color="#60A5FA" style={{ marginRight: 3 }} />
-                    <Text style={styles.recsysBadgeFallbackText}>SMART DIVERSE</Text>
+                    <Ionicons name="compass-outline" size={10} color="#60A5FA" style={{ marginRight: 3 }} />
+                    <Text style={styles.recsysBadgeFallbackText}>DISCOVERY</Text>
                   </View>
                 )}
 
                 {recommendationSource === 'playlist' && (
                   <View style={styles.recsysBadgePlaylist}>
-                    <Ionicons name="albums-outline" size={10} color="#A7A7A7" style={{ marginRight: 3 }} />
+                    <Ionicons name="albums-outline" size={10} color="#94A3B8" style={{ marginRight: 3 }} />
                     <Text style={styles.recsysBadgePlaylistText}>PLAYLIST</Text>
                   </View>
                 )}
@@ -353,17 +353,17 @@ const styles = StyleSheet.create({
   autoplayPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#222222',
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 10,
+    paddingVertical: 5.5,
     borderRadius: 14,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#333333',
+    gap: 5,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   autoplayPillActive: {
-    backgroundColor: '#1DB954',
-    borderColor: '#1DB954',
+    backgroundColor: 'rgba(52, 199, 89, 0.16)',
+    borderColor: 'rgba(52, 199, 89, 0.38)',
   },
   autoplayText: {
     color: '#888888',
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   autoplayTextActive: {
-    color: '#000000',
+    color: '#FFFFFF',
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -546,8 +546,8 @@ const styles = StyleSheet.create({
   recsysBadgeGorse: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    borderColor: 'rgba(34, 197, 94, 0.32)',
+    backgroundColor: 'rgba(52, 199, 89, 0.12)',
+    borderColor: 'rgba(52, 199, 89, 0.32)',
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 6,
     paddingVertical: 1.5,
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   recsysBadgeGorseText: {
-    color: '#22C55E',
+    color: '#34C759',
     fontSize: 8.5,
     fontWeight: '700',
     letterSpacing: 0.8,
@@ -581,17 +581,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    borderWidth: 1,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
     marginLeft: 6,
   },
   recsysBadgePlaylistText: {
-    color: '#D1D5DB',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    color: '#94A3B8',
+    fontSize: 8.5,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
 });

@@ -423,7 +423,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="sparkles" size={16} color={accent.hex} style={{ marginRight: 6 }} />
+                  <Ionicons name="color-palette-outline" size={16} color={accent.hex} style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>Moods & Moments</Text>
                 </View>
                 <Text style={styles.sectionBadge}>11 Categories</Text>
@@ -2033,17 +2033,18 @@ const styles = StyleSheet.create({
   ySearchHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 0, 0, 0.15)',
-    paddingHorizontal: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 0, 0, 0.4)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.14)',
   },
   ySearchHeaderText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 12.5,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
   ySearchExploreBadge: {
     flexDirection: 'row',
