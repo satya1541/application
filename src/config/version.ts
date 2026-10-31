@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.18',
-  releaseTag: 'v5.2.18',
-  releaseName: 'Shorty v5.2.18: Apple Music-grade native vector badges, frosted glass capsules, and refined iconography',
+  otaVersion: '5.2.19',
+  releaseTag: 'v5.2.19',
+  releaseName: 'Shorty v5.2.19: Apple Music spatial mood cards, frosted rank badges, and editorial eyebrow tags',
   releaseDate: '2026-10-31',
   channel: 'preview',
 };

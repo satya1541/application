@@ -17,6 +17,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { getListeningHistory, HistoryEntry } from '@/services/historyService';
 import { INITIAL_SONGS } from '@/services/musicCatalog';
 import { TrackDetailModal } from './TrackDetailModal';
+import { SourceBadge } from '../common/SourceBadge';
 import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface SpotlightHeroCardProps {
@@ -181,8 +182,8 @@ export const SpotlightHeroCard: React.FC<SpotlightHeroCardProps> = React.memo(({
                 >
                   <Ionicons
                     name={badgeIcon as any}
-                    size={11}
-                    color={mode === 'chart_topper' ? '#F59E0B' : '#FFFFFF'}
+                    size={10}
+                    color={mode === 'chart_topper' ? '#F59E0B' : 'rgba(255, 255, 255, 0.85)'}
                   />
                   <Text
                     style={[
@@ -194,12 +195,12 @@ export const SpotlightHeroCard: React.FC<SpotlightHeroCardProps> = React.memo(({
                   </Text>
                 </View>
 
-                {heroSong.quality && (
-                  <View style={styles.qualityPill}>
-                    <Text style={styles.qualityPillText}>
-                      {heroSong.quality.toUpperCase()}
-                    </Text>
-                  </View>
+                {heroSong.source && (
+                  <SourceBadge
+                    source={heroSong.source}
+                    quality={heroSong.quality}
+                    size="small"
+                  />
                 )}
               </View>
 
@@ -335,23 +336,23 @@ const styles = StyleSheet.create({
   editorialBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 7,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   chartBadge: {
-    backgroundColor: 'rgba(245, 158, 11, 0.16)',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
     borderColor: 'rgba(245, 158, 11, 0.35)',
   },
   editorialBadgeText: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.6,
+    fontSize: 8.5,
+    fontWeight: '700',
+    color: 'rgba(255, 255, 255, 0.9)',
+    letterSpacing: 0.8,
   },
   qualityPill: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',

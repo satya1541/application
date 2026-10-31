@@ -423,7 +423,7 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
             <View style={styles.sectionBlock}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionTitleWithIcon}>
-                  <Ionicons name="heart" size={18} color="#ffa4c5" style={{ marginRight: 6 }} />
+                  <Ionicons name="sparkles" size={16} color={accent.hex} style={{ marginRight: 6 }} />
                   <Text style={styles.sectionTitle}>Moods & Moments</Text>
                 </View>
                 <Text style={styles.sectionBadge}>11 Categories</Text>
@@ -433,18 +433,24 @@ export const MobileExploreScreen: React.FC<MobileExploreScreenProps> = ({ onNavi
                 {moods.map((mood) => (
                   <TouchableOpacity
                     key={mood.text}
-                    style={[styles.moodCard, { backgroundColor: surfaceHex }]}
-                    activeOpacity={0.75}
+                    style={styles.moodCard}
+                    activeOpacity={0.8}
                     onPress={() => handleOpenCategory(mood)}
                   >
-                    <View style={[styles.moodStripe, { backgroundColor: mood.color }]} />
+                    <LinearGradient
+                      colors={[`${mood.color}24`, 'rgba(255, 255, 255, 0.02)']}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={StyleSheet.absoluteFill}
+                    />
                     <View style={styles.moodContent}>
-                      <Ionicons
-                        name={(mood.icon as any) || 'musical-note'}
-                        size={20}
-                        color={mood.color}
-                        style={{ marginBottom: 4 }}
-                      />
+                      <View style={[styles.moodIconCircle, { backgroundColor: `${mood.color}15`, borderColor: `${mood.color}35` }]}>
+                        <Ionicons
+                          name={(mood.icon as any) || 'musical-notes-outline'}
+                          size={16}
+                          color={mood.color}
+                        />
+                      </View>
                       <Text style={styles.moodTitle} numberOfLines={1}>
                         {mood.text}
                       </Text>
@@ -1349,25 +1355,22 @@ const styles = StyleSheet.create({
   },
   moodCard: {
     width: (SCREEN_WIDTH - CARD_PADDING * 2 - 20) / 3,
-    height: 84,
-    borderRadius: GLASS_THEME.radii.card,
-    backgroundColor: GLASS_THEME.colors.glassSurfaceDefault,
-    borderWidth: 1,
-    borderColor: GLASS_THEME.colors.borderDefault,
+    height: 86,
+    borderRadius: 14,
+    backgroundColor: '#0F131C',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     overflow: 'hidden',
     position: 'relative',
   },
-  moodIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  moodIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
-  },
-  moodStripe: {
-    height: 4,
-    width: '100%',
   },
   moodContent: {
     flex: 1,
@@ -1376,11 +1379,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   moodTitle: {
-    color: GLASS_THEME.colors.textPrimary,
-    fontSize: 11.5,
-    fontWeight: '600',
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: -0.1,
+    letterSpacing: -0.2,
   },
   songsList: {
     gap: 8,
