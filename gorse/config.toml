@@ -51,7 +51,7 @@ name = "similar_items"
 type = "tags"
 
 [[recommend.item-to-item]]
-name = "collaborative"
+name = "similar_users"
 type = "users"
 
 # Non-personalized leaderboards (Popular / Trending songs)
@@ -67,7 +67,7 @@ type = "fm"
 recommenders = [
   "collaborative",
   "item-to-item/similar_items",
-  "item-to-item/collaborative",
+  "item-to-item/similar_users",
   "non-personalized/popular",
   "latest"
 ]
@@ -92,11 +92,14 @@ popular_window = "720h" # 30 days window for trending songs
 # SHORTY MUSIC FEEDBACK SIGNALS & WEIGHTS
 # -----------------------------------------------------------------------------
 [recommend.data_source]
-# Positive signals recorded by Shorty player
-positive_feedback_types = ["like", "finish", "play"]
+# Positive signals recorded when user actually enjoyed the song (listened >80% or liked/favorited)
+positive_feedback_types = ["like", "finish", "favorite", "playlist_add"]
 
-# Negative / skip signals recorded by Shorty player
-read_feedback_types = ["skip"]
+# Read signals: Track was played / exposed or skipped (prevents immediate repetitive recommendations)
+read_feedback_types = ["play", "skip"]
+
+# Explicit negative signals (only if user explicitly disliked)
+negative_feedback_types = ["dislike"]
 
 # 0 means feedback and tracks never expire
 positive_feedback_ttl = 0

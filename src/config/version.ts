@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.15',
-  releaseTag: 'v5.2.15',
-  releaseName: 'Shorty v5.2.15: Gorse ML RecSys integration, Queue Engine Badge & Artist Diversity Capping',
-  releaseDate: '2026-10-30',
+  otaVersion: '5.2.16',
+  releaseTag: 'v5.2.16',
+  releaseName: 'Shorty v5.2.16: Duration-aware listening signals, enriched regional metadata, and Gorse feedback tuning',
+  releaseDate: '2026-10-31',
   channel: 'preview',
 };

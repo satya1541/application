@@ -7,7 +7,7 @@ import { Song } from '@/types/music';
 
 const GORSE_API_URL = process.env.EXPO_PUBLIC_GORSE_API_URL || 'https://reco.thynxai.cloud';
 
-export type GorseFeedbackType = 'play' | 'like' | 'skip' | 'finish';
+export type GorseFeedbackType = 'play' | 'like' | 'skip' | 'finish' | 'favorite' | 'dislike';
 
 interface GorseItemPayload {
   ItemId: string;
@@ -53,20 +53,27 @@ export async function syncSongToGorse(song: Song): Promise<void> {
   syncedItemsCache.add(songId);
 
   try {
+    const rawLang = String((song as any).language || 'Hindi').trim();
+    const langFormatted = rawLang.charAt(0).toUpperCase() + rawLang.slice(1).toLowerCase();
+
+    // Broad categories for coarse filtering
     const categories: string[] = [
+      'music',
+      langFormatted.toLowerCase(),
       song.source || 'jiosaavn',
-      (song as any).language || 'general',
     ].filter(Boolean);
 
+    // Individual artist tokens for tag similarity
     const individualArtists = (song.artist || '')
       .split(/[,/&|]/)
       .map((a) => a.trim())
       .filter(Boolean);
 
+    // Detailed metadata labels for Factorization Machine ranker & tag matching
     const labels: string[] = [
       ...individualArtists,
+      langFormatted,
       song.quality || 'Lossless',
-      (song as any).language || 'Hindi',
       song.album,
     ].filter(Boolean) as string[];
 
@@ -80,7 +87,7 @@ export async function syncSongToGorse(song: Song): Promise<void> {
       streamUrl: song.streamUrl || '',
       quality: song.quality || 'Lossless',
       source: song.source || 'jiosaavn',
-      language: (song as any).language || 'Hindi',
+      language: langFormatted,
     };
 
     const payload: GorseItemPayload = {

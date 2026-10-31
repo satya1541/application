@@ -1384,7 +1384,22 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [currentSong?.id, queue]);
 
   const playSong = async (song: Song, newQueue?: Song[], autoOpenFullPlayer: boolean = true) => {
-    // Record behavioral listening signal
+    // 0. Duration-aware signal for outgoing track
+    const outgoingSong = currentSongRef.current;
+    if (outgoingSong && outgoingSong.id !== song.id) {
+      const outPos = positionRef.current;
+      const outDur = durationRef.current;
+      const outProg = outDur > 0 ? outPos / outDur : 0;
+      if (outProg >= 0.80 || (outDur > 0 && outPos >= outDur - 25)) {
+        ClientRecommendationEngine.recordAction(outgoingSong, 'complete', 1.0, outPos);
+        recordGorseFeedback(userIdRef.current || 'guest', outgoingSong, 'finish');
+      } else if (outPos >= 10) {
+        ClientRecommendationEngine.recordAction(outgoingSong, 'skip', outProg, outPos);
+        recordGorseFeedback(userIdRef.current || 'guest', outgoingSong, 'skip');
+      }
+    }
+
+    // Record behavioral listening signal for incoming song (exposure/read)
     ClientRecommendationEngine.recordAction(song, 'play', 0, 0);
     recordGorseFeedback(userIdRef.current || 'guest', song, 'play');
 
@@ -1495,22 +1510,34 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const currentActiveSong = currentSongRef.current;
     if (!currentActiveSong && activeQueue.length === 0 && activeUserQueue.length === 0) return;
 
-    // Record user playback in history if >= 30s
+    // Record user playback with duration-aware feedback
     if (currentActiveSong) {
-      const prog = durationRef.current > 0 ? positionRef.current / durationRef.current : 0;
-      ClientRecommendationEngine.recordAction(currentActiveSong, 'skip', prog, positionRef.current);
-      recordGorseFeedback(userIdRef.current || 'guest', currentActiveSong, 'skip');
-      if (positionRef.current >= 10) {
+      const pos = positionRef.current;
+      const dur = durationRef.current;
+      const prog = dur > 0 ? pos / dur : 0;
+
+      if (prog >= 0.80 || (dur > 0 && pos >= dur - 25)) {
+        // User listened to >80% of track before skipping outro -> positive finish signal
+        ClientRecommendationEngine.recordAction(currentActiveSong, 'complete', 1.0, pos);
+        recordGorseFeedback(userIdRef.current || 'guest', currentActiveSong, 'finish');
+      } else if (pos >= 10) {
+        // Genuine skip (listened for 10s-80%) -> record as skip (read)
+        ClientRecommendationEngine.recordAction(currentActiveSong, 'skip', prog, pos);
+        recordGorseFeedback(userIdRef.current || 'guest', currentActiveSong, 'skip');
+      }
+      // Under 10s: weak/accidental tap. Do not send negative feedback to Gorse.
+
+      if (pos >= 10) {
         recordListeningHistory(
           userIdRef.current,
           currentActiveSong,
-          Math.round(positionRef.current)
+          Math.round(pos)
         ).catch(() => {});
       }
       recordHistoryEntry(
         currentActiveSong,
-        positionRef.current,
-        durationRef.current,
+        pos,
+        dur,
         userIdRef.current
       ).catch(() => {});
     }
