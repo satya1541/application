@@ -725,13 +725,33 @@ export async function fetchYouTubePlaylistVideos(
           let thumb = '';
           let duration = '';
           let channelId: string | undefined;
+          let itemAvatar = '';
 
           if (it.lockupViewModel) {
             const lockup = it.lockupViewModel;
             videoId = lockup.contentId || '';
-            title = lockup.metadata?.lockupMetadataViewModel?.title?.content || '';
-            const rows = lockup.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows || [];
+            const meta = lockup.metadata?.lockupMetadataViewModel;
+            title = meta?.title?.content || '';
+            const rows = meta?.metadata?.contentMetadataViewModel?.metadataRows || [];
             author = rows[0]?.metadataParts?.[0]?.text?.content || 'YouTube Music';
+
+            // Extract real channel avatar directly from lockup metadata image
+            const avatarSources =
+              meta?.image?.avatarViewModel?.image?.sources ||
+              meta?.image?.avatarStackViewModel?.avatars?.[0]?.avatarViewModel?.image?.sources ||
+              [];
+            const bestAvatar = avatarSources[avatarSources.length - 1]?.url || avatarSources[0]?.url || '';
+            if (bestAvatar) {
+              itemAvatar = bestAvatar.startsWith('//') ? `https:${bestAvatar}` : bestAvatar;
+            }
+
+            // Extract channelId if present
+            const itStr = JSON.stringify(it);
+            const ucMatch = itStr.match(/UC[a-zA-Z0-9_-]{22}/);
+            if (ucMatch) {
+              channelId = ucMatch[0];
+            }
+
             const sources =
               lockup.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources ||
               lockup.contentImage?.thumbnailViewModel?.image?.sources ||
@@ -752,15 +772,28 @@ export async function fetchYouTubePlaylistVideos(
             const thumbs = pv.thumbnail?.thumbnails || [];
             thumb = thumbs[thumbs.length - 1]?.url || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
             duration = pv.lengthText?.simpleText || '';
+
+            const chThumb =
+              pv.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails?.slice(-1)[0]?.url ||
+              pv.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.avatar?.thumbnails?.slice(-1)[0]?.url;
+            if (chThumb) {
+              itemAvatar = chThumb.startsWith('//') ? `https:${chThumb}` : chThumb;
+            }
           }
 
           if (videoId && title && !videoId.startsWith('RDCL') && !videoId.startsWith('PL') && !seenIds.has(videoId)) {
             seenIds.add(videoId);
             const rank = index + 1;
             const channelAvatar =
+              itemAvatar ||
               (channelId && getChannelAvatar(channelId)) ||
               (author && getChannelAvatar(author)) ||
               undefined;
+
+            if (channelAvatar) {
+              if (channelId) setCachedChannelAvatar(channelId, channelAvatar);
+              if (author) setCachedChannelAvatar(author, channelAvatar);
+            }
 
             results.push({
               id: videoId,
@@ -926,10 +959,18 @@ export async function fetchTrendingYouTubeVideos(
         });
 
         if (results.length > 0) {
+          // Fast race enrichment so top cards have real avatars on first render
+          try {
+            await Promise.race([
+              enrichVideosWithChannelAvatars(results),
+              new Promise((resolve) => setTimeout(resolve, 1200)),
+            ]);
+          } catch {}
+
           trendingCache.set(categoryId, { timestamp: Date.now(), videos: results });
           persistTrendingChartsCache();
 
-          // Non-blocking background avatar enrichment so charts return in <200ms
+          // Non-blocking background avatar enrichment for any remaining channels
           enrichVideosWithChannelAvatars(results)
             .then((enriched) => {
               trendingCache.set(categoryId, { timestamp: Date.now(), videos: enriched });

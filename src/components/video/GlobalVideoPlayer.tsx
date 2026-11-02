@@ -22,6 +22,7 @@ import { useVideoPlayerContext, useVideoProgress, type VideoPlayerMode } from '@
 import { useAudio } from '@/contexts/AudioContext';
 import { FullscreenVideoOverlay } from '../player/FullscreenVideoOverlay';
 import { YouTubeVideoSearchResult } from '@/services/youtubeVideoSearchService';
+import { getChannelAvatar, subscribeAvatarUpdates } from '@/services/youtubeAvatarService';
 
 
 const formatTime = (seconds: number): string => {
@@ -472,13 +473,35 @@ export const GlobalVideoPlayer: React.FC = () => {
     return playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
   }, [relatedVideos, playlist, activeVideo]);
 
+  const [liveAvatar, setLiveAvatar] = useState<string | undefined>(undefined);
+
+  // Subscribe to live avatar updates for the active video
+  useEffect(() => {
+    const unsub = subscribeAvatarUpdates((key, url) => {
+      if (!url) return;
+      const lower = key.toLowerCase().trim();
+      const match =
+        (activeVideo?.channelId && activeVideo.channelId.toLowerCase().trim() === lower) ||
+        (activeVideo?.author && activeVideo.author.toLowerCase().trim() === lower);
+      if (match) {
+        setLiveAvatar(url);
+      }
+    });
+    return unsub;
+  }, [activeVideo?.channelId, activeVideo?.author]);
+
   const displayChannelAvatar = useMemo(() => {
-    const avatar = activeChannelMeta?.channelAvatar || activeVideo?.channelAvatar;
+    const avatar =
+      liveAvatar ||
+      activeChannelMeta?.channelAvatar ||
+      activeVideo?.channelAvatar ||
+      (activeVideo?.channelId && getChannelAvatar(activeVideo.channelId)) ||
+      (activeVideo?.author && getChannelAvatar(activeVideo.author));
     if (avatar && !avatar.includes('ui-avatars.com')) {
       return avatar;
     }
     return undefined;
-  }, [activeChannelMeta?.channelAvatar, activeVideo?.channelAvatar]);
+  }, [liveAvatar, activeChannelMeta?.channelAvatar, activeVideo?.channelAvatar, activeVideo?.channelId, activeVideo?.author]);
 
   const displayChannelTitle = useMemo(() => {
     if (activeChannelMeta?.channelTitle) {

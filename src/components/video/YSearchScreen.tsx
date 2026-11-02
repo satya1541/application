@@ -47,6 +47,7 @@ import {
   getSyncCachedUserFeed,
   getSyncCachedLikedVideos,
 } from '@/services/youtubeUserFeedService';
+import { subscribeAvatarUpdates } from '@/services/youtubeAvatarService';
 import { Song } from '@/types/music';
 import { useAuth } from '@/contexts/AuthContext';
 import { YouTubeChannelScreen } from './YouTubeChannelScreen';
@@ -438,6 +439,48 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       return () => clearTimeout(prewarmTimer);
     }
   }, [selectedCategory, getInstantCachedCategoryVideos, loadTrending]);
+
+  // Real-time listener for channel avatar resolution (0ms instant card updates)
+  useEffect(() => {
+    const unsubscribe = subscribeAvatarUpdates((channelIdOrName, avatarUrl) => {
+      if (!avatarUrl) return;
+      const lowerKey = channelIdOrName.toLowerCase().trim();
+
+      setTrendingVideos((prev) => {
+        let changed = false;
+        const updated = prev.map((v) => {
+          if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
+          const match =
+            (v.channelId && v.channelId.toLowerCase().trim() === lowerKey) ||
+            (v.author && v.author.toLowerCase().trim() === lowerKey);
+          if (match) {
+            changed = true;
+            return { ...v, channelAvatar: avatarUrl };
+          }
+          return v;
+        });
+        return changed ? updated : prev;
+      });
+
+      setVideos((prev) => {
+        let changed = false;
+        const updated = prev.map((v) => {
+          if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
+          const match =
+            (v.channelId && v.channelId.toLowerCase().trim() === lowerKey) ||
+            (v.author && v.author.toLowerCase().trim() === lowerKey);
+          if (match) {
+            changed = true;
+            return { ...v, channelAvatar: avatarUrl };
+          }
+          return v;
+        });
+        return changed ? updated : prev;
+      });
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Instant category selection handler: 0ms UI switch with immediate cache swap
   const handleSelectCategory = useCallback(

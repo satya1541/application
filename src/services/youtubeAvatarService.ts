@@ -15,6 +15,57 @@ const inFlightRequests = new Map<string, Promise<string | null>>();
 let isHydrated = false;
 let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Pre-seeded high-confidence channel avatars for top music channels
+const PRE_SEEDED_CHANNEL_AVATARS: Record<string, string> = {
+  't-series': 'https://yt3.googleusercontent.com/VunTf0NzCeboiPjbesBdnQuxaF3Lja7UGRbBGQAWRJgMSTj9TTLO3pS1X9qPOJGCNnmPrXeY=s160-c-k-c0x00ffffff-no-rj',
+  'ucq-fj5jknlsuf-mwsy4_bra': 'https://yt3.googleusercontent.com/VunTf0NzCeboiPjbesBdnQuxaF3Lja7UGRbBGQAWRJgMSTj9TTLO3pS1X9qPOJGCNnmPrXeY=s160-c-k-c0x00ffffff-no-rj',
+  'universal music india': 'https://yt3.ggpht.com/5pa9Oo9X_K2KtF-N0vlBWWKft7lbc13P6Q_UvY6VWGrb8CthqAC6jRcLSdjP-Jw340P0xBpJLdM=s68-c-k-c0x00ffffff-no-rj',
+  'ucye6oz0mg46s362lwargvca': 'https://yt3.ggpht.com/5pa9Oo9X_K2KtF-N0vlBWWKft7lbc13P6Q_UvY6VWGrb8CthqAC6jRcLSdjP-Jw340P0xBpJLdM=s68-c-k-c0x00ffffff-no-rj',
+  'zee music company': 'https://yt3.googleusercontent.com/zGnrFUqmF6Xp2tM8ecG9sVXyHjJUrqa7GnNV_kATAdAvSwfgIg7693GURHASA7C6OPK3YmGZ=s160-c-k-c0x00ffffff-no-rj',
+  'ucffbwnve3yf62-tvxktyhqg': 'https://yt3.googleusercontent.com/zGnrFUqmF6Xp2tM8ecG9sVXyHjJUrqa7GnNV_kATAdAvSwfgIg7693GURHASA7C6OPK3YmGZ=s160-c-k-c0x00ffffff-no-rj',
+  'tips official': 'https://yt3.googleusercontent.com/zSQrmF-U4JwDv9QalTMOuEEWjGDjM9LvNgahKGGks6WKhe6XEOFf2C4ErQ-1-J9o2wFrHtIw5A=s160-c-k-c0x00ffffff-no-rj',
+  'ucjrdmfodv1i2k8n9ok_v21w': 'https://yt3.googleusercontent.com/zSQrmF-U4JwDv9QalTMOuEEWjGDjM9LvNgahKGGks6WKhe6XEOFf2C4ErQ-1-J9o2wFrHtIw5A=s160-c-k-c0x00ffffff-no-rj',
+  'yrf': 'https://yt3.googleusercontent.com/ukiLOR2xcRjb4vEfv_DvcTU-5WgGyhwL3w1jQxvTBVdMbBlrtDopxKwg8Scs66C8nFgXu-cl=s160-c-k-c0x00ffffff-no-rj',
+  'ucbtlwn10nocu4wdzlf1jmoa': 'https://yt3.googleusercontent.com/ukiLOR2xcRjb4vEfv_DvcTU-5WgGyhwL3w1jQxvTBVdMbBlrtDopxKwg8Scs66C8nFgXu-cl=s160-c-k-c0x00ffffff-no-rj',
+  't-series telugu': 'https://yt3.googleusercontent.com/ytc/AIdro_kD2EVax1FrVyRDkBXzK7H5PcE0b9osnB0gW2AAdFk0O8g=s160-c-k-c0x00ffffff-no-rj',
+  'ucnjjcn5frgroep5_n45zleq': 'https://yt3.googleusercontent.com/ytc/AIdro_kD2EVax1FrVyRDkBXzK7H5PcE0b9osnB0gW2AAdFk0O8g=s160-c-k-c0x00ffffff-no-rj',
+  'saregama telugu': 'https://yt3.googleusercontent.com/mG5ub0FWhw4hjEp_ymZXP6RwlvthP1heLzEbNT0tU5_N7EJClEz-OtNP9H_rXEDm6qFaE8Wq0Lo=s160-c-k-c0x00ffffff-no-rj',
+  'uc68nkdrlbll0vj7ilvklmmg': 'https://yt3.googleusercontent.com/mG5ub0FWhw4hjEp_ymZXP6RwlvthP1heLzEbNT0tU5_N7EJClEz-OtNP9H_rXEDm6qFaE8Wq0Lo=s160-c-k-c0x00ffffff-no-rj',
+  'saregama tamil': 'https://yt3.googleusercontent.com/kOATVFtx9eqbZZNBjMJykcZoP3DeNh4OR8Vwimn8141yI6--rPJH5hcHMrnwmCHjYE5iJcLzLBo=s160-c-k-c0x00ffffff-no-rj',
+  'uczee67jnecuvjerrywp3gpq': 'https://yt3.googleusercontent.com/kOATVFtx9eqbZZNBjMJykcZoP3DeNh4OR8Vwimn8141yI6--rPJH5hcHMrnwmCHjYE5iJcLzLBo=s160-c-k-c0x00ffffff-no-rj',
+  'think music india': 'https://yt3.googleusercontent.com/p4TyMutaPSAFZNzFWSGHM0rbT59hPYuAhvMFfpi6uyNJyRLeUG5og5x91rtE6vnb5Vq1TcWT=s160-c-k-c0x00ffffff-no-rj',
+  'uclbdvvreihwzrl6kwueuysa': 'https://yt3.googleusercontent.com/p4TyMutaPSAFZNzFWSGHM0rbT59hPYuAhvMFfpi6uyNJyRLeUG5og5x91rtE6vnb5Vq1TcWT=s160-c-k-c0x00ffffff-no-rj',
+  'divo music': 'https://yt3.googleusercontent.com/BRBb0oHWBSOkytQGM8WBEyreTmMmVz1-PIiezO_hebimbVXRSMzvbbRHiejgYam9q9BrLxgSgA=s160-c-k-c0x00ffffff-no-rj',
+  'uc5rggthst-cque8v0bj1bwg': 'https://yt3.googleusercontent.com/BRBb0oHWBSOkytQGM8WBEyreTmMmVz1-PIiezO_hebimbVXRSMzvbbRHiejgYam9q9BrLxgSgA=s160-c-k-c0x00ffffff-no-rj',
+  'sony music south': 'https://yt3.googleusercontent.com/JyW58ywuh93rxLy6AwiOJ99HsYrh3iODK49mZ2BkxKkREQT1_pGy2rx7PZ3o1ROhhNc4i03d24Y=s160-c-k-c0x00ffffff-no-rj',
+  'ucn4remqktwbq6-oewbd4pca': 'https://yt3.googleusercontent.com/JyW58ywuh93rxLy6AwiOJ99HsYrh3iODK49mZ2BkxKkREQT1_pGy2rx7PZ3o1ROhhNc4i03d24Y=s160-c-k-c0x00ffffff-no-rj',
+  'times music': 'https://yt3.googleusercontent.com/ytc/AIdro_n1We8gVmJKcW3QZeRXExfx7_agawO6uINGhE_XRRcU6IY=s160-c-k-c0x00ffffff-no-rj',
+  'uco07fumrtn1w4axcu4j_udw': 'https://yt3.googleusercontent.com/ytc/AIdro_n1We8gVmJKcW3QZeRXExfx7_agawO6uINGhE_XRRcU6IY=s160-c-k-c0x00ffffff-no-rj',
+};
+
+// Seed fast memory cache with top channels immediately
+Object.entries(PRE_SEEDED_CHANNEL_AVATARS).forEach(([k, v]) => {
+  avatarCache.set(k, v);
+});
+
+export type AvatarUpdateListener = (channelIdOrName: string, avatarUrl: string) => void;
+const avatarListeners = new Set<AvatarUpdateListener>();
+
+export function subscribeAvatarUpdates(listener: AvatarUpdateListener): () => void {
+  avatarListeners.add(listener);
+  return () => {
+    avatarListeners.delete(listener);
+  };
+}
+
+function notifyAvatarUpdated(channelIdOrName: string, avatarUrl: string) {
+  avatarListeners.forEach((fn) => {
+    try {
+      fn(channelIdOrName, avatarUrl);
+    } catch {}
+  });
+}
+
 /**
  * Initialize cache from SafeStorage on load
  */
@@ -72,9 +123,13 @@ export function setCachedChannelAvatar(channelIdOrName: string, avatarUrl: strin
   if (!channelIdOrName || !avatarUrl || avatarUrl.includes('ui-avatars.com')) return;
   const cleanUrl = avatarUrl.startsWith('//') ? `https:${avatarUrl}` : avatarUrl;
   const key = channelIdOrName.trim();
+  const existing = avatarCache.get(key);
   avatarCache.set(key, cleanUrl);
   avatarCache.set(key.toLowerCase(), cleanUrl);
   schedulePersist();
+  if (existing !== cleanUrl) {
+    notifyAvatarUpdated(key, cleanUrl);
+  }
 }
 
 /**

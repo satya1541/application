@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.27',
-  releaseTag: 'v5.2.27',
-  releaseName: 'Shorty v5.2.27: Extract all 94 official YouTube Music channel playlists into filters with My Feed, Liked, and Trending',
+  otaVersion: '5.2.28',
+  releaseTag: 'v5.2.28',
+  releaseName: 'Shorty v5.2.28: Fix real YouTube channel logo resolution across all playlists and trending charts',
   releaseDate: '2026-11-02',
   channel: 'preview',
 };
