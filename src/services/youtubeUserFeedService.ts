@@ -95,15 +95,73 @@ export async function refreshGoogleYouTubeToken(): Promise<string | null> {
   return null;
 }
 
+let inMemoryUserFeed: YouTubeVideoSearchResult[] = [];
+let inMemoryLikedFeed: YouTubeVideoSearchResult[] = [];
+let isUserFeedHydrated = false;
+
+async function hydrateUserFeeds(): Promise<void> {
+  if (isUserFeedHydrated) return;
+  try {
+    const [uRaw, lRaw] = await Promise.all([
+      SafeStorage.getItem(CACHED_USER_FEED_KEY),
+      SafeStorage.getItem(CACHED_LIKED_FEED_KEY),
+    ]);
+    if (uRaw) {
+      const parsed = JSON.parse(uRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryUserFeed = parsed;
+        userFeedCache.set('user_feed_30', { timestamp: Date.now(), videos: parsed });
+        userFeedCache.set('user_feed_50', { timestamp: Date.now(), videos: parsed });
+      }
+    }
+    if (lRaw) {
+      const parsed = JSON.parse(lRaw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryLikedFeed = parsed;
+        userFeedCache.set('liked_30', { timestamp: Date.now(), videos: parsed });
+        userFeedCache.set('liked_50', { timestamp: Date.now(), videos: parsed });
+      }
+    }
+  } catch {} finally {
+    isUserFeedHydrated = true;
+  }
+}
+hydrateUserFeeds().catch(() => {});
+
+/**
+ * Synchronous instant retrieval of cached user feed (0ms perceived latency).
+ */
+export function getSyncCachedUserFeed(): YouTubeVideoSearchResult[] | null {
+  const mem = userFeedCache.get('user_feed_30')?.videos;
+  if (mem && mem.length > 0) return mem;
+  if (inMemoryUserFeed && inMemoryUserFeed.length > 0) return inMemoryUserFeed;
+  return null;
+}
+
+/**
+ * Synchronous instant retrieval of cached liked videos (0ms perceived latency).
+ */
+export function getSyncCachedLikedVideos(): YouTubeVideoSearchResult[] | null {
+  const mem = userFeedCache.get('liked_30')?.videos;
+  if (mem && mem.length > 0) return mem;
+  if (inMemoryLikedFeed && inMemoryLikedFeed.length > 0) return inMemoryLikedFeed;
+  return null;
+}
+
 /**
  * Get previously cached User Feed videos from persistent storage (0ms offline/startup load).
  */
 export async function getCachedUserFeed(): Promise<YouTubeVideoSearchResult[]> {
+  const sync = getSyncCachedUserFeed();
+  if (sync && sync.length > 0) return sync;
   try {
     const raw = await SafeStorage.getItem(CACHED_USER_FEED_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryUserFeed = parsed;
+        return parsed;
+      }
     }
   } catch {}
   return [];
@@ -113,11 +171,16 @@ export async function getCachedUserFeed(): Promise<YouTubeVideoSearchResult[]> {
  * Get previously cached Liked Videos from persistent storage (0ms offline/startup load).
  */
 export async function getCachedLikedVideos(): Promise<YouTubeVideoSearchResult[]> {
+  const sync = getSyncCachedLikedVideos();
+  if (sync && sync.length > 0) return sync;
   try {
     const raw = await SafeStorage.getItem(CACHED_LIKED_FEED_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        inMemoryLikedFeed = parsed;
+        return parsed;
+      }
     }
   } catch {}
   return [];
@@ -701,6 +764,7 @@ export async function fetchUserSubscriptionsFeed(
         };
       });
 
+      inMemoryUserFeed = formattedVideos;
       userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: formattedVideos });
       SafeStorage.setItem(CACHED_USER_FEED_KEY, JSON.stringify(formattedVideos)).catch(() => {});
       return formattedVideos;
@@ -947,7 +1011,9 @@ export async function fetchUserLikedVideos(
   }
 
   if (finalVideos.length > 0) {
+    inMemoryLikedFeed = finalVideos;
     userFeedCache.set(cacheKey, { timestamp: Date.now(), videos: finalVideos });
+    SafeStorage.setItem(CACHED_LIKED_FEED_KEY, JSON.stringify(finalVideos)).catch(() => {});
     return { videos: finalVideos };
   }
 

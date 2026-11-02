@@ -32,6 +32,8 @@ import {
   resolveYouTubeStandaloneVideoStream,
   fetchYouTubeSearchSuggestions,
   fetchTrendingYouTubeVideos,
+  getCachedTrendingYouTubeVideos,
+  prefetchAllTrendingCategories,
   TRENDING_CATEGORIES,
   YouTubeVideoSearchResult,
 } from '@/services/youtubeVideoSearchService';
@@ -42,6 +44,8 @@ import {
   saveLocalLikedVideo,
   removeLocalLikedVideo,
   getStoredLocalLikedVideos,
+  getSyncCachedUserFeed,
+  getSyncCachedLikedVideos,
 } from '@/services/youtubeUserFeedService';
 import { Song } from '@/types/music';
 import { useAuth } from '@/contexts/AuthContext';
@@ -109,6 +113,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const [userFeedNotConnected, setUserFeedNotConnected] = useState(false);
   const [userFeedError, setUserFeedError] = useState<string | null>(null);
   const [userFeedEmpty, setUserFeedEmpty] = useState(false);
+
+  // Instant local memory cache & request sequence guard for 0ms filter switching
+  const categoryVideosCacheRef = useRef<Map<string, YouTubeVideoSearchResult[]>>(new Map());
+  const loadTrendingReqIdRef = useRef(0);
+  const hasMountedTrendingRef = useRef(false);
   const [selectedChannel, setSelectedChannel] = useState<{
     channelId: string;
     title: string;
@@ -307,13 +316,37 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Load Trending videos from official InnerTube Charts or User Feed
-  const loadTrending = useCallback(async (catId: string, forceRefresh = false) => {
-    setIsLoadingTrending(true);
+  // Synchronous lookup for cached videos across in-component map and services
+  const getInstantCachedCategoryVideos = useCallback((catId: string): YouTubeVideoSearchResult[] | null => {
+    // 1. Session memory cache
+    const sessionCached = categoryVideosCacheRef.current.get(catId);
+    if (sessionCached && sessionCached.length > 0) return sessionCached;
+
+    // 2. Service-level sync caches
+    if (catId === 'my_feed') {
+      const feed = getSyncCachedUserFeed();
+      if (feed && feed.length > 0) return feed;
+    } else if (catId === 'liked') {
+      const liked = getSyncCachedLikedVideos();
+      if (liked && liked.length > 0) return liked;
+    } else {
+      const charts = getCachedTrendingYouTubeVideos(catId, 30);
+      if (charts && charts.length > 0) return charts;
+    }
+    return null;
+  }, []);
+
+  // Load Trending videos from official InnerTube Charts or User Feed with race-condition guard
+  const loadTrending = useCallback(async (catId: string, forceRefresh = false, isBackgroundRevalidate = false) => {
+    const thisReqId = ++loadTrendingReqIdRef.current;
+    if (!isBackgroundRevalidate) {
+      setIsLoadingTrending(true);
+    }
     setUserFeedNeedsReauth(false);
     setUserFeedNotConnected(false);
     setUserFeedError(null);
     setUserFeedEmpty(false);
+
     try {
       // Handle user feed categories
       if (catId === 'my_feed' || catId === 'liked') {
@@ -324,13 +357,18 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           feedResult = await fetchUserLikedVideos(30, forceRefresh);
         }
 
+        if (thisReqId !== loadTrendingReqIdRef.current) return;
+
         if (feedResult.videos && feedResult.videos.length > 0) {
           setTrendingVideos(feedResult.videos);
+          categoryVideosCacheRef.current.set(catId, feedResult.videos);
           setUserFeedEmpty(false);
           setUserFeedNeedsReauth(false);
           setUserFeedError(null);
         } else {
-          setTrendingVideos([]);
+          if (!isBackgroundRevalidate) {
+            setTrendingVideos([]);
+          }
           if (feedResult.notConnected) {
             setUserFeedNotConnected(true);
           } else if (feedResult.requiresReauth) {
@@ -344,16 +382,26 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         }
       } else {
         const results = await fetchTrendingYouTubeVideos(catId, 30, forceRefresh);
-        setTrendingVideos(results);
+        if (thisReqId !== loadTrendingReqIdRef.current) return;
+
+        if (results && results.length > 0) {
+          setTrendingVideos(results);
+          categoryVideosCacheRef.current.set(catId, results);
+        }
       }
     } catch (err: any) {
+      if (thisReqId !== loadTrendingReqIdRef.current) return;
       console.warn('loadTrending failed:', err);
       if (catId === 'my_feed' || catId === 'liked') {
         setUserFeedError(err?.message || 'Failed to load personal feed');
-        setTrendingVideos([]);
+        if (!isBackgroundRevalidate) {
+          setTrendingVideos([]);
+        }
       }
     } finally {
-      setIsLoadingTrending(false);
+      if (thisReqId === loadTrendingReqIdRef.current) {
+        setIsLoadingTrending(false);
+      }
     }
   }, []);
 
@@ -363,28 +411,67 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       if (query.trim()) {
         await performSearch(query);
       } else {
-        await loadTrending(selectedCategory, true);
+        await loadTrending(selectedCategory, true, false);
       }
     } finally {
       setIsRefreshing(false);
     }
   }, [query, performSearch, loadTrending, selectedCategory]);
 
+  // Initial mount: load active category (with instant 0ms disk cache) and pre-warm other charts
   useEffect(() => {
-    loadTrending(selectedCategory);
-  }, [loadTrending, selectedCategory]);
+    if (!hasMountedTrendingRef.current) {
+      hasMountedTrendingRef.current = true;
+      const initialCached = getInstantCachedCategoryVideos(selectedCategory);
+      if (initialCached && initialCached.length > 0) {
+        setTrendingVideos(initialCached);
+        categoryVideosCacheRef.current.set(selectedCategory, initialCached);
+        setIsLoadingTrending(false);
+        loadTrending(selectedCategory, false, true);
+      } else {
+        loadTrending(selectedCategory, false, false);
+      }
 
+      // Pre-warm other charts in the background after initial render settles
+      const prewarmTimer = setTimeout(() => {
+        prefetchAllTrendingCategories().catch(() => {});
+      }, 1000);
+
+      return () => clearTimeout(prewarmTimer);
+    }
+  }, [selectedCategory, getInstantCachedCategoryVideos, loadTrending]);
+
+  // Instant category selection handler: 0ms UI switch with immediate cache swap
   const handleSelectCategory = useCallback(
     (catId: string) => {
-      setSelectedCategory(catId);
+      if (catId === selectedCategory && trendingVideos.length > 0 && !query.trim()) {
+        return;
+      }
+
       if (query.trim()) {
         setQuery('');
         setVideos([]);
         setNextPageToken(null);
       }
-      loadTrending(catId);
+
+      setSelectedCategory(catId);
+
+      // Instant 0ms cached check
+      const instantCached = getInstantCachedCategoryVideos(catId);
+      if (instantCached && instantCached.length > 0) {
+        setTrendingVideos(instantCached);
+        categoryVideosCacheRef.current.set(catId, instantCached);
+        setIsLoadingTrending(false);
+        // Silent background revalidation
+        loadTrending(catId, false, true);
+      } else {
+        // Cold category: clear previous list so it doesn't show old videos under new category title
+        setTrendingVideos([]);
+        setIsLoadingTrending(true);
+        loadTrending(catId, false, false);
+      }
     },
-    [query, loadTrending]
+    [selectedCategory, trendingVideos.length, query, getInstantCachedCategoryVideos, loadTrending]
   );
 
   // Handle typing with real-time YouTube search suggestions

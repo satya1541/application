@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.23',
-  releaseTag: 'v5.2.23',
-  releaseName: 'Shorty v5.2.23: Real YouTube channel avatar, clean channel title, and dynamic subscriber count',
+  otaVersion: '5.2.24',
+  releaseTag: 'v5.2.24',
+  releaseName: 'Shorty v5.2.24: 0ms instant YouTube category filter switching with disk caching and background chart pre-warming',
   releaseDate: '2026-11-02',
   channel: 'preview',
 };

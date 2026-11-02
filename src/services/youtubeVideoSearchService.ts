@@ -3,6 +3,7 @@
  * Extracts video search results and unthrottled HLS video+audio streams directly from YouTube InnerTube.
  */
 
+import { SafeStorage } from './storage';
 import { getYouTubeVisitorData } from './youtubeStreamResolver';
 import {
   enrichVideosWithChannelAvatars,
@@ -624,8 +625,79 @@ export const TRENDING_CATEGORIES: TrendingCategory[] = [
   },
 ];
 
+const CACHE_KEY_TRENDING_CHARTS = '@shorty_yt_trending_charts_v2';
 const trendingCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
-const TRENDING_CACHE_TTL = 15 * 60 * 1000;
+const TRENDING_CACHE_TTL = 30 * 60 * 1000; // 30 mins TTL (charts are stable daily/weekly)
+
+let isTrendingHydrated = false;
+async function hydrateTrendingCharts(): Promise<void> {
+  if (isTrendingHydrated) return;
+  try {
+    const raw = await SafeStorage.getItem(CACHE_KEY_TRENDING_CHARTS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null) {
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v && Array.isArray((v as any).videos) && (v as any).videos.length > 0) {
+            trendingCache.set(k, v as any);
+          }
+        }
+      }
+    }
+  } catch {} finally {
+    isTrendingHydrated = true;
+  }
+}
+// Eagerly hydrate from SafeStorage on load
+hydrateTrendingCharts().catch(() => {});
+
+function persistTrendingChartsCache(): void {
+  try {
+    const obj: Record<string, any> = {};
+    for (const [k, v] of trendingCache.entries()) {
+      obj[k] = v;
+    }
+    SafeStorage.setItem(CACHE_KEY_TRENDING_CHARTS, JSON.stringify(obj)).catch(() => {});
+  } catch {}
+}
+
+/**
+ * Synchronous instant cache lookup for YouTube trending category videos (0ms perceived latency).
+ */
+export function getCachedTrendingYouTubeVideos(
+  categoryId: string = 'trending',
+  limit: number = 30
+): YouTubeVideoSearchResult[] | null {
+  const cached = trendingCache.get(categoryId);
+  if (cached && cached.videos && cached.videos.length > 0) {
+    return cached.videos.slice(0, limit);
+  }
+  return null;
+}
+
+/**
+ * Pre-warms all trending category charts in the background so switching is always 0ms.
+ */
+let isPrefetchingTrending = false;
+export async function prefetchAllTrendingCategories(): Promise<void> {
+  if (isPrefetchingTrending) return;
+  isPrefetchingTrending = true;
+  try {
+    if (!isTrendingHydrated) {
+      await hydrateTrendingCharts();
+    }
+    for (const cat of TRENDING_CATEGORIES) {
+      const cached = trendingCache.get(cat.id);
+      if (!cached || Date.now() - cached.timestamp >= TRENDING_CACHE_TTL || cached.videos.length === 0) {
+        await fetchTrendingYouTubeVideos(cat.id, 30, false);
+        // Small 120ms gap between requests to avoid network congestion
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+    }
+  } catch {} finally {
+    isPrefetchingTrending = false;
+  }
+}
 
 /**
  * Fetches YouTube trending music videos via official InnerTube Charts endpoint
@@ -636,6 +708,10 @@ export async function fetchTrendingYouTubeVideos(
   limit: number = 30,
   forceRefresh: boolean = false
 ): Promise<YouTubeVideoSearchResult[]> {
+  if (!isTrendingHydrated) {
+    await hydrateTrendingCharts();
+  }
+
   const cached = trendingCache.get(categoryId);
   if (!forceRefresh && cached && Date.now() - cached.timestamp < TRENDING_CACHE_TTL && cached.videos.length > 0) {
     return cached.videos.slice(0, limit);
@@ -741,8 +817,17 @@ export async function fetchTrendingYouTubeVideos(
         });
 
         if (results.length > 0) {
-          await enrichVideosWithChannelAvatars(results);
           trendingCache.set(categoryId, { timestamp: Date.now(), videos: results });
+          persistTrendingChartsCache();
+
+          // Non-blocking background avatar enrichment so charts return in <200ms
+          enrichVideosWithChannelAvatars(results)
+            .then((enriched) => {
+              trendingCache.set(categoryId, { timestamp: Date.now(), videos: enriched });
+              persistTrendingChartsCache();
+            })
+            .catch(() => {});
+
           return results.slice(0, limit);
         }
       }
@@ -759,6 +844,7 @@ export async function fetchTrendingYouTubeVideos(
     if (fallbackResults.length > 0) {
       const ranked = fallbackResults.map((v, i) => ({ ...v, rank: i + 1 }));
       trendingCache.set(categoryId, { timestamp: Date.now(), videos: ranked });
+      persistTrendingChartsCache();
       return ranked;
     }
   } catch {}
