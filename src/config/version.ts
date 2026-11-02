@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.20',
-  releaseTag: 'v5.2.20',
-  releaseName: 'Shorty v5.2.20: Apple frosted Autoplay toggle, For You discovery badges, and refined YSearch & chart ranking',
-  releaseDate: '2026-10-31',
+  otaVersion: '5.2.21',
+  releaseTag: 'v5.2.21',
+  releaseName: 'Shorty v5.2.21: Real YouTube InnerTube algorithmic Up Next recommendations and smart continuous autoplay',
+  releaseDate: '2026-11-02',
   channel: 'preview',
 };

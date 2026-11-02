@@ -766,15 +766,24 @@ export async function fetchTrendingYouTubeVideos(
   return [];
 }
 
+const relatedVideosCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
+const RELATED_CACHE_TTL = 15 * 60 * 1000; // 15 mins
+
 /**
- * Fetches related / recommended YouTube videos for a given video ID to power the infinite Up Next auto-play queue.
+ * Fetches real algorithmic related / recommended YouTube videos for a given video ID to power the infinite Up Next auto-play queue.
  */
 export async function fetchRelatedYouTubeVideos(
   videoId: string,
-  limit: number = 15
+  limit: number = 20
 ): Promise<YouTubeVideoSearchResult[]> {
   const cleanId = videoId.replace(/^yt_/, '').trim();
   if (!cleanId) return [];
+
+  // Check 15-minute in-memory cache for instant 0ms responses
+  const cached = relatedVideosCache.get(cleanId);
+  if (cached && Date.now() - cached.timestamp < RELATED_CACHE_TTL) {
+    return cached.videos.slice(0, limit);
+  }
 
   try {
     const visitorData = await getYouTubeVisitorData();
@@ -865,7 +874,8 @@ export async function fetchRelatedYouTubeVideos(
             author = metaRows[0].metadataParts[0].text.content;
           }
           if (metaRows[1]?.metadataParts?.[0]?.text?.content) {
-            viewCount = metaRows[1].metadataParts[0].text.content;
+            const rawViews = metaRows[1].metadataParts[0].text.content;
+            viewCount = rawViews.includes('view') ? rawViews : `${rawViews} views`;
           }
           if (metaRows[1]?.metadataParts?.[1]?.text?.content) {
             publishedTime = metaRows[1].metadataParts[1].text.content;
@@ -884,9 +894,21 @@ export async function fetchRelatedYouTubeVideos(
           if (thumbSources.length > 0) {
             bestThumb = thumbSources[thumbSources.length - 1]?.url;
           }
-          const badges = lvm.contentImage?.thumbnailBottomOverlayViewModel?.badges || [];
-          const durBadge = badges[0]?.thumbnailBadgeViewModel?.text;
-          if (durBadge) duration = durBadge;
+
+          // Extract duration from overlays in lockupViewModel
+          const overlays = lvm.contentImage?.thumbnailViewModel?.overlays || [];
+          for (const ov of overlays) {
+            const badge = ov?.thumbnailBottomOverlayViewModel?.badges?.[0]?.thumbnailBadgeViewModel;
+            if (badge?.text) {
+              duration = badge.text;
+              break;
+            }
+          }
+          if (!duration) {
+            const badges = lvm.contentImage?.thumbnailBottomOverlayViewModel?.badges || [];
+            const durBadge = badges[0]?.thumbnailBadgeViewModel?.text;
+            if (durBadge) duration = durBadge;
+          }
         }
 
         if (!title) title = 'Recommended Video';
@@ -927,6 +949,7 @@ export async function fetchRelatedYouTubeVideos(
 
       if (results.length > 0) {
         await enrichVideosWithChannelAvatars(results);
+        relatedVideosCache.set(cleanId, { timestamp: Date.now(), videos: results });
         return results;
       }
     }

@@ -55,6 +55,8 @@ interface VideoPlayerContextType {
   isLoadingStream: boolean;
   isFullscreen: boolean;
   playlist: YouTubeVideoSearchResult[];
+  relatedVideos: YouTubeVideoSearchResult[];
+  isLoadingRelated: boolean;
   watchVideoViewRef: React.RefObject<VideoView | null>;
   miniVideoViewRef: React.RefObject<VideoView | null>;
   playVideo: (item: YouTubeVideoSearchResult, queue?: YouTubeVideoSearchResult[]) => Promise<void>;
@@ -88,6 +90,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isLoadingStream, setIsLoadingStream] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [playlist, setPlaylist] = useState<YouTubeVideoSearchResult[]>([]);
+  const [relatedVideos, setRelatedVideos] = useState<YouTubeVideoSearchResult[]>([]);
+  const [isLoadingRelated, setIsLoadingRelated] = useState<boolean>(false);
 
   const appStateRef = useRef(AppState.currentState);
   const hasAdvancedRef = useRef<boolean>(false);
@@ -240,6 +244,40 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [player, activeVideo]);
 
+  // Automatically fetch genuine YouTube Up Next recommendations when video changes
+  useEffect(() => {
+    if (!activeVideo?.videoId) {
+      setRelatedVideos([]);
+      setIsLoadingRelated(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingRelated(true);
+
+    fetchRelatedYouTubeVideos(activeVideo.videoId, 20)
+      .then((videos) => {
+        if (!isCancelled) {
+          if (videos && videos.length > 0) {
+            setRelatedVideos(videos);
+          } else {
+            setRelatedVideos(playlist.filter((v) => v.videoId !== activeVideo.videoId));
+          }
+          setIsLoadingRelated(false);
+        }
+      })
+      .catch(() => {
+        if (!isCancelled) {
+          setRelatedVideos(playlist.filter((v) => v.videoId !== activeVideo.videoId));
+          setIsLoadingRelated(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeVideo?.videoId]);
+
   // Play video with cached / live stream resolution
   const playVideo = useCallback(
     async (item: YouTubeVideoSearchResult, queue?: YouTubeVideoSearchResult[]) => {
@@ -369,22 +407,34 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   // Next / Previous Video implementation with infinite Up Next auto-play
   const nextVideo = useCallback(async () => {
     if (!activeVideo) return;
+
+    // 1. If we have real YouTube algorithmic recommendations, auto-play the top recommended video!
+    if (relatedVideos && relatedVideos.length > 0) {
+      const nextTarget = relatedVideos.find((v) => v.videoId !== activeVideo.videoId) || relatedVideos[0];
+      if (nextTarget) {
+        playVideo(nextTarget, relatedVideos);
+        return;
+      }
+    }
+
+    // 2. Fall back to current playlist queue if available
     const currentIndex = playlist.length > 0 ? playlist.findIndex((v) => v.videoId === activeVideo.videoId) : -1;
     if (currentIndex >= 0 && currentIndex < playlist.length - 1) {
       playVideo(playlist[currentIndex + 1], playlist);
-    } else {
-      // Reached the end of queue - dynamically fetch related YouTube videos for endless playback!
-      try {
-        const related = await fetchRelatedYouTubeVideos(activeVideo.videoId, 10);
-        if (related.length > 0) {
-          const updatedPlaylist = [...playlist, ...related];
-          playVideo(related[0], updatedPlaylist);
-        }
-      } catch (err) {
-        console.warn('Auto-play nextVideo related fetch failed:', err);
-      }
+      return;
     }
-  }, [activeVideo, playlist, playVideo]);
+
+    // 3. Last resort: fetch on demand
+    try {
+      const related = await fetchRelatedYouTubeVideos(activeVideo.videoId, 15);
+      if (related.length > 0) {
+        const updatedPlaylist = [...playlist, ...related];
+        playVideo(related[0], updatedPlaylist);
+      }
+    } catch (err) {
+      console.warn('Auto-play nextVideo related fetch failed:', err);
+    }
+  }, [activeVideo, relatedVideos, playlist, playVideo]);
 
   nextVideoRef.current = nextVideo;
 
@@ -536,6 +586,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoadingStream,
       isFullscreen,
       playlist,
+      relatedVideos,
+      isLoadingRelated,
       watchVideoViewRef,
       miniVideoViewRef,
       playVideo,
@@ -564,6 +616,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       isLoadingStream,
       isFullscreen,
       playlist,
+      relatedVideos,
+      isLoadingRelated,
       playVideo,
       pauseVideo,
       resumeVideo,

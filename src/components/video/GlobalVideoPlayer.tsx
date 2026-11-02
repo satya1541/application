@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -132,6 +132,8 @@ export const GlobalVideoPlayer: React.FC = () => {
     isLoadingStream,
     isFullscreen,
     playlist,
+    relatedVideos,
+    isLoadingRelated,
     watchVideoViewRef,
     miniVideoViewRef,
     playVideo,
@@ -467,8 +469,13 @@ export const GlobalVideoPlayer: React.FC = () => {
   const effectiveDuration = duration > 0 ? duration : activeVideo?.durationSeconds || 0;
   const isLiveVideo = Boolean(activeVideo?.isLive || videoStream?.isLive);
 
-  // Up next videos from current playlist
-  const upNextVideos = playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
+  // Up next videos: prioritize real YouTube algorithmic recommendations with fallback to current playlist
+  const upNextVideos = useMemo(() => {
+    if (relatedVideos && relatedVideos.length > 0) {
+      return relatedVideos.filter((v) => v.videoId !== activeVideo?.videoId).slice(0, 20);
+    }
+    return playlist.filter((v) => v.videoId !== activeVideo?.videoId).slice(0, 15);
+  }, [relatedVideos, playlist, activeVideo?.videoId]);
 
   // Native PiP is strictly reserved for actively playing YSearch videos - never regular audio songs
   const isPiPAllowed = Boolean(isVideoPlaying && !isAudioPlaying && activeVideo);
@@ -844,10 +851,13 @@ export const GlobalVideoPlayer: React.FC = () => {
               <View style={styles.watchDivider} />
 
               {/* Up Next / Related Videos Header */}
-              {upNextVideos.length > 0 && (
+              {(upNextVideos.length > 0 || isLoadingRelated) && (
                 <>
                   <View style={styles.upNextSectionHeader}>
                     <Text style={styles.upNextSectionTitle}>Up Next</Text>
+                    {isLoadingRelated && (
+                      <ActivityIndicator size="small" color="#FF0000" style={{ marginLeft: 8 }} />
+                    )}
                   </View>
 
                   {/* Up Next Cards */}
@@ -855,7 +865,7 @@ export const GlobalVideoPlayer: React.FC = () => {
                     <TouchableOpacity
                       key={`upnext-${item.videoId}`}
                       style={styles.upNextCard}
-                      onPress={() => playVideo(item, playlist)}
+                      onPress={() => playVideo(item, upNextVideos)}
                       activeOpacity={0.8}
                     >
                       <View style={styles.upNextThumbContainer}>
