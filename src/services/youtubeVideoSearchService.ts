@@ -4,6 +4,7 @@
  */
 
 import { SafeStorage } from './storage';
+import { YOUTUBE_MUSIC_CHANNEL_PLAYLISTS } from './youtubeMusicChannelPlaylists';
 import { getYouTubeVisitorData } from './youtubeStreamResolver';
 import {
   enrichVideosWithChannelAvatars,
@@ -574,7 +575,9 @@ export interface TrendingCategory {
   id: string;
   name: string;
   icon: string;
-  chartType: string;
+  chartType?: string;
+  playlistId?: string;
+  shelfTitle?: string;
   chartAttribute?: string;
   periodType?: 'WEEKLY' | 'DAILY';
   fallbackQuery: string;
@@ -588,6 +591,7 @@ export const TRENDING_CATEGORIES: TrendingCategory[] = [
     chartType: 'TRENDING_VIDEOS',
     fallbackQuery: 'trending music videos 2026',
   },
+  ...YOUTUBE_MUSIC_CHANNEL_PLAYLISTS,
 ];
 
 const CACHE_KEY_TRENDING_CHARTS = '@shorty_yt_trending_charts_v2';
@@ -651,7 +655,9 @@ export async function prefetchAllTrendingCategories(): Promise<void> {
     if (!isTrendingHydrated) {
       await hydrateTrendingCharts();
     }
-    for (const cat of TRENDING_CATEGORIES) {
+    // Pre-warm primary categories: Trending + top 5 popular playlists
+    const primaryToWarm = TRENDING_CATEGORIES.slice(0, 6);
+    for (const cat of primaryToWarm) {
       const cached = trendingCache.get(cat.id);
       if (!cached || Date.now() - cached.timestamp >= TRENDING_CACHE_TTL || cached.videos.length === 0) {
         await fetchTrendingYouTubeVideos(cat.id, 30, false);
@@ -661,6 +667,134 @@ export async function prefetchAllTrendingCategories(): Promise<void> {
     }
   } catch {} finally {
     isPrefetchingTrending = false;
+  }
+}
+
+/**
+ * Fetches videos from an official YouTube Music playlist / station directly via InnerTube
+ */
+export async function fetchYouTubePlaylistVideos(
+  playlistId: string,
+  fallbackQuery: string,
+  limit: number = 30
+): Promise<YouTubeVideoSearchResult[]> {
+  const cleanId = playlistId.trim();
+  const browseId = cleanId.startsWith('VL') ? cleanId : `VL${cleanId}`;
+
+  try {
+    const payload = {
+      context: {
+        client: {
+          clientName: 'WEB',
+          clientVersion: '2.20240105.01.00',
+          hl: 'en',
+          gl: 'IN',
+        },
+      },
+      browseId,
+    };
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 6000);
+    const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeout);
+
+    if (res.ok) {
+      const data = await res.json();
+      const primary = data?.contents?.twoColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content;
+      const sections = primary?.sectionListRenderer?.contents || [];
+      const rawItems = sections[0]?.itemSectionRenderer?.contents || [];
+
+      if (rawItems.length > 0) {
+        const results: YouTubeVideoSearchResult[] = [];
+        const seenIds = new Set<string>();
+
+        rawItems.forEach((it: any, index: number) => {
+          let videoId = '';
+          let title = '';
+          let author = '';
+          let thumb = '';
+          let duration = '';
+          let channelId: string | undefined;
+
+          if (it.lockupViewModel) {
+            const lockup = it.lockupViewModel;
+            videoId = lockup.contentId || '';
+            title = lockup.metadata?.lockupMetadataViewModel?.title?.content || '';
+            const rows = lockup.metadata?.lockupMetadataViewModel?.metadata?.contentMetadataViewModel?.metadataRows || [];
+            author = rows[0]?.metadataParts?.[0]?.text?.content || 'YouTube Music';
+            const sources =
+              lockup.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources ||
+              lockup.contentImage?.thumbnailViewModel?.image?.sources ||
+              [];
+            thumb = sources[sources.length - 1]?.url || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
+            const overlays =
+              lockup.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.overlays ||
+              lockup.contentImage?.thumbnailViewModel?.overlays ||
+              [];
+            const badge = overlays.find((o: any) => o.thumbnailOverlayBadgeViewModel)?.thumbnailOverlayBadgeViewModel?.thumbnailBadges?.[0]?.thumbnailBadgeViewModel;
+            duration = badge?.text || '';
+          } else if (it.playlistVideoRenderer) {
+            const pv = it.playlistVideoRenderer;
+            videoId = pv.videoId || '';
+            title = pv.title?.runs?.[0]?.text || pv.title?.simpleText || '';
+            author = pv.shortBylineText?.runs?.[0]?.text || 'YouTube Music';
+            channelId = pv.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || undefined;
+            const thumbs = pv.thumbnail?.thumbnails || [];
+            thumb = thumbs[thumbs.length - 1]?.url || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
+            duration = pv.lengthText?.simpleText || '';
+          }
+
+          if (videoId && title && !videoId.startsWith('RDCL') && !videoId.startsWith('PL') && !seenIds.has(videoId)) {
+            seenIds.add(videoId);
+            const rank = index + 1;
+            const channelAvatar =
+              (channelId && getChannelAvatar(channelId)) ||
+              (author && getChannelAvatar(author)) ||
+              undefined;
+
+            results.push({
+              id: videoId,
+              videoId,
+              channelId,
+              title,
+              author,
+              channelAvatar,
+              duration: duration || '3:30',
+              durationSeconds: 210,
+              viewCount: `#${rank} on Official YouTube Music`,
+              publishedTime: '',
+              thumbnail: thumb,
+              rank,
+            });
+          }
+        });
+
+        if (results.length > 0) {
+          enrichVideosWithChannelAvatars(results).catch(() => {});
+          return results.slice(0, limit);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn(`[fetchYouTubePlaylistVideos] error for ${playlistId}:`, err);
+  }
+
+  // Fallback to search query
+  try {
+    const fallback = await searchYouTubeVideos(fallbackQuery, limit);
+    return fallback.map((v, i) => ({ ...v, rank: i + 1 }));
+  } catch {
+    return [];
   }
 }
 
@@ -684,11 +818,21 @@ export async function fetchTrendingYouTubeVideos(
 
   const category = TRENDING_CATEGORIES.find((c) => c.id === categoryId) || TRENDING_CATEGORIES[0];
 
+  // If this category is a playlist / station from the official YouTube Music channel
+  if (category.playlistId) {
+    const results = await fetchYouTubePlaylistVideos(category.playlistId, category.fallbackQuery, limit);
+    if (results.length > 0) {
+      trendingCache.set(categoryId, { timestamp: Date.now(), videos: results });
+      persistTrendingChartsCache();
+      return results;
+    }
+  }
+
   try {
     const queryObj: Record<string, string> = {
       perspective: 'CHART_DETAILS',
       chart_params_country_code: 'IN',
-      chart_params_chart_type: category.chartType,
+      chart_params_chart_type: category.chartType || 'TRENDING_VIDEOS',
       flags: 'MusicCharts__enable_apac_and_shorts_charts_expansion',
     };
     if (category.periodType) queryObj.chart_params_period_type = category.periodType;

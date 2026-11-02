@@ -960,7 +960,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                             ? 'Latest from Subscriptions'
                             : selectedCategory === 'liked'
                             ? 'Your Liked Videos'
-                            : `Top 30 ${currentCategoryObj.name} Videos`}
+                            : selectedCategory === 'trending'
+                            ? 'Top 30 Trending Videos'
+                            : currentCategoryObj.name}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -987,7 +989,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                           styles.carouselBadgeText,
                           (selectedCategory === 'my_feed' || selectedCategory === 'liked') && { color: '#1a73e8' },
                         ]}>
-                          {(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? 'Your Account' : 'Official Charts'}
+                          {(selectedCategory === 'my_feed' || selectedCategory === 'liked')
+                            ? 'Your Account'
+                            : (currentCategoryObj as any).shelfTitle || 'YouTube Music'}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -1004,7 +1008,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                       ? 'Loading your subscriptions feed...'
                       : selectedCategory === 'liked'
                       ? 'Loading your liked videos...'
-                      : `Loading ${currentCategoryObj.name} on YouTube Charts...`}
+                      : selectedCategory === 'trending'
+                      ? 'Loading Trending on YouTube Charts...'
+                      : `Loading ${currentCategoryObj.name}...`}
                   </Text>
                 </View>
               ) : (selectedCategory === 'my_feed' || selectedCategory === 'liked') ? (
