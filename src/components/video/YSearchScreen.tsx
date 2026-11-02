@@ -54,8 +54,6 @@ import { YouTubeChannelScreen } from './YouTubeChannelScreen';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 24;
 const CARD_THUMB_HEIGHT = Math.round((CARD_WIDTH * 9) / 16);
-const TRENDING_CARD_WIDTH = Math.round(Math.min(SCREEN_WIDTH * 0.68, 250));
-const TRENDING_THUMB_HEIGHT = Math.round((TRENDING_CARD_WIDTH * 9) / 16);
 
 interface YSearchScreenProps {
   onBack?: () => void;
@@ -644,23 +642,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return allCategories.find((c) => c.id === selectedCategory) || TRENDING_CATEGORIES[0];
   }, [selectedCategory, allCategories]);
 
-  // Render Trending Carousel Card (Horizontal, delegates to memoized TrendingCardItem)
-  const renderTrendingCard = useCallback(
-    ({ item }: { item: YouTubeVideoSearchResult }) => {
-      const isThisActive = activeVideo?.videoId === item.videoId;
-      return (
-        <TrendingCardItem
-          item={item}
-          isActive={isThisActive}
-          themeMode={themeMode}
-          surfaceHex={surfaceHex}
-          onSelect={handleSelectVideo}
-        />
-      );
-    },
-    [activeVideo?.videoId, themeMode, surfaceHex, handleSelectVideo]
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: '#000000' }}>
       <StatusBar
@@ -984,17 +965,21 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                     </View>
                   )}
 
-                  {/* Horizontal Trending Highlights Carousel */}
-                  <View style={styles.carouselSection}>
-                    <View style={styles.carouselHeaderRow}>
+                  {/* Section Title & Status for Vertical Chart List */}
+                  <View style={styles.trendingListHeader}>
+                    <View style={styles.trendingHeaderRow}>
                       <View style={styles.carouselTitleBox}>
                         <Ionicons
                           name={currentCategoryObj.icon as any}
                           size={18}
                           color={(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '#1a73e8' : '#FF0000'}
                         />
-                        <Text style={styles.carouselTitle}>
-                          {currentCategoryObj.name}{(selectedCategory === 'my_feed' || selectedCategory === 'liked') ? '' : ' Highlights'}
+                        <Text style={styles.trendingListTitle}>
+                          {selectedCategory === 'my_feed'
+                            ? 'Latest from Subscriptions'
+                            : selectedCategory === 'liked'
+                            ? 'Your Liked Videos'
+                            : `Top 30 ${currentCategoryObj.name} Videos`}
                         </Text>
                       </View>
                       <TouchableOpacity
@@ -1025,28 +1010,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                         </Text>
                       </TouchableOpacity>
                     </View>
-
-                    <FlatList
-                      data={trendingVideos.slice(0, 10)}
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      keyExtractor={(item) => `carousel-${item.videoId}`}
-                      renderItem={renderTrendingCard}
-                      contentContainerStyle={styles.carouselScroll}
-                      removeClippedSubviews={false}
-                      extraData={`${activeVideo?.videoId}-${isVideoPlaying}`}
-                    />
-                  </View>
-
-                  {/* Section Title for Full Chart List */}
-                  <View style={styles.trendingListHeader}>
-                    <Text style={styles.trendingListTitle}>
-                      {selectedCategory === 'my_feed'
-                        ? 'Latest from Subscriptions'
-                        : selectedCategory === 'liked'
-                        ? 'Your Liked Videos'
-                        : `Top 30 ${currentCategoryObj.name} Videos`}
-                    </Text>
                   </View>
                 </View>
               ) : null
@@ -1379,13 +1342,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  // Carousel Styles
-  carouselSection: {
-    paddingTop: 12,
-    paddingBottom: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
-  },
   carouselHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1420,30 +1376,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
-  },
-  carouselScroll: {
-    paddingHorizontal: 14,
-  },
-  trendingCard: {
-    width: TRENDING_CARD_WIDTH,
-    marginRight: 12,
-    borderRadius: 12,
-    borderWidth: 1.5,
-  },
-  trendingThumbContainer: {
-    width: TRENDING_CARD_WIDTH,
-    height: TRENDING_THUMB_HEIGHT,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#1a1a1a',
-    position: 'relative',
-  },
-  trendingThumb: {
-    width: TRENDING_CARD_WIDTH,
-    height: TRENDING_THUMB_HEIGHT,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
   },
   rankBadge: {
     position: 'absolute',
@@ -1532,6 +1464,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 8,
+  },
+  trendingHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   trendingListTitle: {
     color: '#ffffff',
@@ -2338,110 +2275,4 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
     prev.surfaceHex === next.surfaceHex
 );
 
-interface TrendingCardItemProps {
-  item: YouTubeVideoSearchResult;
-  isActive: boolean;
-  themeMode: string;
-  surfaceHex: string;
-  onSelect: (item: YouTubeVideoSearchResult) => void;
-}
 
-const TrendingCardItem = React.memo<TrendingCardItemProps>(
-  ({ item, isActive, themeMode, surfaceHex, onSelect }) => {
-    const rank = item.rank || 1;
-    const isTop1 = rank === 1;
-    const isTop2 = rank === 2;
-    const isTop3 = rank === 3;
-    const [thumbError, setThumbError] = useState(false);
-    const thumbUri = thumbError
-      ? `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
-      : (item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`);
-
-    return (
-      <TouchableOpacity
-        style={[
-          styles.trendingCard,
-          {
-            backgroundColor: themeMode === 'oled' ? '#141414' : surfaceHex,
-            borderColor: isActive ? '#FF0000' : 'rgba(255, 255, 255, 0.08)',
-          },
-        ]}
-        onPress={() => onSelect(item)}
-        activeOpacity={0.85}
-      >
-        <View style={styles.trendingThumbContainer}>
-          <ExpoImage
-            key={`trend-${item.videoId}-${thumbError ? 'fb' : 'main'}`}
-            source={{ uri: thumbUri }}
-            style={styles.trendingThumb}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            transition={0}
-            onError={() => setThumbError(true)}
-          />
-
-          {/* Rank Badge */}
-          <View
-            style={[
-              styles.rankBadge,
-              isTop1 && styles.rankBadgeGold,
-              isTop2 && styles.rankBadgeSilver,
-              isTop3 && styles.rankBadgeBronze,
-            ]}
-          >
-            <Text
-              style={[
-                styles.rankBadgeText,
-                (isTop1 || isTop2 || isTop3) && styles.rankBadgeTextTop,
-              ]}
-            >
-              #{rank}
-            </Text>
-          </View>
-
-          {/* Duration or LIVE Badge */}
-          {item.isLive ? (
-            <View style={styles.trendingLiveBadge}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>LIVE</Text>
-            </View>
-          ) : item.duration ? (
-            <View style={styles.trendingDurationBadge}>
-              <Text style={styles.trendingDurationText}>{item.duration}</Text>
-            </View>
-          ) : null}
-
-          {/* Active Playing Badge */}
-          {isActive && (
-            <View style={styles.trendingPlayingOverlay}>
-              <Ionicons name="volume-high" size={14} color="#ffffff" />
-              <Text style={styles.trendingPlayingText}>PLAYING</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.trendingMeta}>
-          <Text
-            style={[
-              styles.trendingTitle,
-              isActive && { color: '#FF0000', fontWeight: '700' },
-            ]}
-            numberOfLines={2}
-          >
-            {item.title}
-          </Text>
-          <Text style={styles.trendingAuthor} numberOfLines={1}>
-            {item.author}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  },
-  (prev, next) =>
-    prev.item.videoId === next.item.videoId &&
-    prev.item.thumbnail === next.item.thumbnail &&
-    prev.item.title === next.item.title &&
-    prev.isActive === next.isActive &&
-    prev.themeMode === next.themeMode &&
-    prev.surfaceHex === next.surfaceHex
-);
