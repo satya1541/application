@@ -462,20 +462,21 @@ export const GlobalVideoPlayer: React.FC = () => {
     [seekTo, resetWatchControlsTimer]
   );
 
+  // Up next videos: prioritize real YouTube algorithmic recommendations with fallback to current playlist
+  const upNextVideos = useMemo(() => {
+    if (!activeVideo) return [];
+    if (relatedVideos && relatedVideos.length > 0) {
+      return relatedVideos.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 20);
+    }
+    return playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
+  }, [relatedVideos, playlist, activeVideo]);
+
   if (playerMode === 'hidden' || !activeVideo) {
     return null;
   }
 
-  const effectiveDuration = duration > 0 ? duration : activeVideo?.durationSeconds || 0;
-  const isLiveVideo = Boolean(activeVideo?.isLive || videoStream?.isLive);
-
-  // Up next videos: prioritize real YouTube algorithmic recommendations with fallback to current playlist
-  const upNextVideos = useMemo(() => {
-    if (relatedVideos && relatedVideos.length > 0) {
-      return relatedVideos.filter((v) => v.videoId !== activeVideo?.videoId).slice(0, 20);
-    }
-    return playlist.filter((v) => v.videoId !== activeVideo?.videoId).slice(0, 15);
-  }, [relatedVideos, playlist, activeVideo?.videoId]);
+  const effectiveDuration = duration > 0 ? duration : activeVideo.durationSeconds || 0;
+  const isLiveVideo = Boolean(activeVideo.isLive || videoStream?.isLive);
 
   // Native PiP is strictly reserved for actively playing YSearch videos - never regular audio songs
   const isPiPAllowed = Boolean(isVideoPlaying && !isAudioPlaying && activeVideo);

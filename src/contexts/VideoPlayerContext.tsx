@@ -329,9 +329,9 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           try {
             player.bufferOptions = VIDEO_BUFFER_OPTIONS;
           } catch {}
-          player.replace({
+          const sourceObj = {
             uri: cached.hlsUrl,
-            contentType: 'hls',
+            contentType: 'hls' as const,
             headers: {
               'User-Agent':
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
@@ -343,8 +343,17 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
               artist: item.author,
               artwork: item.thumbnail,
             },
-          });
-          player.play();
+          };
+          try {
+            if (typeof (player as any).replaceAsync === 'function') {
+              (player as any).replaceAsync(sourceObj).catch(() => {});
+            } else {
+              player.replace(sourceObj);
+            }
+            player.play();
+          } catch (e) {
+            console.warn('[VideoPlayerContext] replace source error:', e);
+          }
         }
         return;
       }
@@ -362,9 +371,9 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             try {
               player.bufferOptions = VIDEO_BUFFER_OPTIONS;
             } catch {}
-            player.replace({
+            const sourceObj = {
               uri: streamDetails.hlsUrl,
-              contentType: 'hls',
+              contentType: 'hls' as const,
               headers: {
                 'User-Agent':
                   'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15',
@@ -376,8 +385,17 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
                 artist: item.author,
                 artwork: item.thumbnail,
               },
-            });
-            player.play();
+            };
+            try {
+              if (typeof (player as any).replaceAsync === 'function') {
+                (player as any).replaceAsync(sourceObj).catch(() => {});
+              } else {
+                player.replace(sourceObj);
+              }
+              player.play();
+            } catch (e) {
+              console.warn('[VideoPlayerContext] replace source error:', e);
+            }
           }
         }
       } catch (err) {
@@ -487,7 +505,6 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (player) {
       try {
         player.pause();
-        player.replace(null); // Release hardware MediaCodec decoder and tear down network streaming
       } catch {}
     }
     deactivateKeepAwake('global_video_player').catch(() => {});
