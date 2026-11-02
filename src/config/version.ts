@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.25',
-  releaseTag: 'v5.2.25',
-  releaseName: 'Shorty v5.2.25: Remove duplicate horizontal highlights swipe carousel in favor of direct vertical list',
+  otaVersion: '5.2.26',
+  releaseTag: 'v5.2.26',
+  releaseName: 'Shorty v5.2.26: Streamline category filters to My Feed, Liked, and Trending',
   releaseDate: '2026-11-02',
   channel: 'preview',
 };

@@ -588,41 +588,6 @@ export const TRENDING_CATEGORIES: TrendingCategory[] = [
     chartType: 'TRENDING_VIDEOS',
     fallbackQuery: 'trending music videos 2026',
   },
-  {
-    id: 'daily',
-    name: 'Daily Top',
-    icon: 'musical-notes',
-    chartType: 'VIDEOS',
-    periodType: 'DAILY',
-    fallbackQuery: 'new hindi songs this week',
-  },
-  {
-    id: 'hindi',
-    name: 'Bollywood',
-    icon: 'film',
-    chartType: 'VIDEOS_LOP',
-    chartAttribute: 'hi',
-    periodType: 'WEEKLY',
-    fallbackQuery: 'latest bollywood songs 2026',
-  },
-  {
-    id: 'punjabi',
-    name: 'Punjabi',
-    icon: 'flash',
-    chartType: 'VIDEOS_LOP',
-    chartAttribute: 'pa',
-    periodType: 'WEEKLY',
-    fallbackQuery: 'top punjabi songs 2026',
-  },
-  {
-    id: 'global',
-    name: 'Global Hits',
-    icon: 'globe',
-    chartType: 'VIDEOS_LOP',
-    chartAttribute: 'international',
-    periodType: 'WEEKLY',
-    fallbackQuery: 'top global music videos 2026',
-  },
 ];
 
 const CACHE_KEY_TRENDING_CHARTS = '@shorty_yt_trending_charts_v2';

@@ -774,7 +774,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
+                </ScrollView>
           </View>
         )}
       </View>
@@ -827,25 +827,6 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
               </TouchableOpacity>
             );
           })}
-
-          {/* Connect YouTube chip shown when NOT linked */}
-          {!isYouTubeLinked && (
-            <TouchableOpacity
-              style={[
-                styles.categoryChip,
-                {
-                  backgroundColor: themeMode === 'oled' ? '#181818' : '#282828',
-                  borderColor: 'rgba(26, 115, 232, 0.5)',
-                  borderStyle: 'dashed' as any,
-                },
-              ]}
-              onPress={handleConnectGoogle}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="logo-youtube" size={14} color="#FF0000" style={{ marginRight: 6 }} />
-              <Text style={[styles.categoryChipText, { color: '#8ab4f8' }]}>Connect YouTube</Text>
-            </TouchableOpacity>
-          )}
         </ScrollView>
       </View>
 
