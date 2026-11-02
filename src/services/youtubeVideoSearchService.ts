@@ -766,23 +766,29 @@ export async function fetchTrendingYouTubeVideos(
   return [];
 }
 
-const relatedVideosCache = new Map<string, { timestamp: number; videos: YouTubeVideoSearchResult[] }>();
-const RELATED_CACHE_TTL = 15 * 60 * 1000; // 15 mins
+export interface YouTubeWatchNextDetails {
+  channelTitle?: string;
+  channelAvatar?: string;
+  subscriberCount?: string;
+  channelId?: string;
+  relatedVideos: YouTubeVideoSearchResult[];
+}
+
+const watchNextCache = new Map<string, { timestamp: number; data: YouTubeWatchNextDetails }>();
+const WATCH_NEXT_CACHE_TTL = 15 * 60 * 1000; // 15 mins
 
 /**
- * Fetches real algorithmic related / recommended YouTube videos for a given video ID to power the infinite Up Next auto-play queue.
+ * Fetches authentic watch details (channel avatar, title, subscribers) and algorithmic related videos from YouTube InnerTube.
  */
-export async function fetchRelatedYouTubeVideos(
-  videoId: string,
-  limit: number = 20
-): Promise<YouTubeVideoSearchResult[]> {
+export async function fetchWatchNextDetails(
+  videoId: string
+): Promise<YouTubeWatchNextDetails> {
   const cleanId = videoId.replace(/^yt_/, '').trim();
-  if (!cleanId) return [];
+  if (!cleanId) return { relatedVideos: [] };
 
-  // Check 15-minute in-memory cache for instant 0ms responses
-  const cached = relatedVideosCache.get(cleanId);
-  if (cached && Date.now() - cached.timestamp < RELATED_CACHE_TTL) {
-    return cached.videos.slice(0, limit);
+  const cached = watchNextCache.get(cleanId);
+  if (cached && Date.now() - cached.timestamp < WATCH_NEXT_CACHE_TTL) {
+    return cached.data;
   }
 
   try {
@@ -801,7 +807,7 @@ export async function fetchRelatedYouTubeVideos(
     };
 
     const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 5000);
+    const timeout = setTimeout(() => ctrl.abort(), 6000);
     const res = await fetch('https://www.youtube.com/youtubei/v1/next?prettyPrint=false', {
       method: 'POST',
       headers: {
@@ -818,12 +824,77 @@ export async function fetchRelatedYouTubeVideos(
 
     if (res.ok) {
       const data = await res.json();
+
+      // 1. Extract genuine Channel Owner Metadata
+      let channelTitle = '';
+      let channelAvatar = '';
+      let subscriberCount = '';
+      let channelId = '';
+
+      const primaryContents =
+        data?.contents?.twoColumnWatchNextResults?.results?.results?.contents ||
+        data?.contents?.singleColumnWatchNextResults?.results?.results?.contents ||
+        [];
+
+      for (const p of primaryContents) {
+        const vor = p?.videoSecondaryInfoRenderer?.owner?.videoOwnerRenderer;
+        if (vor) {
+          // Channel Title (clean from "T-Series and 3 more" to "T-Series")
+          if (vor.title?.runs?.[0]?.text) {
+            channelTitle = vor.title.runs[0].text;
+          } else if (vor.attributedTitle?.content) {
+            channelTitle = vor.attributedTitle.content.replace(/\s+and\s+\d+\s+more.*$/i, '').trim();
+          }
+
+          // Channel Avatar
+          const thumbs = vor.thumbnail?.thumbnails || [];
+          if (thumbs.length > 0) {
+            channelAvatar = thumbs[thumbs.length - 1].url;
+          } else if (vor.avatarStack?.avatarStackViewModel?.avatars?.[0]?.avatarViewModel?.image?.sources?.[0]?.url) {
+            channelAvatar = vor.avatarStack.avatarStackViewModel.avatars[0].avatarViewModel.image.sources[0].url;
+          }
+
+          // Subscriber Count
+          if (vor.subscriberCountText?.simpleText) {
+            subscriberCount = vor.subscriberCountText.simpleText;
+          } else if (vor.subscriberCountText?.runs?.[0]?.text) {
+            subscriberCount = vor.subscriberCountText.runs[0].text;
+          }
+
+          if (!subscriberCount) {
+            const dialogItems = vor.navigationEndpoint?.showDialogCommand?.panelLoadingStrategy?.inlineContent?.dialogViewModel?.customContent?.listViewModel?.listItems;
+            if (dialogItems && dialogItems[0]) {
+              const a11y = dialogItems[0].listItemViewModel?.rendererContext?.accessibilityContext?.label;
+              const subMatch = a11y?.match(/([\d.]+\s*(?:million|thousand|billion|M|K|B)\s*subscribers?)/i);
+              if (subMatch) {
+                subscriberCount = subMatch[1];
+              }
+            }
+          }
+
+          channelId =
+            vor.navigationEndpoint?.browseEndpoint?.browseId ||
+            vor.title?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
+            '';
+
+          break;
+        }
+      }
+
+      if (channelAvatar && channelAvatar.startsWith('//')) {
+        channelAvatar = `https:${channelAvatar}`;
+      }
+      if (channelTitle && channelAvatar) {
+        setCachedChannelAvatar(channelTitle, channelAvatar);
+        if (channelId) setCachedChannelAvatar(channelId, channelAvatar);
+      }
+
+      // 2. Extract genuine Up Next recommendations
       const results: YouTubeVideoSearchResult[] = [];
       const seenIds = new Set<string>([cleanId]);
-
-      // Look through secondaryResults or watchNextResults
       const resultsSection =
         data?.contents?.twoColumnWatchNextResults?.secondaryResults?.secondaryResults?.results ||
+        data?.contents?.singleColumnWatchNextResults?.results?.results?.contents ||
         [];
 
       for (const item of resultsSection) {
@@ -848,7 +919,7 @@ export async function fetchRelatedYouTubeVideos(
           cvr?.shortBylineText?.runs?.map((r: any) => r.text).join('') ||
           '';
 
-        let channelId =
+        let chId =
           cvr?.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId ||
           cvr?.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.navigationEndpoint?.browseEndpoint?.browseId ||
           undefined;
@@ -857,7 +928,7 @@ export async function fetchRelatedYouTubeVideos(
           cvr?.channelThumbnail?.thumbnails ||
           cvr?.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer?.thumbnail?.thumbnails ||
           [];
-        let channelAvatar = channelThumbnails[channelThumbnails.length - 1]?.url;
+        let chAvatar = channelThumbnails[channelThumbnails.length - 1]?.url;
 
         let duration = cvr?.lengthText?.simpleText || '';
         let viewCount = cvr?.viewCountText?.simpleText || '';
@@ -883,11 +954,11 @@ export async function fetchRelatedYouTubeVideos(
           const imageObj = meta?.image?.decoratedAvatarViewModel?.avatar?.avatarViewModel?.image;
           const avatarSources = imageObj?.sources || [];
           if (avatarSources.length > 0) {
-            channelAvatar = avatarSources[avatarSources.length - 1]?.url;
+            chAvatar = avatarSources[avatarSources.length - 1]?.url;
           }
           const lvmBrowseId =
             meta?.image?.rendererContext?.commandContext?.onTap?.innertubeCommand?.browseEndpoint?.browseId;
-          if (lvmBrowseId) channelId = lvmBrowseId;
+          if (lvmBrowseId) chId = lvmBrowseId;
 
           const thumbObj = lvm.contentImage?.thumbnailViewModel?.image;
           const thumbSources = thumbObj?.sources || [];
@@ -911,21 +982,21 @@ export async function fetchRelatedYouTubeVideos(
           }
         }
 
+        if (author) author = author.replace(/\s+and\s+\d+\s+more.*$/i, '').trim();
         if (!title) title = 'Recommended Video';
         if (!author) author = 'YouTube Creator';
 
         const durationSeconds = parseDurationSeconds(duration);
-        if (channelAvatar && channelAvatar.startsWith('//')) channelAvatar = `https:${channelAvatar}`;
-
+        if (chAvatar && chAvatar.startsWith('//')) chAvatar = `https:${chAvatar}`;
         if (!bestThumb) bestThumb = `https://i.ytimg.com/vi/${vId}/hqdefault.jpg`;
         if (bestThumb.startsWith('//')) bestThumb = `https:${bestThumb}`;
 
-        if (channelAvatar) {
-          if (channelId) setCachedChannelAvatar(channelId, channelAvatar);
-          if (author) setCachedChannelAvatar(author, channelAvatar);
+        if (chAvatar) {
+          if (chId) setCachedChannelAvatar(chId, chAvatar);
+          if (author) setCachedChannelAvatar(author, chAvatar);
         } else {
-          channelAvatar =
-            (channelId && getChannelAvatar(channelId)) ||
+          chAvatar =
+            (chId && getChannelAvatar(chId)) ||
             (author && getChannelAvatar(author)) ||
             undefined;
         }
@@ -933,10 +1004,10 @@ export async function fetchRelatedYouTubeVideos(
         results.push({
           id: vId,
           videoId: vId,
-          channelId,
+          channelId: chId,
           title,
           author,
-          channelAvatar,
+          channelAvatar: chAvatar,
           duration,
           durationSeconds,
           viewCount,
@@ -944,19 +1015,39 @@ export async function fetchRelatedYouTubeVideos(
           thumbnail: bestThumb,
         });
 
-        if (results.length >= limit) break;
+        if (results.length >= 25) break;
       }
 
       if (results.length > 0) {
         await enrichVideosWithChannelAvatars(results);
-        relatedVideosCache.set(cleanId, { timestamp: Date.now(), videos: results });
-        return results;
       }
+
+      const watchDetails: YouTubeWatchNextDetails = {
+        channelTitle,
+        channelAvatar,
+        subscriberCount,
+        channelId,
+        relatedVideos: results,
+      };
+
+      watchNextCache.set(cleanId, { timestamp: Date.now(), data: watchDetails });
+      return watchDetails;
     }
   } catch (err) {
-    console.warn('[fetchRelatedYouTubeVideos] error:', err);
+    console.warn('[fetchWatchNextDetails] error:', err);
   }
 
-  return [];
+  return { relatedVideos: [] };
+}
+
+/**
+ * Fetches real algorithmic related / recommended YouTube videos for a given video ID to power the infinite Up Next auto-play queue.
+ */
+export async function fetchRelatedYouTubeVideos(
+  videoId: string,
+  limit: number = 20
+): Promise<YouTubeVideoSearchResult[]> {
+  const details = await fetchWatchNextDetails(videoId);
+  return details.relatedVideos.slice(0, limit);
 }
 

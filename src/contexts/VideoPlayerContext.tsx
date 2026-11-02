@@ -15,6 +15,8 @@ import {
   resolveYouTubeStandaloneVideoStream,
   getCachedVideoStream,
   fetchRelatedYouTubeVideos,
+  fetchWatchNextDetails,
+  YouTubeWatchNextDetails,
   YouTubeVideoSearchResult,
   StandaloneVideoStreamDetails,
 } from '@/services/youtubeVideoSearchService';
@@ -57,6 +59,12 @@ interface VideoPlayerContextType {
   playlist: YouTubeVideoSearchResult[];
   relatedVideos: YouTubeVideoSearchResult[];
   isLoadingRelated: boolean;
+  activeChannelMeta: {
+    channelTitle?: string;
+    channelAvatar?: string;
+    subscriberCount?: string;
+    channelId?: string;
+  } | null;
   watchVideoViewRef: React.RefObject<VideoView | null>;
   miniVideoViewRef: React.RefObject<VideoView | null>;
   playVideo: (item: YouTubeVideoSearchResult, queue?: YouTubeVideoSearchResult[]) => Promise<void>;
@@ -92,6 +100,12 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [playlist, setPlaylist] = useState<YouTubeVideoSearchResult[]>([]);
   const [relatedVideos, setRelatedVideos] = useState<YouTubeVideoSearchResult[]>([]);
   const [isLoadingRelated, setIsLoadingRelated] = useState<boolean>(false);
+  const [activeChannelMeta, setActiveChannelMeta] = useState<{
+    channelTitle?: string;
+    channelAvatar?: string;
+    subscriberCount?: string;
+    channelId?: string;
+  } | null>(null);
 
   const appStateRef = useRef(AppState.currentState);
   const hasAdvancedRef = useRef<boolean>(false);
@@ -244,10 +258,11 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [player, activeVideo]);
 
-  // Automatically fetch genuine YouTube Up Next recommendations when video changes
+  // Automatically fetch genuine YouTube Channel Details & Up Next recommendations when video changes
   useEffect(() => {
     if (!activeVideo?.videoId) {
       setRelatedVideos([]);
+      setActiveChannelMeta(null);
       setIsLoadingRelated(false);
       return;
     }
@@ -255,11 +270,19 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     let isCancelled = false;
     setIsLoadingRelated(true);
 
-    fetchRelatedYouTubeVideos(activeVideo.videoId, 20)
-      .then((videos) => {
+    fetchWatchNextDetails(activeVideo.videoId)
+      .then((details) => {
         if (!isCancelled) {
-          if (videos && videos.length > 0) {
-            setRelatedVideos(videos);
+          if (details.channelAvatar || details.channelTitle || details.subscriberCount) {
+            setActiveChannelMeta({
+              channelTitle: details.channelTitle,
+              channelAvatar: details.channelAvatar,
+              subscriberCount: details.subscriberCount,
+              channelId: details.channelId,
+            });
+          }
+          if (details.relatedVideos && details.relatedVideos.length > 0) {
+            setRelatedVideos(details.relatedVideos);
           } else {
             setRelatedVideos(playlist.filter((v) => v.videoId !== activeVideo.videoId));
           }
@@ -513,6 +536,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       lockPortraitAsync().catch(() => {});
     }
     setActiveVideo(null);
+    setActiveChannelMeta(null);
     setVideoStream(null);
     setPlayerMode('hidden');
   }, [player, isFullscreen]);
@@ -605,6 +629,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       playlist,
       relatedVideos,
       isLoadingRelated,
+      activeChannelMeta,
       watchVideoViewRef,
       miniVideoViewRef,
       playVideo,
@@ -635,6 +660,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       playlist,
       relatedVideos,
       isLoadingRelated,
+      activeChannelMeta,
       playVideo,
       pauseVideo,
       resumeVideo,

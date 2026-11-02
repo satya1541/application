@@ -134,6 +134,7 @@ export const GlobalVideoPlayer: React.FC = () => {
     playlist,
     relatedVideos,
     isLoadingRelated,
+    activeChannelMeta,
     watchVideoViewRef,
     miniVideoViewRef,
     playVideo,
@@ -470,6 +471,31 @@ export const GlobalVideoPlayer: React.FC = () => {
     }
     return playlist.filter((v) => v.videoId !== activeVideo.videoId).slice(0, 15);
   }, [relatedVideos, playlist, activeVideo]);
+
+  const displayChannelAvatar = useMemo(() => {
+    const avatar = activeChannelMeta?.channelAvatar || activeVideo?.channelAvatar;
+    if (avatar && !avatar.includes('ui-avatars.com')) {
+      return avatar;
+    }
+    return undefined;
+  }, [activeChannelMeta?.channelAvatar, activeVideo?.channelAvatar]);
+
+  const displayChannelTitle = useMemo(() => {
+    if (activeChannelMeta?.channelTitle) {
+      return activeChannelMeta.channelTitle;
+    }
+    if (activeVideo?.author) {
+      return activeVideo.author.replace(/\s+and\s+\d+\s+more.*$/i, '').trim();
+    }
+    return 'YouTube Creator';
+  }, [activeChannelMeta?.channelTitle, activeVideo?.author]);
+
+  const displayChannelSub = useMemo(() => {
+    if (activeChannelMeta?.subscriberCount) {
+      return activeChannelMeta.subscriberCount;
+    }
+    return 'Channel';
+  }, [activeChannelMeta?.subscriberCount]);
 
   if (playerMode === 'hidden' || !activeVideo) {
     return null;
@@ -829,23 +855,27 @@ export const GlobalVideoPlayer: React.FC = () => {
 
               {/* Channel Row */}
               <View style={styles.watchChannelRow}>
-                {activeVideo.channelAvatar && !activeVideo.channelAvatar.includes('ui-avatars.com') ? (
+                {displayChannelAvatar ? (
                   <ExpoImage
-                    source={{ uri: activeVideo.channelAvatar }}
+                    source={{ uri: displayChannelAvatar }}
                     style={styles.watchChannelAvatar}
                     contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={150}
                   />
                 ) : (
                   <View style={styles.watchChannelAvatarPlaceholder}>
-                    <Ionicons name="logo-youtube" size={18} color="#FF0000" />
+                    <Ionicons name="person" size={16} color="rgba(255,255,255,0.6)" />
                   </View>
                 )}
 
                 <View style={styles.watchChannelTextCol}>
                   <Text style={styles.watchChannelName} numberOfLines={1}>
-                    {activeVideo.author}
+                    {displayChannelTitle}
                   </Text>
-                  <Text style={styles.watchChannelSubBadge}>Official Channel</Text>
+                  <Text style={styles.watchChannelSubBadge}>
+                    {displayChannelSub}
+                  </Text>
                 </View>
               </View>
 

@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.22',
-  releaseTag: 'v5.2.22',
-  releaseName: 'Shorty v5.2.22: Fix conditional hook order in GlobalVideoPlayer and safe replaceAsync stream loader',
+  otaVersion: '5.2.23',
+  releaseTag: 'v5.2.23',
+  releaseName: 'Shorty v5.2.23: Real YouTube channel avatar, clean channel title, and dynamic subscriber count',
   releaseDate: '2026-11-02',
   channel: 'preview',
 };
