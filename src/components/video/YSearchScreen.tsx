@@ -2137,10 +2137,25 @@ interface VideoCardItemProps {
 
 const VideoCardItem = React.memo<VideoCardItemProps>(
   ({ item, isActive, isPlaying, isLiked, themeMode, surfaceHex, onSelect, onPlayPress, onToggleLike, onChannelPress }) => {
-    const [thumbError, setThumbError] = useState(false);
-    const thumbUri = thumbError
-      ? `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`
-      : (item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`);
+    const [thumbFallbackLevel, setThumbFallbackLevel] = useState<number>(0);
+
+    const thumbUri = useMemo(() => {
+      const vid = item.videoId;
+      if (!vid) return item.thumbnail || '';
+      if (thumbFallbackLevel === 0) {
+        // Primary: pristine 1080p/720p Ultra-HD thumbnail (crystal clear on retina displays)
+        return `https://i.ytimg.com/vi/${vid}/maxresdefault.jpg`;
+      }
+      if (thumbFallbackLevel === 1) {
+        // Fallback 1: High definition SD (640x480)
+        return `https://i.ytimg.com/vi/${vid}/sddefault.jpg`;
+      }
+      if (thumbFallbackLevel === 2) {
+        // Fallback 2: Standard high-quality (480x360) without downsampling params
+        return `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+      }
+      return item.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`;
+    }, [item.videoId, item.thumbnail, thumbFallbackLevel]);
 
     return (
       <TouchableOpacity
@@ -2157,13 +2172,15 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
         {/* 16:9 Video Thumbnail with explicit width & height */}
         <View style={styles.thumbnailContainer}>
           <ExpoImage
-            key={`thumb-${item.videoId}-${thumbError ? 'fb' : 'main'}`}
+            key={`thumb-${item.videoId}-${thumbFallbackLevel}`}
             source={{ uri: thumbUri }}
             style={styles.thumbnailImage}
             contentFit="cover"
             cachePolicy="memory-disk"
-            transition={0}
-            onError={() => setThumbError(true)}
+            transition={150}
+            onError={() => {
+              setThumbFallbackLevel((lvl) => (lvl < 3 ? lvl + 1 : lvl));
+            }}
           />
 
           {/* YouTube Duration or LIVE Badge */}

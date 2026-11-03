@@ -520,6 +520,14 @@ export const GlobalVideoPlayer: React.FC = () => {
     return 'Channel';
   }, [activeChannelMeta?.subscriberCount]);
 
+  const activeThumbUri = useMemo(() => {
+    if (!activeVideo) return '';
+    if (activeVideo.videoId && (activeVideo.thumbnail?.includes('?sqp=') || !activeVideo.thumbnail?.includes('maxresdefault.jpg'))) {
+      return `https://i.ytimg.com/vi/${activeVideo.videoId}/maxresdefault.jpg`;
+    }
+    return activeVideo.thumbnail || (activeVideo.videoId ? `https://i.ytimg.com/vi/${activeVideo.videoId}/hqdefault.jpg` : '');
+  }, [activeVideo]);
+
   if (playerMode === 'hidden' || !activeVideo) {
     return null;
   }
@@ -558,7 +566,7 @@ export const GlobalVideoPlayer: React.FC = () => {
             >
               {/* Background thumbnail avoids black gap during native surface initialization */}
               <ExpoImage
-                source={{ uri: activeVideo.thumbnail }}
+                source={{ uri: activeThumbUri }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
               />
@@ -826,7 +834,7 @@ export const GlobalVideoPlayer: React.FC = () => {
               ) : (
                 <View style={styles.loadingStreamPlaceholder}>
                   <ExpoImage
-                    source={{ uri: activeVideo.thumbnail }}
+                    source={{ uri: activeThumbUri }}
                     style={StyleSheet.absoluteFill}
                     contentFit="cover"
                   />
@@ -924,7 +932,12 @@ export const GlobalVideoPlayer: React.FC = () => {
                     >
                       <View style={styles.upNextThumbContainer}>
                         <ExpoImage
-                          source={{ uri: item.thumbnail }}
+                          source={{
+                            uri:
+                              item.videoId && (item.thumbnail?.includes('?sqp=') || !item.thumbnail?.includes('maxresdefault.jpg'))
+                                ? `https://i.ytimg.com/vi/${item.videoId}/maxresdefault.jpg`
+                                : (item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`),
+                          }}
                           style={styles.upNextThumb}
                           contentFit="cover"
                         />

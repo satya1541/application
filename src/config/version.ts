@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.28',
-  releaseTag: 'v5.2.28',
-  releaseName: 'Shorty v5.2.28: Fix real YouTube channel logo resolution across all playlists and trending charts',
-  releaseDate: '2026-11-02',
+  otaVersion: '5.2.29',
+  releaseTag: 'v5.2.29',
+  releaseName: 'Shorty v5.2.29: Upgrade video thumbnail quality to crystal clear Ultra HD across all 94 playlist filters',
+  releaseDate: '2026-11-03',
   channel: 'preview',
 };

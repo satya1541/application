@@ -186,8 +186,10 @@ function parseVideoRenderer(vr: any): YouTubeVideoSearchResult | null {
   if (bestThumb && bestThumb.startsWith('//')) {
     bestThumb = `https:${bestThumb}`;
   }
-  const thumbnail =
-    bestThumb || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  let thumbnail = bestThumb || (videoId ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` : '');
+  if (videoId && (thumbnail.includes('?sqp=') || thumbnail.includes('/hqdefault.jpg'))) {
+    thumbnail = `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+  }
 
   return {
     id: videoId,
@@ -608,7 +610,17 @@ async function hydrateTrendingCharts(): Promise<void> {
       if (typeof parsed === 'object' && parsed !== null) {
         for (const [k, v] of Object.entries(parsed)) {
           if (v && Array.isArray((v as any).videos) && (v as any).videos.length > 0) {
-            trendingCache.set(k, v as any);
+            // Automatically upgrade any cached low-res / downsampled thumbnails to pristine Ultra-HD
+            const upgradedVideos = (v as any).videos.map((vid: YouTubeVideoSearchResult) => {
+              if (vid.videoId && (vid.thumbnail?.includes('?sqp=') || !vid.thumbnail?.includes('maxresdefault.jpg'))) {
+                return {
+                  ...vid,
+                  thumbnail: `https://i.ytimg.com/vi/${vid.videoId}/maxresdefault.jpg`,
+                };
+              }
+              return vid;
+            });
+            trendingCache.set(k, { ...(v as any), videos: upgradedVideos });
           }
         }
       }
@@ -756,7 +768,10 @@ export async function fetchYouTubePlaylistVideos(
               lockup.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.image?.sources ||
               lockup.contentImage?.thumbnailViewModel?.image?.sources ||
               [];
-            thumb = sources[sources.length - 1]?.url || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
+            // Use pristine Ultra-HD (maxresdefault.jpg 1080p/720p) instead of downsampled ?sqp= 336x188
+            thumb = videoId
+              ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+              : (sources[sources.length - 1]?.url || '');
             const overlays =
               lockup.contentImage?.collectionThumbnailViewModel?.primaryThumbnail?.thumbnailViewModel?.overlays ||
               lockup.contentImage?.thumbnailViewModel?.overlays ||
@@ -770,7 +785,10 @@ export async function fetchYouTubePlaylistVideos(
             author = pv.shortBylineText?.runs?.[0]?.text || 'YouTube Music';
             channelId = pv.shortBylineText?.runs?.[0]?.navigationEndpoint?.browseEndpoint?.browseId || undefined;
             const thumbs = pv.thumbnail?.thumbnails || [];
-            thumb = thumbs[thumbs.length - 1]?.url || (videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : '');
+            // Use pristine Ultra-HD (maxresdefault.jpg)
+            thumb = videoId
+              ? `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+              : (thumbs[thumbs.length - 1]?.url || '');
             duration = pv.lengthText?.simpleText || '';
 
             const chThumb =
@@ -825,7 +843,11 @@ export async function fetchYouTubePlaylistVideos(
   // Fallback to search query
   try {
     const fallback = await searchYouTubeVideos(fallbackQuery, limit);
-    return fallback.map((v, i) => ({ ...v, rank: i + 1 }));
+    return fallback.map((v, i) => ({
+      ...v,
+      thumbnail: v.videoId ? `https://i.ytimg.com/vi/${v.videoId}/maxresdefault.jpg` : v.thumbnail,
+      rank: i + 1,
+    }));
   } catch {
     return [];
   }
