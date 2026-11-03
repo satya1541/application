@@ -119,11 +119,53 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoViewRef = useRef<VideoView>(null);
 
-  // Exit fullscreen cleanly
+  // Cinema-grade scale & fade transitions for entering / exiting fullscreen
+  const fullscreenScaleAnim = useRef(new Animated.Value(0.92)).current;
+  const fullscreenFadeAnim = useRef(new Animated.Value(0)).current;
+  const isExitingRef = useRef(false);
+
+  useEffect(() => {
+    if (isVisible) {
+      isExitingRef.current = false;
+      fullscreenScaleAnim.setValue(0.92);
+      fullscreenFadeAnim.setValue(0);
+      Animated.parallel([
+        Animated.timing(fullscreenFadeAnim, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+        Animated.spring(fullscreenScaleAnim, {
+          toValue: 1,
+          tension: 130,
+          friction: 12,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isVisible, fullscreenScaleAnim, fullscreenFadeAnim]);
+
+  // Exit fullscreen cleanly with reverse zoom & fade
   const handleExit = useCallback(async () => {
-    await lockPortraitAsync();
-    onExitFullscreen();
-  }, [onExitFullscreen]);
+    if (isExitingRef.current) return;
+    isExitingRef.current = true;
+    Animated.parallel([
+      Animated.timing(fullscreenFadeAnim, {
+        toValue: 0,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fullscreenScaleAnim, {
+        toValue: 0.94,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+    ]).start(async () => {
+      await lockPortraitAsync();
+      onExitFullscreen();
+      isExitingRef.current = false;
+    });
+  }, [onExitFullscreen, fullscreenFadeAnim, fullscreenScaleAnim]);
 
   const handleTriggerPiP = useCallback(async () => {
     try {
@@ -348,7 +390,16 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
       onRequestClose={handleExit}
     >
       <StatusBar hidden={!controlsVisible} animated />
-      <View style={styles.container} {...fullscreenPanResponder.panHandlers}>
+      <Animated.View
+        style={[
+          styles.container,
+          {
+            opacity: fullscreenFadeAnim,
+            transform: [{ scale: fullscreenScaleAnim }],
+          },
+        ]}
+        {...fullscreenPanResponder.panHandlers}
+      >
         {/* Fullscreen Video View: Native surfaceView for direct hardware compositor overlay, full 10-bit HDR/DCI-P3 color and maximum sharpness */}
         <VideoView
           ref={videoViewRef}
@@ -578,7 +629,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
             </TouchableOpacity>
           </View>
         </Animated.View>
-      </View>
+      </Animated.View>
     </Modal>
   );
 };

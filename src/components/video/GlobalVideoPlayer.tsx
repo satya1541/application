@@ -168,11 +168,21 @@ export const GlobalVideoPlayer: React.FC = () => {
   const isClosingRef = useRef(false);
   const prevModeRef = useRef<VideoPlayerMode>(playerMode);
 
+  // Silky smooth watch sheet scale & opacity animation values
+  const sheetScale = useRef(new Animated.Value(0.94)).current;
+  const sheetOpacity = useRef(new Animated.Value(0.3)).current;
+
   // Floating Miniplayer gesture & entrance animation values
   const miniTranslateX = useRef(new Animated.Value(0)).current;
   const miniTranslateY = useRef(new Animated.Value(0)).current;
   const miniScale = useRef(new Animated.Value(1)).current;
   const miniOpacity = useRef(new Animated.Value(1)).current;
+
+  // Silky smooth video switch crossfade & metadata slide transitions
+  const videoCrossfadeAnim = useRef(new Animated.Value(1)).current;
+  const metaFadeAnim = useRef(new Animated.Value(1)).current;
+  const metaSlideAnim = useRef(new Animated.Value(0)).current;
+  const prevVideoIdRef = useRef<string | null>(null);
 
   // Auto-hide controls in full watch view after 3.5s
   const resetWatchControlsTimer = useCallback(() => {
@@ -197,40 +207,107 @@ export const GlobalVideoPlayer: React.FC = () => {
     if (playerMode === 'full' && prevModeRef.current !== 'full') {
       isClosingRef.current = false;
       translateY.stopAnimation();
+      sheetScale.stopAnimation();
+      sheetOpacity.stopAnimation();
       translateY.setValue(windowHeight);
-      Animated.spring(translateY, {
-        toValue: 0,
-        tension: 110,
-        friction: 12,
-        velocity: -2.5,
-        useNativeDriver: true,
-      }).start();
+      sheetScale.setValue(0.94);
+      sheetOpacity.setValue(0.3);
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          tension: 110,
+          friction: 12,
+          velocity: -2.5,
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetScale, {
+          toValue: 1,
+          tension: 120,
+          friction: 12,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetOpacity, {
+          toValue: 1,
+          duration: 220,
+          useNativeDriver: true,
+        }),
+      ]).start();
       setShowWatchControls(true);
       resetWatchControlsTimer();
-    } else if (playerMode === 'mini' && prevModeRef.current === 'full') {
+    } else if (playerMode === 'mini' && prevModeRef.current !== 'mini') {
       // Full watch view remains safely parked offscreen below viewport
       translateY.setValue(windowHeight);
       // Fluid scale & fade entrance for miniplayer
       miniTranslateX.setValue(0);
-      miniTranslateY.setValue(0);
-      miniScale.setValue(0.92);
+      miniTranslateY.setValue(25);
+      miniScale.setValue(0.88);
       miniOpacity.setValue(0);
       Animated.parallel([
         Animated.timing(miniOpacity, {
           toValue: 1,
-          duration: 180,
+          duration: 200,
           useNativeDriver: true,
         }),
         Animated.spring(miniScale, {
           toValue: 1,
-          tension: 130,
+          tension: 140,
+          friction: 11,
+          useNativeDriver: true,
+        }),
+        Animated.spring(miniTranslateY, {
+          toValue: 0,
+          tension: 140,
           friction: 11,
           useNativeDriver: true,
         }),
       ]).start();
     }
     prevModeRef.current = playerMode;
-  }, [playerMode, translateY, miniScale, miniOpacity, miniTranslateX, miniTranslateY, resetWatchControlsTimer]);
+  }, [playerMode, translateY, sheetScale, sheetOpacity, miniScale, miniOpacity, miniTranslateX, miniTranslateY, resetWatchControlsTimer]);
+
+  // Silky smooth crossfade and slide-up transition when switching videos while playing
+  useEffect(() => {
+    if (!activeVideo?.videoId) return;
+
+    if (prevVideoIdRef.current && prevVideoIdRef.current !== activeVideo.videoId) {
+      // 1. Crossfade video view & thumbnail
+      videoCrossfadeAnim.setValue(0.35);
+      Animated.timing(videoCrossfadeAnim, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+
+      // 2. Glide in new video metadata (title, author, stats)
+      metaFadeAnim.setValue(0.2);
+      metaSlideAnim.setValue(12);
+      Animated.parallel([
+        Animated.timing(metaFadeAnim, {
+          toValue: 1,
+          duration: 240,
+          useNativeDriver: true,
+        }),
+        Animated.spring(metaSlideAnim, {
+          toValue: 0,
+          tension: 130,
+          friction: 12,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // 3. Subtle bounce if miniplayer is currently active
+      if (playerMode === 'mini') {
+        miniScale.setValue(0.93);
+        Animated.spring(miniScale, {
+          toValue: 1,
+          tension: 160,
+          friction: 10,
+          useNativeDriver: true,
+        }).start();
+      }
+    }
+    prevVideoIdRef.current = activeVideo.videoId;
+  }, [activeVideo?.videoId, playerMode, videoCrossfadeAnim, metaFadeAnim, metaSlideAnim, miniScale]);
 
   // Maximize from miniplayer to full watch view (delegates entrance spring cleanly to useLayoutEffect)
   const handleMaximize = useCallback(() => {
@@ -245,24 +322,38 @@ export const GlobalVideoPlayer: React.FC = () => {
       if (isClosingRef.current) return;
       isClosingRef.current = true;
       translateY.stopAnimation();
+      sheetScale.stopAnimation();
+      sheetOpacity.stopAnimation();
 
       const initialVelocity =
         typeof velocity === 'number' && velocity > 0 ? Math.max(velocity * 1.2, 1.5) : 1.5;
 
-      Animated.spring(translateY, {
-        toValue: windowHeight,
-        tension: 90,
-        friction: 12,
-        velocity: initialVelocity,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: windowHeight,
+          tension: 90,
+          friction: 12,
+          velocity: initialVelocity,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetScale, {
+          toValue: 0.95,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetOpacity, {
+          toValue: 0.4,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
         if (finished) {
           collapseToMini();
         }
         isClosingRef.current = false;
       });
     },
-    [translateY, collapseToMini, windowHeight]
+    [translateY, sheetScale, sheetOpacity, collapseToMini, windowHeight]
   );
 
   // Android back button: collapse full watch view to mini player
@@ -321,12 +412,25 @@ export const GlobalVideoPlayer: React.FC = () => {
         }
 
         // 3. Otherwise: snap back cleanly to 0
-        Animated.spring(translateY, {
-          toValue: 0,
-          friction: 10,
-          tension: 80,
-          useNativeDriver: true,
-        }).start();
+        Animated.parallel([
+          Animated.spring(translateY, {
+            toValue: 0,
+            friction: 10,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+          Animated.spring(sheetScale, {
+            toValue: 1,
+            friction: 10,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+          Animated.timing(sheetOpacity, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ]).start();
       },
       onPanResponderTerminate: (_, gestureState) => {
         if (gestureState && (gestureState.dy < -25 || gestureState.vy < -0.2)) {
@@ -340,12 +444,25 @@ export const GlobalVideoPlayer: React.FC = () => {
         } else if (gestureState && (gestureState.dy > 45 || gestureState.vy > 0.12)) {
           animateCollapseToMini(gestureState.vy);
         } else {
-          Animated.spring(translateY, {
-            toValue: 0,
-            friction: 10,
-            tension: 80,
-            useNativeDriver: true,
-          }).start();
+          Animated.parallel([
+            Animated.spring(translateY, {
+              toValue: 0,
+              friction: 10,
+              tension: 80,
+              useNativeDriver: true,
+            }),
+            Animated.spring(sheetScale, {
+              toValue: 1,
+              friction: 10,
+              tension: 80,
+              useNativeDriver: true,
+            }),
+            Animated.timing(sheetOpacity, {
+              toValue: 1,
+              duration: 150,
+              useNativeDriver: true,
+            }),
+          ]).start();
         }
       },
     })
@@ -649,7 +766,10 @@ export const GlobalVideoPlayer: React.FC = () => {
         <Animated.View
           style={[
             styles.watchScreenOverlay,
-            { transform: [{ translateY }] },
+            {
+              transform: [{ translateY }, { scale: sheetScale }],
+              opacity: sheetOpacity,
+            },
           ]}
         >
           <SafeAreaView
@@ -663,8 +783,13 @@ export const GlobalVideoPlayer: React.FC = () => {
                 <View style={styles.dragPillIndicator} />
               </View>
 
-              {/* 16:9 Video Canvas Frame */}
-              <View style={[styles.watchVideoCanvas, { height: videoCanvasHeight }]}>
+              {/* 16:9 Video Canvas Frame with silky smooth video crossfade */}
+              <Animated.View
+                style={[
+                  styles.watchVideoCanvas,
+                  { height: videoCanvasHeight, opacity: videoCrossfadeAnim },
+                ]}
+              >
                 {videoStream && player ? (
                   <View style={StyleSheet.absoluteFill}>
                     {/* Clean black backdrop: eliminates thumbnail peeking behind widescreen letterboxing */}
@@ -814,7 +939,7 @@ export const GlobalVideoPlayer: React.FC = () => {
                   </View>
                 </View>
               )}
-            </View>
+            </Animated.View>
           </View>
 
           {/* Red Scrub Slider right below Video Canvas */}
@@ -827,16 +952,22 @@ export const GlobalVideoPlayer: React.FC = () => {
             onSlidingComplete={handleSlidingComplete}
           />
 
-            {/* Watch Details & Up Next ScrollView */}
+            {/* Watch Details & Up Next ScrollView with silky smooth metadata glide */}
             <ScrollView
               style={styles.watchDetailsScroll}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 40 }}
             >
-              {/* Video Title */}
-              <Text style={styles.watchVideoTitle} numberOfLines={3}>
-                {activeVideo.title}
-              </Text>
+              <Animated.View
+                style={{
+                  opacity: metaFadeAnim,
+                  transform: [{ translateY: metaSlideAnim }],
+                }}
+              >
+                {/* Video Title */}
+                <Text style={styles.watchVideoTitle} numberOfLines={3}>
+                  {activeVideo.title}
+                </Text>
 
               {/* Video Stats */}
               <View style={styles.watchStatsRow}>
@@ -933,6 +1064,7 @@ export const GlobalVideoPlayer: React.FC = () => {
                   ))}
                 </>
               )}
+              </Animated.View>
             </ScrollView>
           </SafeAreaView>
         </Animated.View>

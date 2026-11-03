@@ -117,6 +117,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
   const categoryVideosCacheRef = useRef<Map<string, YouTubeVideoSearchResult[]>>(new Map());
   const loadTrendingReqIdRef = useRef(0);
   const hasMountedTrendingRef = useRef(false);
+  const categoryScrollRef = useRef<ScrollView>(null);
+
+  // Silky smooth filter switching animations
+  const filterFadeAnim = useRef(new Animated.Value(1)).current;
+  const filterSlideAnim = useRef(new Animated.Value(0)).current;
   const [selectedChannel, setSelectedChannel] = useState<{
     channelId: string;
     title: string;
@@ -482,7 +487,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return unsubscribe;
   }, []);
 
-  // Instant category selection handler: 0ms UI switch with immediate cache swap
+  // Instant category selection handler: 0ms UI switch with silky smooth fade & slide transition
   const handleSelectCategory = useCallback(
     (catId: string) => {
       if (catId === selectedCategory && trendingVideos.length > 0 && !query.trim()) {
@@ -495,24 +500,54 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         setNextPageToken(null);
       }
 
-      setSelectedCategory(catId);
+      // Smooth subtle fade & slide transition when switching filters
+      Animated.parallel([
+        Animated.timing(filterFadeAnim, {
+          toValue: 0.15,
+          duration: 80,
+          useNativeDriver: true,
+        }),
+        Animated.timing(filterSlideAnim, {
+          toValue: 6,
+          duration: 80,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setSelectedCategory(catId);
 
-      // Instant 0ms cached check
-      const instantCached = getInstantCachedCategoryVideos(catId);
-      if (instantCached && instantCached.length > 0) {
-        setTrendingVideos(instantCached);
-        categoryVideosCacheRef.current.set(catId, instantCached);
-        setIsLoadingTrending(false);
-        // Silent background revalidation
-        loadTrending(catId, false, true);
-      } else {
-        // Cold category: clear previous list so it doesn't show old videos under new category title
-        setTrendingVideos([]);
-        setIsLoadingTrending(true);
-        loadTrending(catId, false, false);
-      }
+        // Instant 0ms cached check
+        const instantCached = getInstantCachedCategoryVideos(catId);
+        if (instantCached && instantCached.length > 0) {
+          setTrendingVideos(instantCached);
+          categoryVideosCacheRef.current.set(catId, instantCached);
+          setIsLoadingTrending(false);
+          // Silent background revalidation
+          loadTrending(catId, false, true);
+        } else {
+          // Cold category: clear previous list so it doesn't show old videos under new category title
+          setTrendingVideos([]);
+          setIsLoadingTrending(true);
+          loadTrending(catId, false, false);
+        }
+
+        // Spring smoothly back in with new list
+        filterSlideAnim.setValue(-6);
+        Animated.parallel([
+          Animated.timing(filterFadeAnim, {
+            toValue: 1,
+            duration: 180,
+            useNativeDriver: true,
+          }),
+          Animated.spring(filterSlideAnim, {
+            toValue: 0,
+            tension: 140,
+            friction: 12,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
     },
-    [selectedCategory, trendingVideos.length, query, getInstantCachedCategoryVideos, loadTrending]
+    [selectedCategory, trendingVideos.length, query, getInstantCachedCategoryVideos, loadTrending, filterFadeAnim, filterSlideAnim]
   );
 
   // Handle typing with real-time YouTube search suggestions
@@ -825,6 +860,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
       {/* Category Filter Chips Bar */}
       <View style={[styles.categoryBarContainer, { backgroundColor: bgHex }]}>
         <ScrollView
+          ref={categoryScrollRef}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.categoryBarScroll}
@@ -833,48 +869,29 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             const isSelected = selectedCategory === cat.id && !query.trim();
             const isUserFeedChip = cat.id === 'my_feed' || cat.id === 'liked';
             return (
-              <TouchableOpacity
+              <AnimatedCategoryChip
                 key={cat.id}
-                style={[
-                  styles.categoryChip,
-                  isSelected && styles.categoryChipActive,
-                  {
-                    backgroundColor: isSelected
-                      ? isUserFeedChip ? '#1a73e8' : '#FF0000'
-                      : themeMode === 'oled'
-                      ? '#181818'
-                      : '#282828',
-                  },
-                  isUserFeedChip && !isSelected && {
-                    borderColor: 'rgba(26, 115, 232, 0.4)',
-                  },
-                ]}
+                cat={cat}
+                isSelected={isSelected}
+                isUserFeedChip={isUserFeedChip}
+                themeMode={themeMode}
                 onPress={() => handleSelectCategory(cat.id)}
-                activeOpacity={0.75}
-              >
-                <Ionicons
-                  name={cat.icon as any}
-                  size={14}
-                  color={isSelected ? '#ffffff' : isUserFeedChip ? '#8ab4f8' : '#aaaaaa'}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.categoryChipText,
-                    isSelected && styles.categoryChipTextActive,
-                    isUserFeedChip && !isSelected && { color: '#8ab4f8' },
-                  ]}
-                >
-                  {cat.name}
-                </Text>
-              </TouchableOpacity>
+              />
             );
           })}
         </ScrollView>
       </View>
 
-      {/* Main Content: Search Results OR Trending / Discover Feed */}
-      <View style={styles.content}>
+      {/* Main Content: Search Results OR Trending / Discover Feed with Silky Filter Switching Transition */}
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            opacity: filterFadeAnim,
+            transform: [{ translateY: filterSlideAnim }],
+          },
+        ]}
+      >
         {isSearching ? (
           <View style={styles.centerLoadingContainer}>
             <ActivityIndicator size="large" color="#FF0000" />
@@ -1184,7 +1201,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             }
           />
         )}
-      </View>
+      </Animated.View>
 
       {/* Full Channel View Modal Overlay */}
       {selectedChannel && (
@@ -2122,6 +2139,79 @@ const styles = StyleSheet.create({
 // MEMOIZED VIDEO CARD COMPONENTS (Prevent Android Card/Thumbnail Blanking)
 // ============================================================================
 
+interface AnimatedCategoryChipProps {
+  cat: any;
+  isSelected: boolean;
+  isUserFeedChip: boolean;
+  themeMode: string;
+  onPress: () => void;
+}
+
+const AnimatedCategoryChip = React.memo<AnimatedCategoryChipProps>(
+  ({ cat, isSelected, isUserFeedChip, themeMode, onPress }) => {
+    const chipScale = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+      Animated.spring(chipScale, {
+        toValue: 0.92,
+        tension: 240,
+        friction: 12,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(chipScale, {
+        toValue: 1,
+        tension: 200,
+        friction: 10,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    return (
+      <Animated.View style={{ transform: [{ scale: chipScale }] }}>
+        <TouchableOpacity
+          style={[
+            styles.categoryChip,
+            isSelected && styles.categoryChipActive,
+            {
+              backgroundColor: isSelected
+                ? isUserFeedChip ? '#1a73e8' : '#FF0000'
+                : themeMode === 'oled'
+                ? '#181818'
+                : '#282828',
+            },
+            isUserFeedChip && !isSelected && {
+              borderColor: 'rgba(26, 115, 232, 0.4)',
+            },
+          ]}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onPress={onPress}
+          activeOpacity={0.8}
+        >
+          <Ionicons
+            name={cat.icon as any}
+            size={14}
+            color={isSelected ? '#ffffff' : isUserFeedChip ? '#8ab4f8' : '#aaaaaa'}
+            style={{ marginRight: 6 }}
+          />
+          <Text
+            style={[
+              styles.categoryChipText,
+              isSelected && styles.categoryChipTextActive,
+              isUserFeedChip && !isSelected && { color: '#8ab4f8' },
+            ]}
+          >
+            {cat.name}
+          </Text>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  }
+);
+
 interface VideoCardItemProps {
   item: YouTubeVideoSearchResult;
   isActive: boolean;
@@ -2138,6 +2228,25 @@ interface VideoCardItemProps {
 const VideoCardItem = React.memo<VideoCardItemProps>(
   ({ item, isActive, isPlaying, isLiked, themeMode, surfaceHex, onSelect, onPlayPress, onToggleLike, onChannelPress }) => {
     const [thumbFallbackLevel, setThumbFallbackLevel] = useState<number>(0);
+    const cardScale = useRef(new Animated.Value(1)).current;
+
+    const handlePressIn = () => {
+      Animated.spring(cardScale, {
+        toValue: 0.975,
+        tension: 240,
+        friction: 12,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(cardScale, {
+        toValue: 1,
+        tension: 200,
+        friction: 12,
+        useNativeDriver: true,
+      }).start();
+    };
 
     const thumbUri = useMemo(() => {
       const vid = item.videoId;
@@ -2158,17 +2267,20 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
     }, [item.videoId, item.thumbnail, thumbFallbackLevel]);
 
     return (
-      <TouchableOpacity
-        style={[
-          styles.videoCard,
-          {
-            backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex,
-            borderColor: isActive ? '#FF0000' : 'rgba(255, 255, 255, 0.06)',
-          },
-        ]}
-        onPress={() => onSelect(item)}
-        activeOpacity={0.85}
-      >
+      <Animated.View style={{ transform: [{ scale: cardScale }] }}>
+        <TouchableOpacity
+          style={[
+            styles.videoCard,
+            {
+              backgroundColor: themeMode === 'oled' ? '#0a0a0a' : surfaceHex,
+              borderColor: isActive ? '#FF0000' : 'rgba(255, 255, 255, 0.06)',
+            },
+          ]}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onPress={() => onSelect(item)}
+          activeOpacity={0.9}
+        >
         {/* 16:9 Video Thumbnail with explicit width & height */}
         <View style={styles.thumbnailContainer}>
           <ExpoImage
@@ -2308,7 +2420,8 @@ const VideoCardItem = React.memo<VideoCardItemProps>(
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
-    );
+    </Animated.View>
+  );
   },
   (prev, next) =>
     prev.item.videoId === next.item.videoId &&
