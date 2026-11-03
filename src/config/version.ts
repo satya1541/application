@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.29',
-  releaseTag: 'v5.2.29',
-  releaseName: 'Shorty v5.2.29: Upgrade video thumbnail quality to crystal clear Ultra HD across all 94 playlist filters',
+  otaVersion: '5.2.30',
+  releaseTag: 'v5.2.30',
+  releaseName: 'Shorty v5.2.30: Remove cast, caption, pip, and settings buttons from video watch controls',
   releaseDate: '2026-11-03',
   channel: 'preview',
 };

@@ -699,7 +699,7 @@ export const GlobalVideoPlayer: React.FC = () => {
                           pointerEvents="none"
                         />
 
-                        {/* Top Bar: Chevron-down (collapse to miniplayer) & Actions */}
+                        {/* Top Bar: Chevron-down (collapse to miniplayer) */}
                         <View style={styles.watchTopBar}>
                           <TouchableOpacity
                             onPress={() => animateCollapseToMini(1.5)}
@@ -708,38 +708,6 @@ export const GlobalVideoPlayer: React.FC = () => {
                           >
                             <Ionicons name="chevron-down" size={28} color="#ffffff" />
                           </TouchableOpacity>
-
-                          <View style={styles.watchTopRightActions}>
-                            {/* PiP Button */}
-                            <TouchableOpacity
-                              style={styles.watchTopActionBtn}
-                              onPress={triggerPiP}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <MaterialIcons name="picture-in-picture-alt" size={22} color="#ffffff" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.watchTopActionBtn}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <MaterialIcons name="cast" size={20} color="#ffffff" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.watchTopActionBtn}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <MaterialIcons name="closed-caption-off" size={22} color="#ffffff" />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.watchTopActionBtn}
-                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                              <Ionicons name="settings-outline" size={20} color="#ffffff" />
-                            </TouchableOpacity>
-                          </View>
                         </View>
 
                         {/* Center Controls: Previous, Replay 10, Big Play/Pause, Forward 10, Next */}
