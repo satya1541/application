@@ -487,7 +487,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     return unsubscribe;
   }, []);
 
-  // Instant category selection handler: 0ms UI switch with silky smooth fade & slide transition
+  // Instant category selection handler: 0ms UI switch with instantaneous content swap & concurrent glide
   const handleSelectCategory = useCallback(
     (catId: string) => {
       if (catId === selectedCategory && trendingVideos.length > 0 && !query.trim()) {
@@ -500,52 +500,42 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         setNextPageToken(null);
       }
 
-      // Smooth subtle fade & slide transition when switching filters
+      // 1. INSTANT 0ms UI SWITCH: Update category selection and list immediately without any blocking delay!
+      setSelectedCategory(catId);
+
+      // Instant 0ms cached check
+      const instantCached = getInstantCachedCategoryVideos(catId);
+      if (instantCached && instantCached.length > 0) {
+        setTrendingVideos(instantCached);
+        categoryVideosCacheRef.current.set(catId, instantCached);
+        setIsLoadingTrending(false);
+        // Silent background revalidation
+        loadTrending(catId, false, true);
+      } else {
+        // Cold category: clear previous list so it doesn't show old videos under new category title
+        setTrendingVideos([]);
+        setIsLoadingTrending(true);
+        loadTrending(catId, false, false);
+      }
+
+      // 2. CONCURRENT NON-BLOCKING GLIDE: Instantly glide new content into view at the same time
+      filterFadeAnim.stopAnimation();
+      filterSlideAnim.stopAnimation();
+      filterFadeAnim.setValue(0.65);
+      filterSlideAnim.setValue(10);
       Animated.parallel([
         Animated.timing(filterFadeAnim, {
-          toValue: 0.15,
-          duration: 80,
+          toValue: 1,
+          duration: 140,
           useNativeDriver: true,
         }),
-        Animated.timing(filterSlideAnim, {
-          toValue: 6,
-          duration: 80,
+        Animated.spring(filterSlideAnim, {
+          toValue: 0,
+          tension: 200,
+          friction: 14,
           useNativeDriver: true,
         }),
-      ]).start(() => {
-        setSelectedCategory(catId);
-
-        // Instant 0ms cached check
-        const instantCached = getInstantCachedCategoryVideos(catId);
-        if (instantCached && instantCached.length > 0) {
-          setTrendingVideos(instantCached);
-          categoryVideosCacheRef.current.set(catId, instantCached);
-          setIsLoadingTrending(false);
-          // Silent background revalidation
-          loadTrending(catId, false, true);
-        } else {
-          // Cold category: clear previous list so it doesn't show old videos under new category title
-          setTrendingVideos([]);
-          setIsLoadingTrending(true);
-          loadTrending(catId, false, false);
-        }
-
-        // Spring smoothly back in with new list
-        filterSlideAnim.setValue(-6);
-        Animated.parallel([
-          Animated.timing(filterFadeAnim, {
-            toValue: 1,
-            duration: 180,
-            useNativeDriver: true,
-          }),
-          Animated.spring(filterSlideAnim, {
-            toValue: 0,
-            tension: 140,
-            friction: 12,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      });
+      ]).start();
     },
     [selectedCategory, trendingVideos.length, query, getInstantCachedCategoryVideos, loadTrending, filterFadeAnim, filterSlideAnim]
   );
@@ -2153,8 +2143,8 @@ const AnimatedCategoryChip = React.memo<AnimatedCategoryChipProps>(
 
     const handlePressIn = () => {
       Animated.spring(chipScale, {
-        toValue: 0.92,
-        tension: 240,
+        toValue: 0.95,
+        tension: 300,
         friction: 12,
         useNativeDriver: true,
       }).start();
@@ -2163,8 +2153,8 @@ const AnimatedCategoryChip = React.memo<AnimatedCategoryChipProps>(
     const handlePressOut = () => {
       Animated.spring(chipScale, {
         toValue: 1,
-        tension: 200,
-        friction: 10,
+        tension: 300,
+        friction: 12,
         useNativeDriver: true,
       }).start();
     };
