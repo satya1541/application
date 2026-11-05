@@ -445,22 +445,27 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     }
   }, [selectedCategory, getInstantCachedCategoryVideos, loadTrending]);
 
-  // Real-time listener for channel avatar resolution (0ms instant card updates)
+  // Real-time listener for channel avatar resolution with batched updates (prevents VirtualizedList thrashing)
   useEffect(() => {
-    const unsubscribe = subscribeAvatarUpdates((channelIdOrName, avatarUrl) => {
-      if (!avatarUrl) return;
-      const lowerKey = channelIdOrName.toLowerCase().trim();
+    const pendingAvatars = new Map<string, string>();
+    let batchTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushAvatarBatch = () => {
+      if (pendingAvatars.size === 0) return;
+
+      const updates = new Map(pendingAvatars);
+      pendingAvatars.clear();
 
       setTrendingVideos((prev) => {
         let changed = false;
         const updated = prev.map((v) => {
           if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
-          const match =
-            (v.channelId && v.channelId.toLowerCase().trim() === lowerKey) ||
-            (v.author && v.author.toLowerCase().trim() === lowerKey);
-          if (match) {
+          const chKey = v.channelId?.toLowerCase().trim();
+          const authKey = v.author?.toLowerCase().trim();
+          const newAvatar = (chKey && updates.get(chKey)) || (authKey && updates.get(authKey));
+          if (newAvatar) {
             changed = true;
-            return { ...v, channelAvatar: avatarUrl };
+            return { ...v, channelAvatar: newAvatar };
           }
           return v;
         });
@@ -471,20 +476,34 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         let changed = false;
         const updated = prev.map((v) => {
           if (v.channelAvatar && !v.channelAvatar.includes('ui-avatars.com')) return v;
-          const match =
-            (v.channelId && v.channelId.toLowerCase().trim() === lowerKey) ||
-            (v.author && v.author.toLowerCase().trim() === lowerKey);
-          if (match) {
+          const chKey = v.channelId?.toLowerCase().trim();
+          const authKey = v.author?.toLowerCase().trim();
+          const newAvatar = (chKey && updates.get(chKey)) || (authKey && updates.get(authKey));
+          if (newAvatar) {
             changed = true;
-            return { ...v, channelAvatar: avatarUrl };
+            return { ...v, channelAvatar: newAvatar };
           }
           return v;
         });
         return changed ? updated : prev;
       });
+    };
+
+    const unsubscribe = subscribeAvatarUpdates((channelIdOrName, avatarUrl) => {
+      if (!avatarUrl) return;
+      pendingAvatars.set(channelIdOrName.toLowerCase().trim(), avatarUrl);
+      if (!batchTimer) {
+        batchTimer = setTimeout(() => {
+          batchTimer = null;
+          flushAvatarBatch();
+        }, 250);
+      }
     });
 
-    return unsubscribe;
+    return () => {
+      if (batchTimer) clearTimeout(batchTimer);
+      unsubscribe();
+    };
   }, []);
 
   // Instant category selection handler: 0ms UI switch with instantaneous content swap & concurrent glide
@@ -584,25 +603,45 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
     [handleQueryChange]
   );
 
+  // Stable refs to prevent recreating callback handlers on every frame / data tick
+  const currentListRef = useRef<YouTubeVideoSearchResult[]>([]);
+  useEffect(() => {
+    currentListRef.current = videos.length > 0 ? videos : trendingVideos;
+  }, [videos, trendingVideos]);
+
+  const activeVideoRef = useRef(activeVideo);
+  useEffect(() => {
+    activeVideoRef.current = activeVideo;
+  }, [activeVideo]);
+
+  const localLikedSetRef = useRef(localLikedSet);
+  useEffect(() => {
+    localLikedSetRef.current = localLikedSet;
+  }, [localLikedSet]);
+
+  const selectedCategoryRef = useRef(selectedCategory);
+  useEffect(() => {
+    selectedCategoryRef.current = selectedCategory;
+  }, [selectedCategory]);
+
   // Memoize Up Next queue to avoid re-filtering items on every time update
-  // Play video via global player context
+  // Play video via global player context with 100% stable callback
   const handleSelectVideo = useCallback(
     (item: YouTubeVideoSearchResult) => {
-      const currentList = videos.length > 0 ? videos : trendingVideos;
-      playVideo(item, currentList);
+      playVideo(item, currentListRef.current);
     },
-    [videos, trendingVideos, playVideo]
+    [playVideo]
   );
 
   const handleCardPlayPress = useCallback(
     (item: YouTubeVideoSearchResult) => {
-      if (activeVideo?.videoId === item.videoId) {
+      if (activeVideoRef.current?.videoId === item.videoId) {
         togglePlay();
       } else {
         handleSelectVideo(item);
       }
     },
-    [activeVideo?.videoId, togglePlay, handleSelectVideo]
+    [togglePlay, handleSelectVideo]
   );
 
   // Android Back Button handling:
@@ -645,7 +684,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
 
   const handleToggleLikeVideo = useCallback(
     async (item: YouTubeVideoSearchResult) => {
-      const isAlreadyLiked = localLikedSet.has(item.videoId) || isAudioLiked(`yt_${item.videoId}`);
+      const isAlreadyLiked = localLikedSetRef.current.has(item.videoId) || isAudioLiked(`yt_${item.videoId}`);
       const songObj: Song = {
         id: `yt_${item.videoId}`,
         name: item.title,
@@ -666,7 +705,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           return next;
         });
         toggleLike(`yt_${item.videoId}`, songObj);
-        if (selectedCategory === 'liked') {
+        if (selectedCategoryRef.current === 'liked') {
           setTrendingVideos((prev) => prev.filter((v) => v.videoId !== item.videoId));
         }
       } else {
@@ -679,7 +718,7 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
         toggleLike(`yt_${item.videoId}`, songObj);
       }
     },
-    [localLikedSet, isAudioLiked, toggleLike, selectedCategory]
+    [isAudioLiked, toggleLike]
   );
 
   // Render YouTube Search Result Video Card (delegates to memoized VideoCardItem)
@@ -891,9 +930,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           /* Search Results Mode */
           <FlatList
             data={videos}
-            keyExtractor={(item) => item.videoId}
+            keyExtractor={(item, index) => `${item.videoId || 'v'}_${index}`}
             renderItem={renderVideoCard}
-            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}-${localLikedSet.size}`}
+            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${localLikedSet.size}`}
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
             contentContainerStyle={[
@@ -902,10 +941,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={Platform.OS === 'android'}
-            windowSize={5}
-            maxToRenderPerBatch={5}
+            removeClippedSubviews={false}
+            windowSize={7}
+            maxToRenderPerBatch={8}
             initialNumToRender={5}
+            updateCellsBatchingPeriod={50}
             onScrollBeginDrag={() => {
               setShowSuggestions(false);
               Keyboard.dismiss();
@@ -946,9 +986,9 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
           /* Discover / Trending Charts Mode */
           <FlatList
             data={trendingVideos}
-            keyExtractor={(item) => `trending-${item.videoId}`}
+            keyExtractor={(item, index) => `${item.videoId || 't'}_${index}`}
             renderItem={renderVideoCard}
-            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${playerMode}-${localLikedSet.size}`}
+            extraData={`${activeVideo?.videoId}-${isVideoPlaying}-${localLikedSet.size}`}
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
             contentContainerStyle={[
@@ -957,10 +997,11 @@ export const YSearchScreen: React.FC<YSearchScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={Platform.OS === 'android'}
-            windowSize={5}
-            maxToRenderPerBatch={5}
+            removeClippedSubviews={false}
+            windowSize={7}
+            maxToRenderPerBatch={8}
             initialNumToRender={5}
+            updateCellsBatchingPeriod={50}
             ListHeaderComponent={
               trendingVideos.length > 0 ? (
                 <View>
