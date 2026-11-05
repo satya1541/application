@@ -132,13 +132,13 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
       Animated.parallel([
         Animated.timing(fullscreenFadeAnim, {
           toValue: 1,
-          duration: 220,
+          duration: 180,
           useNativeDriver: true,
         }),
         Animated.spring(fullscreenScaleAnim, {
           toValue: 1,
-          tension: 130,
-          friction: 12,
+          tension: 160,
+          friction: 14,
           useNativeDriver: true,
         }),
       ]).start();
@@ -152,16 +152,16 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
     Animated.parallel([
       Animated.timing(fullscreenFadeAnim, {
         toValue: 0,
-        duration: 160,
+        duration: 140,
         useNativeDriver: true,
       }),
       Animated.timing(fullscreenScaleAnim, {
-        toValue: 0.94,
-        duration: 160,
+        toValue: 0.92,
+        duration: 140,
         useNativeDriver: true,
       }),
-    ]).start(async () => {
-      await lockPortraitAsync();
+    ]).start(() => {
+      lockPortraitAsync().catch(() => {});
       onExitFullscreen();
       isExitingRef.current = false;
     });
@@ -383,7 +383,7 @@ export const FullscreenVideoOverlay: React.FC<FullscreenVideoOverlayProps> = ({
   return (
     <Modal
       visible={isVisible}
-      animationType="fade"
+      animationType="none"
       statusBarTranslucent
       hardwareAccelerated
       supportedOrientations={['landscape', 'landscape-left', 'landscape-right']}

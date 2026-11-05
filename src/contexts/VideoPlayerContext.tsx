@@ -125,7 +125,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     p.timeUpdateEventInterval = 1.0;
     try {
       p.bufferOptions = VIDEO_BUFFER_OPTIONS;
-    } catch {}
+    } catch { }
   });
 
   // Track AppState for background/active resync and PiP restore
@@ -136,7 +136,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (player) {
           try {
             setCurrentTime(player.currentTime);
-          } catch {}
+          } catch { }
         }
         if (isPiPActiveRef.current) {
           isPiPActiveRef.current = false;
@@ -145,7 +145,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             pipExitCooldownRef.current = false;
           }, 600);
           setIsFullscreen(false);
-          lockPortraitAsync().catch(() => {});
+          lockPortraitAsync().catch(() => { });
           setPlayerMode('full');
         }
       }
@@ -161,18 +161,18 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       player.staysActiveInBackground = true;
       player.showNowPlayingNotification = true;
       player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-    } catch {}
+    } catch { }
   }, [player]);
 
   // Screen keep-awake when video is actively playing in full watch view only
   useEffect(() => {
     if (isVideoPlaying && playerMode === 'full') {
-      activateKeepAwakeAsync('global_video_player').catch(() => {});
+      activateKeepAwakeAsync('global_video_player').catch(() => { });
     } else {
-      deactivateKeepAwake('global_video_player').catch(() => {});
+      deactivateKeepAwake('global_video_player').catch(() => { });
     }
     return () => {
-      deactivateKeepAwake('global_video_player').catch(() => {});
+      deactivateKeepAwake('global_video_player').catch(() => { });
     };
   }, [isVideoPlaying, playerMode]);
 
@@ -181,11 +181,11 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (isAudioPlaying && isVideoPlaying && player) {
       try {
         player.pause();
-      } catch {}
+      } catch { }
     }
   }, [isAudioPlaying, isVideoPlaying, player]);
 
-  const nextVideoRef = useRef<() => void>(() => {});
+  const nextVideoRef = useRef<() => void>(() => { });
 
   // Native player event listeners
   useEffect(() => {
@@ -203,8 +203,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
           ? activeVideo.durationSeconds
           : player.duration > 0
-          ? player.duration
-          : 0;
+            ? player.duration
+            : 0;
       if (actualDuration > 0) {
         setDuration(actualDuration);
       }
@@ -216,8 +216,8 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           activeVideo?.durationSeconds && activeVideo.durationSeconds > 0
             ? activeVideo.durationSeconds
             : player.duration > 0
-            ? player.duration
-            : 0;
+              ? player.duration
+              : 0;
         if (actualDuration > 0) setDuration(actualDuration);
         player.play();
       }
@@ -309,7 +309,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         const { width: winW, height: winH } = Dimensions.get('window');
         const { width: scrW, height: scrH } = Dimensions.get('screen');
         if ((winW > winH || scrW > scrH) && !isFullscreen) {
-          enterFullscreen().catch(() => {});
+          enterFullscreen().catch(() => { });
         }
         if (player && !isVideoPlaying) {
           if (isAudioPlaying) pauseBackgroundAudio();
@@ -333,7 +333,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       const { width: winW, height: winH } = Dimensions.get('window');
       const { width: scrW, height: scrH } = Dimensions.get('screen');
       if (winW > winH || scrW > scrH) {
-        enterFullscreen().catch(() => {});
+        enterFullscreen().catch(() => { });
       }
 
       if (queue && queue.length > 0) {
@@ -351,7 +351,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
         if (player) {
           try {
             player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-          } catch {}
+          } catch { }
           const sourceObj = {
             uri: cached.hlsUrl,
             contentType: 'hls' as const,
@@ -369,7 +369,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           };
           try {
             if (typeof (player as any).replaceAsync === 'function') {
-              (player as any).replaceAsync(sourceObj).catch(() => {});
+              (player as any).replaceAsync(sourceObj).catch(() => { });
             } else {
               player.replace(sourceObj);
             }
@@ -393,7 +393,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
           if (player) {
             try {
               player.bufferOptions = VIDEO_BUFFER_OPTIONS;
-            } catch {}
+            } catch { }
             const sourceObj = {
               uri: streamDetails.hlsUrl,
               contentType: 'hls' as const,
@@ -411,7 +411,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
             };
             try {
               if (typeof (player as any).replaceAsync === 'function') {
-                (player as any).replaceAsync(sourceObj).catch(() => {});
+                (player as any).replaceAsync(sourceObj).catch(() => { });
               } else {
                 player.replace(sourceObj);
               }
@@ -513,7 +513,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const collapseToMini = useCallback(() => {
     if (isFullscreen) {
       setIsFullscreen(false);
-      lockPortraitAsync().catch(() => {});
+      lockPortraitAsync().catch(() => { });
     }
     setPlayerMode('mini');
   }, [isFullscreen]);
@@ -528,12 +528,12 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (player) {
       try {
         player.pause();
-      } catch {}
+      } catch { }
     }
-    deactivateKeepAwake('global_video_player').catch(() => {});
+    deactivateKeepAwake('global_video_player').catch(() => { });
     if (isFullscreen) {
       setIsFullscreen(false);
-      lockPortraitAsync().catch(() => {});
+      lockPortraitAsync().catch(() => { });
     }
     setActiveVideo(null);
     setActiveChannelMeta(null);
@@ -543,21 +543,21 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const enterFullscreen = useCallback(async () => {
     userExitedFullscreenRef.current = false;
-    await lockLandscapeAsync();
     setIsFullscreen(true);
+    lockLandscapeAsync().catch(() => { });
   }, []);
 
   const exitFullscreen = useCallback(async () => {
     userExitedFullscreenRef.current = true;
-    await lockPortraitAsync();
     setIsFullscreen(false);
+    lockPortraitAsync().catch(() => { });
   }, []);
 
   const handlePiPStart = useCallback(() => {
     isPiPActiveRef.current = true;
     if (isFullscreen) {
       setIsFullscreen(false);
-      lockPortraitAsync().catch(() => {});
+      lockPortraitAsync().catch(() => { });
     }
   }, [isFullscreen]);
 
@@ -568,7 +568,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       pipExitCooldownRef.current = false;
     }, 600);
     setIsFullscreen(false);
-    lockPortraitAsync().catch(() => {});
+    lockPortraitAsync().catch(() => { });
     setPlayerMode('full');
   }, []);
 
@@ -597,7 +597,7 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     const { width: winW, height: winH } = Dimensions.get('window');
     const { width: scrW, height: scrH } = Dimensions.get('screen');
     if ((winW > winH || scrW > scrH) && !isFullscreen && !isPiPActiveRef.current && !userExitedFullscreenRef.current) {
-      enterFullscreen().catch(() => {});
+      enterFullscreen().catch(() => { });
     }
 
     const unsub = addOrientationListener((isLand) => {
@@ -607,10 +607,10 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
       if (isLand && !isFullscreen) {
         userExitedFullscreenRef.current = false;
-        enterFullscreen().catch(() => {});
+        enterFullscreen().catch(() => { });
       } else if (!isLand && isFullscreen) {
         userExitedFullscreenRef.current = false;
-        exitFullscreen().catch(() => {});
+        exitFullscreen().catch(() => { });
       }
     });
     return () => unsub();

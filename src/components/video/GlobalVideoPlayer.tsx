@@ -210,25 +210,19 @@ export const GlobalVideoPlayer: React.FC = () => {
       sheetScale.stopAnimation();
       sheetOpacity.stopAnimation();
       translateY.setValue(windowHeight);
-      sheetScale.setValue(0.94);
-      sheetOpacity.setValue(0.3);
+      sheetScale.setValue(0.96);
+      sheetOpacity.setValue(1);
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
-          tension: 110,
-          friction: 12,
-          velocity: -2.5,
+          tension: 130,
+          friction: 14,
           useNativeDriver: true,
         }),
         Animated.spring(sheetScale, {
           toValue: 1,
-          tension: 120,
-          friction: 12,
-          useNativeDriver: true,
-        }),
-        Animated.timing(sheetOpacity, {
-          toValue: 1,
-          duration: 220,
+          tension: 140,
+          friction: 14,
           useNativeDriver: true,
         }),
       ]).start();
@@ -762,13 +756,14 @@ export const GlobalVideoPlayer: React.FC = () => {
       )}
 
       {/* 2. Full Portrait Watch Screen with slide-down gesture */}
-      {playerMode === 'full' && !isFullscreen && (
+      {playerMode === 'full' && (
         <Animated.View
+          pointerEvents={isFullscreen ? 'none' : 'auto'}
           style={[
             styles.watchScreenOverlay,
             {
               transform: [{ translateY }, { scale: sheetScale }],
-              opacity: sheetOpacity,
+              opacity: isFullscreen ? 0 : sheetOpacity,
             },
           ]}
         >

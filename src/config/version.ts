@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.33',
-  releaseTag: 'v5.2.33',
-  releaseName: 'Shorty v5.2.33: Eliminate VirtualizedList slow update warning with batched avatar updates and stable cell memoization',
+  otaVersion: '5.2.34',
+  releaseTag: 'v5.2.34',
+  releaseName: 'Shorty v5.2.34: Smooth 0ms fullscreen and maximize transitions without unmount hitch or native dialog lag',
   releaseDate: '2026-11-05',
   channel: 'preview',
 };
