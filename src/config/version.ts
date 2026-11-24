@@ -5,9 +5,9 @@
 export const APP_CONFIG = {
   name: 'Shorty',
   baseVersion: '5.0',
-  otaVersion: '5.2.36',
-  releaseTag: 'v5.2.36',
-  releaseName: 'Shorty v5.2.36: Remove SpotlightHeroCard from home screen & eliminate YouTube charts 403 API errors',
+  otaVersion: '5.2.37',
+  releaseTag: 'v5.2.37',
+  releaseName: 'Shorty v5.2.37: Fix playlist card thumbnails by replacing obscure folder mockup with full-bleed crystal-clear covers',
   releaseDate: '2026-11-24',
   channel: 'preview',
 };
