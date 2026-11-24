@@ -8,6 +8,7 @@ import {
   StyleSheet,
   StatusBar,
   TextInput,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Song } from '@/types/music';
 import { useAudio } from '@/contexts/AudioContext';
 import { SongItemRow } from '../common/SongItemRow';
+import { MiniPlayer } from '../player/MiniPlayer';
 import { GLASS_THEME } from '@/constants/glassTheme';
 
 interface LikedSongsModalProps {
@@ -167,6 +169,9 @@ export const LikedSongsModal: React.FC<LikedSongsModalProps> = ({ visible, onClo
             </View>
           )}
         </ScrollView>
+
+        {/* Floating MiniPlayer inside Liked Songs Modal */}
+        <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 24 : 8} />
       </View>
     </Modal>
   );

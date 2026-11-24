@@ -23,6 +23,7 @@ import { GLASS_THEME } from '@/constants/glassTheme';
 import { useResponsive } from '@/hooks/useResponsive';
 import { SongItemRow } from '@/components/common/SongItemRow';
 import { AlbumModalSkeleton } from '@/components/common/SkeletonLoader';
+import { MiniPlayer } from '@/components/player/MiniPlayer';
 import {
   ChartEditorialMetadata,
   ChartPayload,
@@ -313,6 +314,9 @@ export const ChartDetailModal: React.FC<ChartDetailModalProps> = ({
             )}
           </View>
         </SafeAreaView>
+
+        {/* Floating MiniPlayer inside Chart Detail Modal */}
+        <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 24 : 8} />
       </View>
     </Modal>
   );
@@ -507,7 +511,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   listContent: {
-    paddingBottom: 120,
+    paddingBottom: 160, // Clearance for floating MiniPlayer
   },
   skeletonWrapper: {
     padding: 16,

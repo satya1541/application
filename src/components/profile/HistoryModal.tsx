@@ -9,6 +9,7 @@ import {
   Alert,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,6 +28,7 @@ import {
 } from '@/services/historyService';
 import { getSafeCoverArt } from '@/services/imageUtils';
 import { SongActionController } from '@/services/songActionController';
+import { MiniPlayer } from '../player/MiniPlayer';
 
 interface HistoryModalProps {
   visible: boolean;
@@ -224,6 +226,9 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({ visible, onClose }) 
             ))}
           </ScrollView>
         )}
+
+        {/* Floating MiniPlayer inside History Modal */}
+        <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 24 : 8} />
       </View>
     </Modal>
   );

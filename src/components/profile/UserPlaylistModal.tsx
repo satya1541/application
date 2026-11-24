@@ -9,6 +9,7 @@ import {
   Alert,
   StatusBar,
   TextInput,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +24,7 @@ import {
   renamePlaylist,
 } from '@/services/userPlaylistService';
 import { SongItemRow } from '../common/SongItemRow';
+import { MiniPlayer } from '../player/MiniPlayer';
 import { GLASS_THEME } from '@/constants/glassTheme';
 import { getSafeCoverArt } from '@/services/imageUtils';
 import { autoFixImportedPlaylistCovers } from '@/services/playlistImportService';
@@ -296,6 +298,9 @@ export const UserPlaylistModal: React.FC<UserPlaylistModalProps> = ({
             </View>
           )}
         </ScrollView>
+
+        {/* Floating MiniPlayer inside User Playlist Modal */}
+        <MiniPlayer bottomOffset={Platform.OS === 'ios' ? 24 : 8} />
       </View>
     </Modal>
   );
