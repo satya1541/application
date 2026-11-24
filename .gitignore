@@ -46,3 +46,7 @@ example
 # raw raw assets
 New Logo.png
 
+# Standalone microservice repos
+shorty-api/
+
+
