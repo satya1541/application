@@ -19,7 +19,7 @@ import { MiniPlayer } from '../player/MiniPlayer';
 import { MobileHomeScreen } from './MobileHomeScreen';
 import { MobileExploreScreen } from './MobileExploreScreen';
 import { MobileLibraryScreen } from './MobileLibraryScreen';
-import { MobilePostsScreen } from './MobilePostsScreen';
+import { MobileChartsScreen } from './MobileChartsScreen';
 import { MobileSearchScreen } from './MobileSearchScreen';
 import { MyLibScreen } from './MyLibScreen';
 import { useAuth } from '@/contexts/AuthContext';
@@ -30,7 +30,7 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { GLASS_THEME } from '@/constants/glassTheme';
 import { useResponsive } from '@/hooks/useResponsive';
 
-type TabKey = 'home' | 'explore' | 'search' | 'playlists' | 'posts' | 'my_lib';
+type TabKey = 'home' | 'explore' | 'search' | 'playlists' | 'charts' | 'my_lib';
 
 const TABS: Array<{
   key: TabKey;
@@ -42,7 +42,7 @@ const TABS: Array<{
   { key: 'explore', label: 'Explore', activeIcon: 'compass', inactiveIcon: 'compass-outline' },
   { key: 'search', label: 'Search', activeIcon: 'search', inactiveIcon: 'search-outline' },
   { key: 'playlists', label: 'Playlists', activeIcon: 'albums', inactiveIcon: 'albums-outline' },
-  { key: 'posts', label: 'Posts', activeIcon: 'newspaper', inactiveIcon: 'newspaper-outline' },
+  { key: 'charts', label: 'Charts', activeIcon: 'stats-chart', inactiveIcon: 'stats-chart-outline' },
   { key: 'my_lib', label: 'My Lib', activeIcon: 'library', inactiveIcon: 'library-outline' },
 ];
 
@@ -55,7 +55,7 @@ export const MobileMainNavigator: React.FC = () => {
     explore: false,
     search: false,
     playlists: false,
-    posts: false,
+    charts: false,
     my_lib: false,
   });
   const [myLibRefreshTrigger, setMyLibRefreshTrigger] = useState(0);
@@ -76,8 +76,8 @@ export const MobileMainNavigator: React.FC = () => {
   const playlistsOpacity = useRef(new Animated.Value(0)).current;
   const playlistsTranslateY = useRef(new Animated.Value(8)).current;
 
-  const postsOpacity = useRef(new Animated.Value(0)).current;
-  const postsTranslateY = useRef(new Animated.Value(8)).current;
+  const chartsOpacity = useRef(new Animated.Value(0)).current;
+  const chartsTranslateY = useRef(new Animated.Value(8)).current;
 
   const myLibOpacity = useRef(new Animated.Value(0)).current;
   const myLibTranslateY = useRef(new Animated.Value(8)).current;
@@ -126,7 +126,7 @@ export const MobileMainNavigator: React.FC = () => {
     if (activeTab === 'explore') animateScreenOut(exploreOpacity);
     if (activeTab === 'search') animateScreenOut(searchOpacity);
     if (activeTab === 'playlists') animateScreenOut(playlistsOpacity);
-    if (activeTab === 'posts') animateScreenOut(postsOpacity);
+    if (activeTab === 'charts') animateScreenOut(chartsOpacity);
     if (activeTab === 'my_lib') animateScreenOut(myLibOpacity);
 
     // Incoming animation
@@ -134,7 +134,7 @@ export const MobileMainNavigator: React.FC = () => {
     if (tab === 'explore') animateScreenIn(exploreOpacity, exploreTranslateY);
     if (tab === 'search') animateScreenIn(searchOpacity, searchTranslateY);
     if (tab === 'playlists') animateScreenIn(playlistsOpacity, playlistsTranslateY);
-    if (tab === 'posts') animateScreenIn(postsOpacity, postsTranslateY);
+    if (tab === 'charts') animateScreenIn(chartsOpacity, chartsTranslateY);
     if (tab === 'my_lib') animateScreenIn(myLibOpacity, myLibTranslateY);
 
     setActiveTab(tab);
@@ -329,20 +329,20 @@ export const MobileMainNavigator: React.FC = () => {
           )}
         </Animated.View>
 
-        {/* Layer 5: Posts (YouTube Community Feed) */}
+        {/* Layer 5: Charts & Trends (Official Streaming Leaderboards) */}
         <Animated.View
           style={[
             styles.tabPane,
             {
-              opacity: postsOpacity,
-              transform: [{ translateY: postsTranslateY }],
-              zIndex: activeTab === 'posts' ? 10 : 1,
+              opacity: chartsOpacity,
+              transform: [{ translateY: chartsTranslateY }],
+              zIndex: activeTab === 'charts' ? 10 : 1,
             },
           ]}
-          pointerEvents={activeTab === 'posts' ? 'auto' : 'none'}
+          pointerEvents={activeTab === 'charts' ? 'auto' : 'none'}
         >
-          {visitedTabs.posts && (
-            <MobilePostsScreen onNavigateHome={() => handleSelectTab('home')} />
+          {visitedTabs.charts && (
+            <MobileChartsScreen onNavigateHome={() => handleSelectTab('home')} />
           )}
         </Animated.View>
 
