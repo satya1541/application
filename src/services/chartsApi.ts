@@ -243,11 +243,28 @@ export const EDITORIAL_CHARTS_CONFIG: Record<string, ChartEditorialMetadata> = {
   },
 };
 
-const CACHE_SUMMARIES_KEY = '@shorty_charts_summaries_v1';
-const CACHE_CHART_PREFIX = '@shorty_chart_data_v1_';
+const CACHE_SUMMARIES_KEY = '@shorty_charts_summaries_v2';
+const CACHE_CHART_PREFIX = '@shorty_chart_data_v2_';
 
 let memorySummariesCache: ChartSummary[] = [];
 const memoryDetailCache = new Map<string, ChartPayload>();
+
+/**
+ * Clears all cached chart data in memory and AsyncStorage
+ */
+export async function clearAllChartsCache(): Promise<void> {
+  memorySummariesCache = [];
+  memoryDetailCache.clear();
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const chartKeys = keys.filter(
+      (k) => k.startsWith('@shorty_chart') || k.startsWith('@shorty_charts')
+    );
+    if (chartKeys.length > 0) {
+      await AsyncStorage.multiRemove(chartKeys);
+    }
+  } catch {}
+}
 
 /**
  * Converts a backend ResolvedChartTrack to the mobile app's Song object
@@ -346,6 +363,8 @@ export async function fetchChartDetail(
         const parsed = JSON.parse(stored) as ChartPayload;
         if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length > 0) {
           memoryDetailCache.set(chartId, parsed);
+          // Auto-revalidate in background so charts never stay stale on device
+          refreshChartInBackground(chartId);
           return parsed;
         }
       }
@@ -386,6 +405,27 @@ export async function fetchChartDetail(
   }
 
   return memoryDetailCache.get(chartId) || null;
+}
+
+function refreshChartInBackground(chartId: string) {
+  const cacheKey = CACHE_CHART_PREFIX + chartId;
+  fetch(`${CHARTS_BASE_URL}/${chartId}`, {
+    headers: { Accept: 'application/json' },
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (
+        data &&
+        data.success &&
+        data.chart &&
+        Array.isArray(data.chart.tracks) &&
+        data.chart.tracks.length > 0
+      ) {
+        memoryDetailCache.set(chartId, data.chart);
+        AsyncStorage.setItem(cacheKey, JSON.stringify(data.chart)).catch(() => {});
+      }
+    })
+    .catch(() => {});
 }
 
 function refreshSummariesInBackground() {

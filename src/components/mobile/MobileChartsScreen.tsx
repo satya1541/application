@@ -118,7 +118,15 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
   // Load direct platform chart data when switching filter
   const loadDirectPlatformChart = useCallback(
     async (chartId: string, force: boolean = false) => {
-      if (!force && platformCharts[chartId]?.tracks?.length) return;
+      if (!force && platformCharts[chartId]?.tracks?.length) {
+        // Revalidate in background to ensure fresh official links
+        fetchChartDetail(chartId, true).then((payload) => {
+          if (payload) {
+            setPlatformCharts((prev) => ({ ...prev, [chartId]: payload }));
+          }
+        });
+        return;
+      }
       if (!force) setPlatformLoading(true);
       try {
         const payload = await fetchChartDetail(chartId, force);
