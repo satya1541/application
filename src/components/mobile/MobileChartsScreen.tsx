@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -59,6 +59,160 @@ const PLATFORM_ACCENT_COLORS: Record<string, string> = {
   All: '#22C55E',
 };
 
+interface DirectPlatformHeaderProps {
+  directMeta: ChartEditorialMetadata;
+  platformAccent: string;
+  coverUrl: string;
+  directSongsCount: number;
+  filteredSongsCount: number;
+  platformSearchQuery: string;
+  activeFilter: string;
+  onSearchChange: (text: string) => void;
+  onClearSearch: () => void;
+  onPlayAll: () => void;
+  onShuffle: () => void;
+  styles: any;
+}
+
+const DirectPlatformHeader = React.memo<DirectPlatformHeaderProps>(
+  ({
+    directMeta,
+    platformAccent,
+    coverUrl,
+    directSongsCount,
+    filteredSongsCount,
+    platformSearchQuery,
+    activeFilter,
+    onSearchChange,
+    onClearSearch,
+    onPlayAll,
+    onShuffle,
+    styles,
+  }) => {
+    return (
+      <View style={styles.directHeaderContainer}>
+        {/* Liquid Glass Hero Header Panel */}
+        <View style={styles.directGlassPanel}>
+          {/* Subtle Ambient Color Glow */}
+          <LinearGradient
+            colors={[`${platformAccent}25`, 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+
+          {/* Top Edge Specular Highlight */}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.32)', 'rgba(255, 255, 255, 0.06)', 'transparent']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.specularRim}
+          />
+
+          <View style={styles.directHeroRow}>
+            {/* Left High-Res Artwork with Specular Glass Border */}
+            <View style={styles.directArtworkWrapper}>
+              <ExpoImage
+                source={{ uri: coverUrl }}
+                style={styles.directArtwork}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+                priority="high"
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.4)']}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={[styles.directFloatingRankBadge, { backgroundColor: platformAccent }]}>
+                <Text style={styles.directFloatingRankText}>#1</Text>
+              </View>
+            </View>
+
+            {/* Right Chart Metadata */}
+            <View style={styles.directMetaRight}>
+              <View style={styles.directPlatformBadgeRow}>
+                <View style={[styles.directPlatformBadge, { backgroundColor: platformAccent }]}>
+                  <Text style={styles.directPlatformBadgeText}>
+                    {directMeta.platformLabel.toUpperCase()}
+                  </Text>
+                </View>
+                <View style={styles.directLiveTag}>
+                  <View style={[styles.directLiveDot, { backgroundColor: platformAccent }]} />
+                  <Text style={[styles.directLiveTagText, { color: platformAccent }]}>LIVE</Text>
+                </View>
+              </View>
+
+              <Text style={styles.directChartTitle} numberOfLines={1}>
+                {directMeta.title}
+              </Text>
+              <Text style={styles.directChartSubtitle} numberOfLines={1}>
+                {directMeta.subtitle}
+              </Text>
+              <Text style={styles.directTrackCount}>
+                {directSongsCount > 0 ? `${directSongsCount} Tracks` : 'Official Chart'} • Updated Daily
+              </Text>
+            </View>
+          </View>
+
+          {/* Action Row: Play All & Shuffle */}
+          <View style={styles.directActionRow}>
+            <TouchableOpacity
+              style={[styles.directPlayAllBtn, { backgroundColor: platformAccent }]}
+              activeOpacity={0.85}
+              onPress={onPlayAll}
+              disabled={directSongsCount === 0}
+            >
+              <Ionicons name="play" size={17} color="#000000" style={{ marginRight: 6 }} />
+              <Text style={styles.directPlayAllBtnText}>PLAY ALL</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.directShuffleBtn}
+              activeOpacity={0.8}
+              onPress={onShuffle}
+              disabled={directSongsCount === 0}
+            >
+              <Ionicons name="shuffle" size={19} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Liquid Glass Search Input */}
+          <View style={styles.directSearchBox}>
+            <Ionicons name="search" size={15} color="#94A3B8" style={{ marginRight: 8 }} />
+            <TextInput
+              style={styles.directSearchInput}
+              placeholder={`Search ${directSongsCount || ''} ${activeFilter} tracks...`}
+              placeholderTextColor="#64748B"
+              value={platformSearchQuery}
+              onChangeText={onSearchChange}
+              autoCorrect={false}
+              autoCapitalize="none"
+            />
+            {platformSearchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={onClearSearch}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close-circle" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Section divider label */}
+        <View style={styles.directSongsHeader}>
+          <Text style={styles.directSongsHeaderTitle}>
+            {platformSearchQuery ? `Search Results (${filteredSongsCount})` : 'Leaderboard Rankings'}
+          </Text>
+          <Text style={styles.directSongsHeaderSub}>
+            {directSongsCount} Tracks Loaded
+          </Text>
+        </View>
+      </View>
+    );
+  }
+);
+
 export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
   const { isTablet, contentMaxWidth } = useResponsive();
   const { bgHex, accent } = useAppTheme();
@@ -115,47 +269,83 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
   const directChartId = isDirectPlatform ? DIRECT_CHART_MAP[activeFilter as DirectPlatform] : null;
   const directMeta = directChartId ? EDITORIAL_CHARTS_CONFIG[directChartId] : null;
 
-  // Load direct platform chart data when switching filter
-  const loadDirectPlatformChart = useCallback(
-    async (chartId: string, force: boolean = false) => {
-      if (!force && platformCharts[chartId]?.tracks?.length) {
-        // Revalidate in background to ensure fresh official links
-        fetchChartDetail(chartId, true).then((payload) => {
-          if (payload) {
-            setPlatformCharts((prev) => ({ ...prev, [chartId]: payload }));
-          }
-        });
-        return;
-      }
-      if (!force) setPlatformLoading(true);
-      try {
-        const payload = await fetchChartDetail(chartId, force);
-        if (payload) {
-          setPlatformCharts((prev) => ({ ...prev, [chartId]: payload }));
-        }
-      } catch (err) {
-        console.warn(`[MobileChartsScreen] Error loading direct chart ${chartId}:`, err);
-      } finally {
-        setPlatformLoading(false);
-        setPlatformRefreshing(false);
-      }
-    },
-    [platformCharts]
-  );
+  // Track last fetched timestamp and in-flight status per chartId to prevent infinite loop / spamming backend
+  const directChartLastFetchedRef = useRef<Record<string, number>>({});
+  const directChartInFlightRef = useRef<Record<string, boolean>>({});
+  const platformChartsRef = useRef(platformCharts);
+  platformChartsRef.current = platformCharts;
 
   useEffect(() => {
-    if (directChartId) {
-      setPlatformSearchQuery('');
-      loadDirectPlatformChart(directChartId, false);
-    }
-  }, [directChartId, loadDirectPlatformChart]);
+    if (!directChartId) return;
+    setPlatformSearchQuery('');
 
-  const handleDirectPlatformRefresh = useCallback(() => {
-    if (directChartId) {
-      setPlatformRefreshing(true);
-      loadDirectPlatformChart(directChartId, true);
+    const existing = platformChartsRef.current[directChartId];
+    const now = Date.now();
+    const lastFetched = directChartLastFetchedRef.current[directChartId] || 0;
+    const isStale = now - lastFetched > 5 * 60 * 1000; // 5 min cooldown
+
+    // If already in memory and not stale, do nothing
+    if (existing?.tracks?.length && !isStale) {
+      return;
     }
-  }, [directChartId, loadDirectPlatformChart]);
+
+    // If already fetching, avoid redundant call
+    if (directChartInFlightRef.current[directChartId]) {
+      return;
+    }
+
+    directChartInFlightRef.current[directChartId] = true;
+
+    // If existing in memory but stale, quiet background revalidation
+    if (existing?.tracks?.length) {
+      directChartLastFetchedRef.current[directChartId] = now;
+      fetchChartDetail(directChartId, true)
+        .then((payload) => {
+          if (payload && payload.tracks?.length) {
+            setPlatformCharts((prev) => ({ ...prev, [directChartId]: payload }));
+          }
+        })
+        .finally(() => {
+          directChartInFlightRef.current[directChartId] = false;
+        });
+      return;
+    }
+
+    // Initial fetch: show skeleton/spinner
+    setPlatformLoading(true);
+    directChartLastFetchedRef.current[directChartId] = now;
+    fetchChartDetail(directChartId, false)
+      .then((payload) => {
+        if (payload && payload.tracks?.length) {
+          setPlatformCharts((prev) => ({ ...prev, [directChartId]: payload }));
+        }
+      })
+      .catch((err) => {
+        console.warn(`[MobileChartsScreen] Error loading direct chart ${directChartId}:`, err);
+      })
+      .finally(() => {
+        directChartInFlightRef.current[directChartId] = false;
+        setPlatformLoading(false);
+      });
+  }, [directChartId]);
+
+  const handleDirectPlatformRefresh = useCallback(async () => {
+    if (!directChartId || directChartInFlightRef.current[directChartId]) return;
+    setPlatformRefreshing(true);
+    directChartInFlightRef.current[directChartId] = true;
+    try {
+      const payload = await fetchChartDetail(directChartId, true);
+      if (payload && payload.tracks?.length) {
+        directChartLastFetchedRef.current[directChartId] = Date.now();
+        setPlatformCharts((prev) => ({ ...prev, [directChartId]: payload }));
+      }
+    } catch (err) {
+      console.warn(`[MobileChartsScreen] Error refreshing direct chart ${directChartId}:`, err);
+    } finally {
+      directChartInFlightRef.current[directChartId] = false;
+      setPlatformRefreshing(false);
+    }
+  }, [directChartId]);
 
   // Convert tracks of direct platform into Song objects
   const directSongs: Song[] = useMemo(() => {
@@ -267,137 +457,21 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
     'Cities',
   ];
 
-  // Platform Header Component for Direct Platforms (Spotify, YouTube, Gaana)
-  const renderDirectPlatformHeader = () => {
-    if (!directMeta) return null;
-    const platformAccent = PLATFORM_ACCENT_COLORS[activeFilter] || accent.hex;
-    const coverUrl =
+  // Memoized cover URL and accent color for Direct Platforms (Spotify, YouTube, Gaana)
+  const directPlatformAccent = directMeta ? (PLATFORM_ACCENT_COLORS[activeFilter] || accent.hex) : accent.hex;
+
+  const directCoverUrl = useMemo(() => {
+    if (!directMeta) return '';
+    return (
       directSongs[0]?.cover ||
       summaryMap[directMeta.id]?.topTrack?.cover ||
-      directMeta.coverImage;
-
-    return (
-      <View style={styles.directHeaderContainer}>
-        {/* Liquid Glass Hero Header Panel */}
-        <View style={styles.directGlassPanel}>
-          {/* Subtle Ambient Color Glow */}
-          <LinearGradient
-            colors={[`${platformAccent}25`, 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-
-          {/* Top Edge Specular Highlight */}
-          <LinearGradient
-            colors={['rgba(255, 255, 255, 0.32)', 'rgba(255, 255, 255, 0.06)', 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.specularRim}
-          />
-
-          <View style={styles.directHeroRow}>
-            {/* Left High-Res Artwork with Specular Glass Border */}
-            <View style={styles.directArtworkWrapper}>
-              <ExpoImage
-                source={{ uri: coverUrl }}
-                style={styles.directArtwork}
-                contentFit="cover"
-                transition={200}
-                cachePolicy="memory-disk"
-              />
-              <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.4)']}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={[styles.directFloatingRankBadge, { backgroundColor: platformAccent }]}>
-                <Text style={styles.directFloatingRankText}>#1</Text>
-              </View>
-            </View>
-
-            {/* Right Chart Metadata */}
-            <View style={styles.directMetaRight}>
-              <View style={styles.directPlatformBadgeRow}>
-                <View style={[styles.directPlatformBadge, { backgroundColor: platformAccent }]}>
-                  <Text style={styles.directPlatformBadgeText}>
-                    {directMeta.platformLabel.toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.directLiveTag}>
-                  <View style={[styles.directLiveDot, { backgroundColor: platformAccent }]} />
-                  <Text style={[styles.directLiveTagText, { color: platformAccent }]}>LIVE</Text>
-                </View>
-              </View>
-
-              <Text style={styles.directChartTitle} numberOfLines={1}>
-                {directMeta.title}
-              </Text>
-              <Text style={styles.directChartSubtitle} numberOfLines={1}>
-                {directMeta.subtitle}
-              </Text>
-              <Text style={styles.directTrackCount}>
-                {directSongs.length > 0 ? `${directSongs.length} Tracks` : 'Official Chart'} • Updated Daily
-              </Text>
-            </View>
-          </View>
-
-          {/* Action Row: Play All & Shuffle */}
-          <View style={styles.directActionRow}>
-            <TouchableOpacity
-              style={[styles.directPlayAllBtn, { backgroundColor: platformAccent }]}
-              activeOpacity={0.85}
-              onPress={handleDirectPlayAll}
-              disabled={directSongs.length === 0}
-            >
-              <Ionicons name="play" size={17} color="#000000" style={{ marginRight: 6 }} />
-              <Text style={styles.directPlayAllBtnText}>PLAY ALL</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.directShuffleBtn}
-              activeOpacity={0.8}
-              onPress={handleDirectShuffle}
-              disabled={directSongs.length === 0}
-            >
-              <Ionicons name="shuffle" size={19} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Liquid Glass Search Input */}
-          <View style={styles.directSearchBox}>
-            <Ionicons name="search" size={15} color="#94A3B8" style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.directSearchInput}
-              placeholder={`Search ${directSongs.length || ''} ${activeFilter} tracks...`}
-              placeholderTextColor="#64748B"
-              value={platformSearchQuery}
-              onChangeText={setPlatformSearchQuery}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-            {platformSearchQuery.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setPlatformSearchQuery('')}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close-circle" size={16} color="#94A3B8" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* Section divider label */}
-        <View style={styles.directSongsHeader}>
-          <Text style={styles.directSongsHeaderTitle}>
-            {platformSearchQuery ? `Search Results (${filteredDirectSongs.length})` : 'Leaderboard Rankings'}
-          </Text>
-          <Text style={styles.directSongsHeaderSub}>
-            {directSongs.length} Tracks Loaded
-          </Text>
-        </View>
-      </View>
+      directMeta.coverImage
     );
-  };
+  }, [directMeta, directSongs, summaryMap]);
+
+  const handleClearPlatformSearch = useCallback(() => {
+    setPlatformSearchQuery('');
+  }, []);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: bgHex }]} edges={['top']}>
@@ -480,7 +554,24 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
             <FlatList
               data={filteredDirectSongs}
               keyExtractor={(item, index) => `${item.id}_${index}`}
-              ListHeaderComponent={renderDirectPlatformHeader}
+              ListHeaderComponent={
+                directMeta ? (
+                  <DirectPlatformHeader
+                    directMeta={directMeta}
+                    platformAccent={directPlatformAccent}
+                    coverUrl={directCoverUrl}
+                    directSongsCount={directSongs.length}
+                    filteredSongsCount={filteredDirectSongs.length}
+                    platformSearchQuery={platformSearchQuery}
+                    activeFilter={activeFilter}
+                    onSearchChange={setPlatformSearchQuery}
+                    onClearSearch={handleClearPlatformSearch}
+                    onPlayAll={handleDirectPlayAll}
+                    onShuffle={handleDirectShuffle}
+                    styles={styles}
+                  />
+                ) : null
+              }
               renderItem={({ item, index }) => (
                 <SongItemRow
                   song={item}

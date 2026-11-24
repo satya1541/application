@@ -250,6 +250,12 @@ const CACHE_CHART_PREFIX = '@shorty_chart_data_v2_';
 let memorySummariesCache: ChartSummary[] = [];
 const memoryDetailCache = new Map<string, ChartPayload>();
 
+const lastBackgroundDetailRefresh = new Map<string, number>();
+const inFlightChartRequests = new Map<string, Promise<ChartPayload | null>>();
+let inFlightSummariesRequest: Promise<ChartSummary[]> | null = null;
+let lastSummariesBackgroundRefresh = 0;
+const REFRESH_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes cooldown
+
 /**
  * Clears all cached chart data in memory and AsyncStorage
  */
@@ -308,39 +314,58 @@ export async function fetchChartSummaries(forceRefresh: boolean = false): Promis
     return memorySummariesCache;
   }
 
-  // Check persistent disk cache
-  if (!forceRefresh) {
-    try {
-      const stored = await AsyncStorage.getItem(CACHE_SUMMARIES_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ChartSummary[];
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          memorySummariesCache = parsed;
-          // Background refresh
-          refreshSummariesInBackground();
-          return parsed;
+  // Deduplicate in-flight requests
+  if (!forceRefresh && inFlightSummariesRequest) {
+    return inFlightSummariesRequest;
+  }
+
+  const promise = (async () => {
+    // Check persistent disk cache
+    if (!forceRefresh) {
+      try {
+        const stored = await AsyncStorage.getItem(CACHE_SUMMARIES_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as ChartSummary[];
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            memorySummariesCache = parsed;
+            // Background refresh with cooldown
+            refreshSummariesInBackground();
+            return parsed;
+          }
         }
+      } catch {}
+    }
+
+    try {
+      const res = await fetch(`${CHARTS_BASE_URL}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.charts)) {
+        memorySummariesCache = data.charts;
+        AsyncStorage.setItem(CACHE_SUMMARIES_KEY, JSON.stringify(data.charts)).catch(() => {});
+        return data.charts;
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[ChartsApi] Failed to fetch summaries:', err);
+    }
+
+    // Return static catalog if offline
+    return getStaticFallbackSummaries();
+  })();
+
+  if (!forceRefresh) {
+    inFlightSummariesRequest = promise;
   }
 
   try {
-    const res = await fetch(`${CHARTS_BASE_URL}`, {
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.success && Array.isArray(data.charts)) {
-      memorySummariesCache = data.charts;
-      AsyncStorage.setItem(CACHE_SUMMARIES_KEY, JSON.stringify(data.charts)).catch(() => {});
-      return data.charts;
+    return await promise;
+  } finally {
+    if (!forceRefresh) {
+      inFlightSummariesRequest = null;
     }
-  } catch (err) {
-    console.warn('[ChartsApi] Failed to fetch summaries:', err);
   }
-
-  // Return static catalog if offline
-  return getStaticFallbackSummaries();
 }
 
 /**
@@ -350,65 +375,91 @@ export async function fetchChartDetail(
   chartId: string,
   forceRefresh: boolean = false
 ): Promise<ChartPayload | null> {
-  const cached = memoryDetailCache.get(chartId);
-  if (!forceRefresh && cached && cached.tracks && cached.tracks.length > 0) {
-    return cached;
+  // Deduplicate concurrent calls for the same chart
+  if (!forceRefresh && inFlightChartRequests.has(chartId)) {
+    return inFlightChartRequests.get(chartId)!;
   }
 
-  const cacheKey = CACHE_CHART_PREFIX + chartId;
+  const promise = (async () => {
+    const cached = memoryDetailCache.get(chartId);
+    if (!forceRefresh && cached && cached.tracks && cached.tracks.length > 0) {
+      return cached;
+    }
 
-  if (!forceRefresh) {
+    const cacheKey = CACHE_CHART_PREFIX + chartId;
+
+    if (!forceRefresh) {
+      try {
+        const stored = await AsyncStorage.getItem(cacheKey);
+        if (stored) {
+          const parsed = JSON.parse(stored) as ChartPayload;
+          if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length > 0) {
+            memoryDetailCache.set(chartId, parsed);
+            // Auto-revalidate in background with 5m cooldown
+            refreshChartInBackground(chartId);
+            return parsed;
+          }
+        }
+      } catch {}
+    }
+
     try {
-      const stored = await AsyncStorage.getItem(cacheKey);
-      if (stored) {
-        const parsed = JSON.parse(stored) as ChartPayload;
-        if (parsed && Array.isArray(parsed.tracks) && parsed.tracks.length > 0) {
-          memoryDetailCache.set(chartId, parsed);
-          // Auto-revalidate in background so charts never stay stale on device
-          refreshChartInBackground(chartId);
-          return parsed;
+      const res = await fetch(`${CHARTS_BASE_URL}/${chartId}`, {
+        headers: { Accept: 'application/json' },
+      });
+      
+      const data = await res.json().catch(() => null);
+
+      if (data && data.success && data.chart && Array.isArray(data.chart.tracks) && data.chart.tracks.length > 0) {
+        memoryDetailCache.set(chartId, data.chart);
+        AsyncStorage.setItem(cacheKey, JSON.stringify(data.chart)).catch(() => {});
+        return data.chart;
+      }
+
+      // If chart exists on server but was pending resolution, trigger immediate refresh and wait
+      if (res.status === 202 || (data && data.message && data.message.includes('not been resolved'))) {
+        console.log(`[ChartsApi] Chart ${chartId} pending resolution. Triggering immediate refresh...`);
+        const refreshRes = await fetch(`${CHARTS_BASE_URL}/${chartId}/refresh`, {
+          method: 'POST',
+          headers: { Accept: 'application/json' },
+        });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json().catch(() => null);
+          if (refreshData && refreshData.chart && Array.isArray(refreshData.chart.tracks) && refreshData.chart.tracks.length > 0) {
+            memoryDetailCache.set(chartId, refreshData.chart);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(refreshData.chart)).catch(() => {});
+            return refreshData.chart;
+          }
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn(`[ChartsApi] Failed to fetch chart ${chartId}:`, err);
+    }
+
+    return memoryDetailCache.get(chartId) || null;
+  })();
+
+  if (!forceRefresh) {
+    inFlightChartRequests.set(chartId, promise);
   }
 
   try {
-    const res = await fetch(`${CHARTS_BASE_URL}/${chartId}`, {
-      headers: { Accept: 'application/json' },
-    });
-    
-    const data = await res.json().catch(() => null);
-
-    if (data && data.success && data.chart && Array.isArray(data.chart.tracks) && data.chart.tracks.length > 0) {
-      memoryDetailCache.set(chartId, data.chart);
-      AsyncStorage.setItem(cacheKey, JSON.stringify(data.chart)).catch(() => {});
-      return data.chart;
+    return await promise;
+  } finally {
+    if (!forceRefresh) {
+      inFlightChartRequests.delete(chartId);
     }
-
-    // If chart exists on server but was pending resolution, trigger immediate refresh and wait
-    if (res.status === 202 || (data && data.message && data.message.includes('not been resolved'))) {
-      console.log(`[ChartsApi] Chart ${chartId} pending resolution. Triggering immediate refresh...`);
-      const refreshRes = await fetch(`${CHARTS_BASE_URL}/${chartId}/refresh`, {
-        method: 'POST',
-        headers: { Accept: 'application/json' },
-      });
-      if (refreshRes.ok) {
-        const refreshData = await refreshRes.json().catch(() => null);
-        if (refreshData && refreshData.chart && Array.isArray(refreshData.chart.tracks) && refreshData.chart.tracks.length > 0) {
-          memoryDetailCache.set(chartId, refreshData.chart);
-          AsyncStorage.setItem(cacheKey, JSON.stringify(refreshData.chart)).catch(() => {});
-          return refreshData.chart;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn(`[ChartsApi] Failed to fetch chart ${chartId}:`, err);
   }
-
-  return memoryDetailCache.get(chartId) || null;
 }
 
 function refreshChartInBackground(chartId: string) {
+  const now = Date.now();
+  const lastTime = lastBackgroundDetailRefresh.get(chartId) || 0;
+  if (now - lastTime < REFRESH_COOLDOWN_MS) {
+    return; // Already refreshed within cooldown
+  }
+  lastBackgroundDetailRefresh.set(chartId, now);
+
   const cacheKey = CACHE_CHART_PREFIX + chartId;
   fetch(`${CHARTS_BASE_URL}/${chartId}`, {
     headers: { Accept: 'application/json' },
@@ -430,6 +481,12 @@ function refreshChartInBackground(chartId: string) {
 }
 
 function refreshSummariesInBackground() {
+  const now = Date.now();
+  if (now - lastSummariesBackgroundRefresh < REFRESH_COOLDOWN_MS) {
+    return; // Already refreshed within cooldown
+  }
+  lastSummariesBackgroundRefresh = now;
+
   fetch(`${CHARTS_BASE_URL}`)
     .then((r) => r.json())
     .then((data) => {
