@@ -551,7 +551,12 @@ export const VideoPlayerProvider: React.FC<{ children: React.ReactNode }> = ({ c
     userExitedFullscreenRef.current = true;
     setIsFullscreen(false);
     lockPortraitAsync().catch(() => { });
-  }, []);
+    if (player && isVideoPlaying) {
+      try {
+        player.play();
+      } catch { }
+    }
+  }, [player, isVideoPlaying]);
 
   const handlePiPStart = useCallback(() => {
     isPiPActiveRef.current = true;

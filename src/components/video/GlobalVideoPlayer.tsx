@@ -184,6 +184,17 @@ export const GlobalVideoPlayer: React.FC = () => {
   const metaSlideAnim = useRef(new Animated.Value(0)).current;
   const prevVideoIdRef = useRef<string | null>(null);
 
+  // Track fullscreen cycle to force fresh Surface/TextureView attachment when exiting fullscreen
+  const [fullscreenCycle, setFullscreenCycle] = useState(0);
+  const prevIsFullscreenRef = useRef(isFullscreen);
+
+  useEffect(() => {
+    if (prevIsFullscreenRef.current && !isFullscreen) {
+      setFullscreenCycle((c) => c + 1);
+    }
+    prevIsFullscreenRef.current = isFullscreen;
+  }, [isFullscreen]);
+
   // Auto-hide controls in full watch view after 3.5s
   const resetWatchControlsTimer = useCallback(() => {
     if (watchControlsTimerRef.current) clearTimeout(watchControlsTimerRef.current);
@@ -789,21 +800,23 @@ export const GlobalVideoPlayer: React.FC = () => {
                   <View style={StyleSheet.absoluteFill}>
                     {/* Clean black backdrop: eliminates thumbnail peeking behind widescreen letterboxing */}
                     <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000' }]} />
-                    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                      <VideoView
-                        ref={watchVideoViewRef}
-                        key={`watch-video-${activeVideo.videoId}`}
-                        style={{ width: '100%', height: '100%' }}
-                        player={player}
-                        contentFit="contain"
-                        nativeControls={false}
-                        surfaceType={Platform.OS === 'android' ? 'surfaceView' : undefined}
-                        allowsPictureInPicture={isPiPAllowed}
-                        startsPictureInPictureAutomatically={isPiPAllowed}
-                        onPictureInPictureStart={handlePiPStart}
-                        onPictureInPictureStop={handlePiPStop}
-                      />
-                    </View>
+                    {!isFullscreen && (
+                      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                        <VideoView
+                          ref={watchVideoViewRef}
+                          key={`watch-video-${activeVideo.videoId}-${fullscreenCycle}`}
+                          style={{ width: '100%', height: '100%' }}
+                          player={player}
+                          contentFit="contain"
+                          nativeControls={false}
+                          surfaceType={Platform.OS === 'android' ? 'textureView' : undefined}
+                          allowsPictureInPicture={isPiPAllowed}
+                          startsPictureInPictureAutomatically={isPiPAllowed}
+                          onPictureInPictureStart={handlePiPStart}
+                          onPictureInPictureStop={handlePiPStop}
+                        />
+                      </View>
+                    )}
 
                     <TouchableOpacity
                       activeOpacity={1}
