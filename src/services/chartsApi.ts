@@ -418,7 +418,6 @@ export async function fetchChartDetail(
 
       // If chart exists on server but was pending resolution, trigger immediate refresh and wait
       if (res.status === 202 || (data && data.message && data.message.includes('not been resolved'))) {
-        console.log(`[ChartsApi] Chart ${chartId} pending resolution. Triggering immediate refresh...`);
         const refreshRes = await fetch(`${CHARTS_BASE_URL}/${chartId}/refresh`, {
           method: 'POST',
           headers: { Accept: 'application/json' },
