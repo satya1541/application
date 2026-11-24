@@ -23,7 +23,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NoInternetView } from '../common/NoInternetView';
 import { GreetingHeader } from '../feed/GreetingHeader';
-import { SpotlightHeroCard } from '../feed/SpotlightHeroCard';
 import { MediaCarousel } from '../feed/MediaCarousel';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -129,15 +128,13 @@ const ChartSectionItem = React.memo<ChartSectionItemProps>(
 interface HomeHeaderProps {
   onOpenSettings?: () => void;
   onOpenYSearch?: () => void;
-  fallbackSongs?: Song[];
 }
 
 const HomeHeader = React.memo<HomeHeaderProps>(
-  ({ onOpenSettings, onOpenYSearch, fallbackSongs }) => {
+  ({ onOpenSettings, onOpenYSearch }) => {
     return (
       <View>
         <GreetingHeader onPressSettings={onOpenSettings} onPressYSearch={onOpenYSearch} />
-        <SpotlightHeroCard songs={fallbackSongs} />
       </View>
     );
   }
@@ -314,28 +311,14 @@ export const MobileHomeScreen: React.FC<MobileHomeScreenProps> = React.memo(({ o
 
   const keyExtractor = useCallback((item: ChartSectionConfig) => item.id, []);
 
-  const fallbackSongs = useMemo(() => {
-    return (
-      sectionSongs['hindi_lossless'] ||
-      sectionSongs['punjabi_lossless'] ||
-      sectionSongs['english_lossless'] ||
-      undefined
-    );
-  }, [
-    sectionSongs['hindi_lossless']?.length,
-    sectionSongs['punjabi_lossless']?.length,
-    sectionSongs['english_lossless']?.length,
-  ]);
-
   const listHeader = useMemo(
     () => (
       <HomeHeader
         onOpenSettings={onOpenSettings}
         onOpenYSearch={onOpenYSearch}
-        fallbackSongs={fallbackSongs}
       />
     ),
-    [onOpenSettings, onOpenYSearch, fallbackSongs]
+    [onOpenSettings, onOpenYSearch]
   );
 
   return (

@@ -165,7 +165,9 @@ export async function fetchRealYouTubeChart(
     });
 
     if (!res.ok) {
-      console.warn(`[YouTubeCharts] API error HTTP ${res.status}: ${res.statusText}`);
+      if (res.status !== 403) {
+        console.warn(`[YouTubeCharts] API error HTTP ${res.status}: ${res.statusText}`);
+      }
       return cached ? cached.songs.slice(0, limit) : [];
     }
 
@@ -240,47 +242,90 @@ export async function fetchRealYouTubeChart(
   }
 }
 
-// Precise Regional YouTube Queries for Languages without a standalone YouTube Charts LOP code
+// Precise Regional & Mainstream YouTube Queries for Charts & Feeds
 const REGIONAL_YOUTUBE_CHART_QUERIES: Record<string, string[]> = {
+  hindi: [
+    'Hindi top trending songs 2026 official music video',
+    'Hindi new hit songs Bollywood',
+    'Top Hindi songs this week',
+  ],
+  punjabi: [
+    'Punjabi top trending songs 2026 official video',
+    'Punjabi new hit songs latest',
+    'Top Punjabi songs this week',
+  ],
+  english: [
+    'Billboard top songs 2026 official music video',
+    'Top international hit songs 2026',
+    'Global top hits English songs',
+  ],
+  international: [
+    'Billboard top songs 2026 official music video',
+    'Top international hit songs 2026',
+  ],
+  telugu: [
+    'Telugu top trending songs 2026 official video',
+    'Telugu new hit songs latest Tollywood',
+  ],
+  tamil: [
+    'Tamil top trending songs 2026 official video',
+    'Tamil new hit songs latest Kollywood',
+  ],
+  haryanvi: [
+    'Haryanvi new hit song 2026 official video',
+    'Haryanvi top trending songs latest',
+  ],
+  weekly_top: [
+    'India top music songs 2026 official video',
+    'Top trending songs India this week',
+  ],
+  daily_top: [
+    'Daily top music videos India 2026',
+    'Trending music video India today',
+  ],
+  trending: [
+    'Top trending music songs 2026',
+    'Viral hit songs 2026 official video',
+  ],
   sambalpuri: [
-    'Sambalpuri new hit song 2024 official video',
+    'Sambalpuri new hit song 2026 official video',
     'Sambalpuri superhit song Mantu Chhuria Asima Panda',
     'Sambalpuri dj song hit Umakant Barik',
   ],
   odia: [
-    'Odia new hit song 2024 official video',
+    'Odia new hit song 2026 official video',
     'Odia romantic hit songs Humane Sagar Kuldeep',
     'Odia movie hit songs Asima Panda',
   ],
   bhojpuri: [
-    'Bhojpuri new hit song 2024 official video Khesari Lal',
+    'Bhojpuri new hit song 2026 official video Khesari Lal',
     'Bhojpuri superhit gana Pawan Singh Shilpi Raj',
     'Bhojpuri top trending video songs',
   ],
   rajasthani: [
-    'Rajasthani new dj song 2024 official video',
+    'Rajasthani new dj song 2026 official video',
     'Rajasthani superhit songs Mame Khan',
     'Rajasthani marwadi folk hit songs',
   ],
   bengali: [
-    'Bengali new hit song 2024 official video',
+    'Bengali new hit song 2026 official video',
     'Bengali top romantic songs Arijit Singh Shreya Ghoshal',
     'Bengali movie superhits',
   ],
   marathi: [
-    'Marathi new hit song 2024 official video Ajay Atul',
+    'Marathi new hit song 2026 official video Ajay Atul',
     'Marathi top superhit songs Adarsh Shinde',
   ],
   gujarati: [
-    'Gujarati new hit song 2024 official video Kinjal Dave',
+    'Gujarati new hit song 2026 official video Kinjal Dave',
     'Gujarati garba and hits Geeta Rabari Sachin Jigar',
   ],
   kannada: [
-    'Kannada new hit songs 2024 official video Sanjith Hegde',
+    'Kannada new hit songs 2026 official video Sanjith Hegde',
     'Kannada chartbusters Vijay Prakash',
   ],
   malayalam: [
-    'Malayalam new hit songs 2024 official video Sushin Shyam',
+    'Malayalam new hit songs 2026 official video Sushin Shyam',
     'Malayalam melody superhits Hesham Abdul Wahab',
   ],
   urdu: [
@@ -534,16 +579,7 @@ export async function searchYouTubeMusic(query: string, limit: number = 20): Pro
 export async function getTrendingYouTubeMusic(language: string = 'hindi', limit: number = 50): Promise<ExploreSong[]> {
   const langKey = language.toLowerCase().trim();
 
-  // 1. If an official YouTube Chart exists for this key/language, query InnerTube directly
-  const official = OFFICIAL_YOUTUBE_CHARTS[langKey];
-  if (official) {
-    const realTracks = await fetchRealYouTubeChart(official, limit, official.album);
-    if (realTracks.length > 0) {
-      return realTracks;
-    }
-  }
-
-  // 2. Query language-specific regional queries to get genuine songs for Sambalpuri, Odia, Marathi, etc.
+  // Query high-precision regional & mainstream trending queries directly via verified InnerTube search
   const songs: ExploreSong[] = [];
   const seenIds = new Set<string>();
 
@@ -552,7 +588,7 @@ export async function getTrendingYouTubeMusic(language: string = 'hindi', limit:
     `${language} top trending songs ${currentYear} official video`,
     `${language} hit songs`,
   ];
-  const queries = rawQueries.map((q) => q.replace(/2024/g, String(currentYear)));
+  const queries = rawQueries.map((q) => q.replace(/2024|2026/g, String(currentYear)));
 
   for (const q of queries) {
     if (songs.length >= limit) break;
