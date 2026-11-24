@@ -141,6 +141,14 @@ export const ChartDetailModal: React.FC<ChartDetailModalProps> = ({
           style={styles.artGradient}
           pointerEvents="none"
         />
+        {/* Liquid Glass Specular Rim Highlight */}
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.45)', 'rgba(255, 255, 255, 0.08)', 'transparent']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.specularRim}
+          pointerEvents="none"
+        />
         <View
           style={[
             styles.floatingBadge,
@@ -384,6 +392,13 @@ const styles = StyleSheet.create({
   coverArt: {
     width: '100%',
     height: '100%',
+  },
+  specularRim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1.5,
   },
   artGradient: {
     position: 'absolute',
