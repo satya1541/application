@@ -34,6 +34,7 @@ import { Song } from '@/types/music';
 interface ChartDetailModalProps {
   visible: boolean;
   metadata: ChartEditorialMetadata | null;
+  initialCover?: string;
   onClose: () => void;
 }
 
@@ -42,6 +43,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export const ChartDetailModal: React.FC<ChartDetailModalProps> = ({
   visible,
   metadata,
+  initialCover,
   onClose,
 }) => {
   const { isTablet, contentMaxWidth } = useResponsive();
@@ -121,7 +123,7 @@ export const ChartDetailModal: React.FC<ChartDetailModalProps> = ({
   if (!metadata) return null;
 
   const coverUrl =
-    chartData?.tracks?.[0]?.cover || metadata.coverImage;
+    chartData?.tracks?.[0]?.cover || initialCover || metadata.coverImage;
 
   const headerComponent = (
     <View style={styles.headerContainer}>

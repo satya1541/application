@@ -47,7 +47,16 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('All');
   const [selectedChartMeta, setSelectedChartMeta] = useState<ChartEditorialMetadata | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [selectedInitialCover, setSelectedInitialCover] = useState<string | undefined>(undefined);
   const [playingChartId, setPlayingChartId] = useState<string | null>(null);
+
+  const summaryMap = useMemo(() => {
+    const map: Record<string, ChartSummary> = {};
+    for (const s of summaries) {
+      map[s.id] = s;
+    }
+    return map;
+  }, [summaries]);
 
   const loadSummaries = useCallback(async (force: boolean = false) => {
     if (!force) setIsLoading(true);
@@ -72,10 +81,14 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
   }, [loadSummaries]);
 
   // Open modal for selected chart
-  const handleOpenChart = useCallback((meta: ChartEditorialMetadata) => {
-    setSelectedChartMeta(meta);
-    setModalVisible(true);
-  }, []);
+  const handleOpenChart = useCallback(
+    (meta: ChartEditorialMetadata, cover?: string) => {
+      setSelectedChartMeta(meta);
+      setSelectedInitialCover(cover || summaryMap[meta.id]?.topTrack?.cover || meta.coverImage);
+      setModalVisible(true);
+    },
+    [summaryMap]
+  );
 
   // Direct 1-tap play button on a magazine card
   const handleDirectPlay = useCallback(
@@ -218,62 +231,74 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
           {activeFilter === 'All' ? (
             <>
               {/* --- HERO MAGAZINE SPOTLIGHT --- */}
-              <TouchableOpacity
-                style={styles.heroMagazineCard}
-                activeOpacity={0.88}
-                onPress={() => handleOpenChart(spotlightItem)}
-              >
-                <ExpoImage
-                  source={{ uri: spotlightItem.coverImage }}
-                  style={StyleSheet.absoluteFill}
-                  contentFit="cover"
-                  transition={200}
-                  cachePolicy="memory-disk"
-                />
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.7)', 'rgba(7, 10, 16, 0.95)']}
-                  style={StyleSheet.absoluteFill}
-                />
+              {(() => {
+                const heroCover = summaryMap[spotlightItem.id]?.topTrack?.cover || spotlightItem.coverImage;
+                const heroTopTrack = summaryMap[spotlightItem.id]?.topTrack;
+                return (
+                  <TouchableOpacity
+                    style={styles.heroMagazineCard}
+                    activeOpacity={0.88}
+                    onPress={() => handleOpenChart(spotlightItem, heroCover)}
+                  >
+                    <ExpoImage
+                      source={{ uri: heroCover }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      transition={200}
+                      cachePolicy="memory-disk"
+                    />
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.7)', 'rgba(7, 10, 16, 0.95)']}
+                      style={StyleSheet.absoluteFill}
+                    />
 
-                {/* Hero Card Badges */}
-                <View style={styles.heroTopBadges}>
-                  <View style={[styles.heroPlatformTag, { backgroundColor: spotlightItem.accentColor }]}>
-                    <Text style={styles.heroPlatformTagText}>{spotlightItem.platformLabel}</Text>
-                  </View>
-                  <View style={styles.heroHotTag}>
-                    <Ionicons name="flame" size={12} color="#F59E0B" style={{ marginRight: 4 }} />
-                    <Text style={styles.heroHotTagText}>#1 IN INDIA</Text>
-                  </View>
-                </View>
+                    {/* Hero Card Badges */}
+                    <View style={styles.heroTopBadges}>
+                      <View style={[styles.heroPlatformTag, { backgroundColor: spotlightItem.accentColor }]}>
+                        <Text style={styles.heroPlatformTagText}>{spotlightItem.platformLabel}</Text>
+                      </View>
+                      <View style={styles.heroHotTag}>
+                        <Ionicons name="flame" size={12} color="#F59E0B" style={{ marginRight: 4 }} />
+                        <Text style={styles.heroHotTagText}>
+                          {heroTopTrack ? `#1: ${heroTopTrack.title}` : '#1 IN INDIA'}
+                        </Text>
+                      </View>
+                    </View>
 
-                {/* Hero Bottom Meta */}
-                <View style={styles.heroBottomContent}>
-                  <Text style={styles.heroSubtitle}>{spotlightItem.subtitle.toUpperCase()}</Text>
-                  <Text style={styles.heroTitle}>{spotlightItem.title}</Text>
-                  <Text style={styles.heroDesc} numberOfLines={2}>
-                    {spotlightItem.description}
-                  </Text>
+                    {/* Hero Bottom Meta */}
+                    <View style={styles.heroBottomContent}>
+                      <Text style={styles.heroSubtitle}>{spotlightItem.subtitle.toUpperCase()}</Text>
+                      <Text style={styles.heroTitle}>{spotlightItem.title}</Text>
+                      <Text style={styles.heroDesc} numberOfLines={2}>
+                        {heroTopTrack
+                          ? `Currently trending #1: "${heroTopTrack.title}" by ${heroTopTrack.artist}`
+                          : spotlightItem.description}
+                      </Text>
 
-                  <View style={styles.heroActionRow}>
-                    <TouchableOpacity
-                      style={[styles.heroPlayBtn, { backgroundColor: accent.hex }]}
-                      activeOpacity={0.85}
-                      onPress={(e) => handleDirectPlay(spotlightItem, e)}
-                    >
-                      {playingChartId === spotlightItem.id ? (
-                        <ActivityIndicator size="small" color="#000000" />
-                      ) : (
-                        <>
-                          <Ionicons name="play" size={16} color="#000000" style={{ marginRight: 6 }} />
-                          <Text style={styles.heroPlayBtnText}>PLAY CHART</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
+                      <View style={styles.heroActionRow}>
+                        <TouchableOpacity
+                          style={[styles.heroPlayBtn, { backgroundColor: accent.hex }]}
+                          activeOpacity={0.85}
+                          onPress={(e) => handleDirectPlay(spotlightItem, e)}
+                        >
+                          {playingChartId === spotlightItem.id ? (
+                            <ActivityIndicator size="small" color="#000000" />
+                          ) : (
+                            <>
+                              <Ionicons name="play" size={16} color="#000000" style={{ marginRight: 6 }} />
+                              <Text style={styles.heroPlayBtnText}>PLAY CHART</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
 
-                    <Text style={styles.heroTrackCount}>100 Tracks • Updated Daily</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
+                        <Text style={styles.heroTrackCount}>
+                          {summaryMap[spotlightItem.id]?.totalTracks || 100} Tracks • Updated Daily
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })()}
 
               {/* --- SECTION 1: 🌆 CITY SOUNDS (MUMBAI, DELHI, BENGALURU, DUBAI) --- */}
               <View style={styles.sectionHeaderRow}>
@@ -288,49 +313,52 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.horizontalCardScroll}
               >
-                {cityItems.map((city) => (
-                  <TouchableOpacity
-                    key={city.id}
-                    style={styles.cityCard}
-                    activeOpacity={0.85}
-                    onPress={() => handleOpenChart(city)}
-                  >
-                    <ExpoImage
-                      source={{ uri: city.coverImage }}
-                      style={StyleSheet.absoluteFill}
-                      contentFit="cover"
-                      transition={150}
-                      cachePolicy="memory-disk"
-                    />
-                    <LinearGradient
-                      colors={['transparent', 'rgba(0,0,0,0.65)', 'rgba(0,0,0,0.92)']}
-                      style={StyleSheet.absoluteFill}
-                    />
+                {cityItems.map((city) => {
+                  const cityCover = summaryMap[city.id]?.topTrack?.cover || city.coverImage;
+                  return (
+                    <TouchableOpacity
+                      key={city.id}
+                      style={styles.cityCard}
+                      activeOpacity={0.85}
+                      onPress={() => handleOpenChart(city, cityCover)}
+                    >
+                      <ExpoImage
+                        source={{ uri: cityCover }}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                        transition={150}
+                        cachePolicy="memory-disk"
+                      />
+                      <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.65)', 'rgba(0,0,0,0.92)']}
+                        style={StyleSheet.absoluteFill}
+                      />
 
-                    <View style={styles.cityCardTopBadge}>
-                      <Ionicons name="location-sharp" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
-                      <Text style={styles.cityCardTopBadgeText}>{city.city}</Text>
-                    </View>
+                      <View style={styles.cityCardTopBadge}>
+                        <Ionicons name="location-sharp" size={11} color="#FFFFFF" style={{ marginRight: 3 }} />
+                        <Text style={styles.cityCardTopBadgeText}>{city.city}</Text>
+                      </View>
 
-                    <View style={styles.cityCardBottom}>
-                      <Text style={styles.cityCardTitle}>{city.title}</Text>
-                      <Text style={styles.cityCardDesc} numberOfLines={1}>
-                        {city.subtitle}
-                      </Text>
-                      <TouchableOpacity
-                        style={styles.circlePlayBtn}
-                        activeOpacity={0.8}
-                        onPress={(e) => handleDirectPlay(city, e)}
-                      >
-                        {playingChartId === city.id ? (
-                          <ActivityIndicator size="small" color="#FFFFFF" />
-                        ) : (
-                          <Ionicons name="play" size={15} color="#FFFFFF" style={{ marginLeft: 2 }} />
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+                      <View style={styles.cityCardBottom}>
+                        <Text style={styles.cityCardTitle}>{city.title}</Text>
+                        <Text style={styles.cityCardDesc} numberOfLines={1}>
+                          {city.subtitle}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.circlePlayBtn}
+                          activeOpacity={0.8}
+                          onPress={(e) => handleDirectPlay(city, e)}
+                        >
+                          {playingChartId === city.id ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Ionicons name="play" size={15} color="#FFFFFF" style={{ marginLeft: 2 }} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
 
               {/* --- SECTION 2: 🇮🇳 NATIONAL STREAMING CHAMPIONS --- */}
@@ -342,53 +370,58 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
               </View>
 
               <View style={styles.editorialGrid}>
-                {nationalItems.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.editorialCard}
-                    activeOpacity={0.85}
-                    onPress={() => handleOpenChart(item)}
-                  >
-                    <ExpoImage
-                      source={{ uri: item.coverImage }}
-                      style={StyleSheet.absoluteFill}
-                      contentFit="cover"
-                      transition={150}
-                      cachePolicy="memory-disk"
-                    />
-                    <LinearGradient
-                      colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-                      style={StyleSheet.absoluteFill}
-                    />
+                {nationalItems.map((item) => {
+                  const itemCover = summaryMap[item.id]?.topTrack?.cover || item.coverImage;
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={styles.editorialCard}
+                      activeOpacity={0.85}
+                      onPress={() => handleOpenChart(item, itemCover)}
+                    >
+                      <ExpoImage
+                        source={{ uri: itemCover }}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                        transition={150}
+                        cachePolicy="memory-disk"
+                      />
+                      <LinearGradient
+                        colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+                        style={StyleSheet.absoluteFill}
+                      />
 
-                    <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
-                      <Text style={styles.platformBadgeSmallText}>{item.platformLabel}</Text>
-                    </View>
-
-                    <View style={styles.editorialCardBottom}>
-                      <Text style={styles.editorialCardTitle} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.editorialCardDesc} numberOfLines={1}>
-                        {item.subtitle}
-                      </Text>
-                      <View style={styles.editorialCardFooter}>
-                        <Text style={styles.editorialCardTracks}>Top 100 Tracks</Text>
-                        <TouchableOpacity
-                          style={styles.editorialMiniPlayBtn}
-                          activeOpacity={0.8}
-                          onPress={(e) => handleDirectPlay(item, e)}
-                        >
-                          {playingChartId === item.id ? (
-                            <ActivityIndicator size="small" color="#000000" />
-                          ) : (
-                            <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
-                          )}
-                        </TouchableOpacity>
+                      <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
+                        <Text style={styles.platformBadgeSmallText}>{item.platformLabel}</Text>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                ))}
+
+                      <View style={styles.editorialCardBottom}>
+                        <Text style={styles.editorialCardTitle} numberOfLines={1}>
+                          {item.title}
+                        </Text>
+                        <Text style={styles.editorialCardDesc} numberOfLines={1}>
+                          {item.subtitle}
+                        </Text>
+                        <View style={styles.editorialCardFooter}>
+                          <Text style={styles.editorialCardTracks}>
+                            {summaryMap[item.id]?.totalTracks ? `${summaryMap[item.id].totalTracks} Tracks` : 'Top 100 Tracks'}
+                          </Text>
+                          <TouchableOpacity
+                            style={styles.editorialMiniPlayBtn}
+                            activeOpacity={0.8}
+                            onPress={(e) => handleDirectPlay(item, e)}
+                          >
+                            {playingChartId === item.id ? (
+                              <ActivityIndicator size="small" color="#000000" />
+                            ) : (
+                              <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
 
               {/* --- SECTION 3: 🎵 CURATED & SPECIALIZED --- */}
@@ -407,109 +440,117 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
                   EDITORIAL_CHARTS_CONFIG['apple-music-top-charts-music-videos'],
                 ]
                   .filter(Boolean)
-                  .map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.editorialCard}
-                      activeOpacity={0.85}
-                      onPress={() => handleOpenChart(item)}
-                    >
-                      <ExpoImage
-                        source={{ uri: item.coverImage }}
-                        style={StyleSheet.absoluteFill}
-                        contentFit="cover"
-                        transition={150}
-                        cachePolicy="memory-disk"
-                      />
-                      <LinearGradient
-                        colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-                        style={StyleSheet.absoluteFill}
-                      />
+                  .map((item) => {
+                    const itemCover = summaryMap[item.id]?.topTrack?.cover || item.coverImage;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={styles.editorialCard}
+                        activeOpacity={0.85}
+                        onPress={() => handleOpenChart(item, itemCover)}
+                      >
+                        <ExpoImage
+                          source={{ uri: itemCover }}
+                          style={StyleSheet.absoluteFill}
+                          contentFit="cover"
+                          transition={150}
+                          cachePolicy="memory-disk"
+                        />
+                        <LinearGradient
+                          colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+                          style={StyleSheet.absoluteFill}
+                        />
 
-                      <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
-                        <Text style={styles.platformBadgeSmallText}>{item.badge}</Text>
-                      </View>
-
-                      <View style={styles.editorialCardBottom}>
-                        <Text style={styles.editorialCardTitle} numberOfLines={1}>
-                          {item.title}
-                        </Text>
-                        <Text style={styles.editorialCardDesc} numberOfLines={1}>
-                          {item.subtitle}
-                        </Text>
-                        <View style={styles.editorialCardFooter}>
-                          <Text style={styles.editorialCardTracks}>50 Tracks</Text>
-                          <TouchableOpacity
-                            style={styles.editorialMiniPlayBtn}
-                            activeOpacity={0.8}
-                            onPress={(e) => handleDirectPlay(item, e)}
-                          >
-                            {playingChartId === item.id ? (
-                              <ActivityIndicator size="small" color="#000000" />
-                            ) : (
-                              <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
-                            )}
-                          </TouchableOpacity>
+                        <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
+                          <Text style={styles.platformBadgeSmallText}>{item.badge}</Text>
                         </View>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+
+                        <View style={styles.editorialCardBottom}>
+                          <Text style={styles.editorialCardTitle} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={styles.editorialCardDesc} numberOfLines={1}>
+                            {item.subtitle}
+                          </Text>
+                          <View style={styles.editorialCardFooter}>
+                            <Text style={styles.editorialCardTracks}>
+                              {summaryMap[item.id]?.totalTracks ? `${summaryMap[item.id].totalTracks} Tracks` : '50 Tracks'}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.editorialMiniPlayBtn}
+                              activeOpacity={0.8}
+                              onPress={(e) => handleDirectPlay(item, e)}
+                            >
+                              {playingChartId === item.id ? (
+                                <ActivityIndicator size="small" color="#000000" />
+                              ) : (
+                                <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
               </View>
             </>
           ) : (
             /* --- FILTERED LIST VIEW --- */
             <View style={styles.editorialGrid}>
-              {filteredItems.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.editorialCard}
-                  activeOpacity={0.85}
-                  onPress={() => handleOpenChart(item)}
-                >
-                  <ExpoImage
-                    source={{ uri: item.coverImage }}
-                    style={StyleSheet.absoluteFill}
-                    contentFit="cover"
-                    transition={150}
-                    cachePolicy="memory-disk"
-                  />
-                  <LinearGradient
-                    colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-                    style={StyleSheet.absoluteFill}
-                  />
+              {filteredItems.map((item) => {
+                const itemCover = summaryMap[item.id]?.topTrack?.cover || item.coverImage;
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.editorialCard}
+                    activeOpacity={0.85}
+                    onPress={() => handleOpenChart(item, itemCover)}
+                  >
+                    <ExpoImage
+                      source={{ uri: itemCover }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                      transition={150}
+                      cachePolicy="memory-disk"
+                    />
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+                      style={StyleSheet.absoluteFill}
+                    />
 
-                  <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
-                    <Text style={styles.platformBadgeSmallText}>
-                      {item.city ? `📍 ${item.city}` : item.platformLabel}
-                    </Text>
-                  </View>
-
-                  <View style={styles.editorialCardBottom}>
-                    <Text style={styles.editorialCardTitle} numberOfLines={1}>
-                      {item.title}
-                    </Text>
-                    <Text style={styles.editorialCardDesc} numberOfLines={1}>
-                      {item.subtitle}
-                    </Text>
-                    <View style={styles.editorialCardFooter}>
-                      <Text style={styles.editorialCardTracks}>
-                        {item.city ? '25 Tracks' : 'Top 100'}
+                    <View style={[styles.platformBadgeSmall, { backgroundColor: item.accentColor }]}>
+                      <Text style={styles.platformBadgeSmallText}>
+                        {item.city ? `📍 ${item.city}` : item.platformLabel}
                       </Text>
-                      <TouchableOpacity
-                        style={styles.editorialMiniPlayBtn}
-                        activeOpacity={0.8}
-                        onPress={(e) => handleDirectPlay(item, e)}
-                      >
-                        {playingChartId === item.id ? (
-                          <ActivityIndicator size="small" color="#000000" />
-                        ) : (
-                          <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
-                        )}
-                      </TouchableOpacity>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+
+                    <View style={styles.editorialCardBottom}>
+                      <Text style={styles.editorialCardTitle} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      <Text style={styles.editorialCardDesc} numberOfLines={1}>
+                        {item.subtitle}
+                      </Text>
+                      <View style={styles.editorialCardFooter}>
+                        <Text style={styles.editorialCardTracks}>
+                          {summaryMap[item.id]?.totalTracks ? `${summaryMap[item.id].totalTracks} Tracks` : (item.city ? '25 Tracks' : 'Top 100')}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.editorialMiniPlayBtn}
+                          activeOpacity={0.8}
+                          onPress={(e) => handleDirectPlay(item, e)}
+                        >
+                          {playingChartId === item.id ? (
+                            <ActivityIndicator size="small" color="#000000" />
+                          ) : (
+                            <Ionicons name="play" size={13} color="#000000" style={{ marginLeft: 1 }} />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           )}
         </ScrollView>
@@ -518,6 +559,7 @@ export const MobileChartsScreen: React.FC<MobileChartsScreenProps> = () => {
         <ChartDetailModal
           visible={modalVisible}
           metadata={selectedChartMeta}
+          initialCover={selectedInitialCover}
           onClose={() => setModalVisible(false)}
         />
       </View>

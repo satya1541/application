@@ -326,14 +326,15 @@ export async function fetchChartSummaries(forceRefresh: boolean = false): Promis
 }
 
 /**
- * Fetch complete chart tracks
+ * Fetch complete chart tracks with automatic on-demand resolution
  */
 export async function fetchChartDetail(
   chartId: string,
   forceRefresh: boolean = false
 ): Promise<ChartPayload | null> {
-  if (!forceRefresh && memoryDetailCache.has(chartId)) {
-    return memoryDetailCache.get(chartId)!;
+  const cached = memoryDetailCache.get(chartId);
+  if (!forceRefresh && cached && cached.tracks && cached.tracks.length > 0) {
+    return cached;
   }
 
   const cacheKey = CACHE_CHART_PREFIX + chartId;
@@ -355,12 +356,30 @@ export async function fetchChartDetail(
     const res = await fetch(`${CHARTS_BASE_URL}/${chartId}`, {
       headers: { Accept: 'application/json' },
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.success && data.chart) {
+    
+    const data = await res.json().catch(() => null);
+
+    if (data && data.success && data.chart && Array.isArray(data.chart.tracks) && data.chart.tracks.length > 0) {
       memoryDetailCache.set(chartId, data.chart);
       AsyncStorage.setItem(cacheKey, JSON.stringify(data.chart)).catch(() => {});
       return data.chart;
+    }
+
+    // If chart exists on server but was pending resolution, trigger immediate refresh and wait
+    if (res.status === 202 || (data && data.message && data.message.includes('not been resolved'))) {
+      console.log(`[ChartsApi] Chart ${chartId} pending resolution. Triggering immediate refresh...`);
+      const refreshRes = await fetch(`${CHARTS_BASE_URL}/${chartId}/refresh`, {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+      });
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json().catch(() => null);
+        if (refreshData && refreshData.chart && Array.isArray(refreshData.chart.tracks) && refreshData.chart.tracks.length > 0) {
+          memoryDetailCache.set(chartId, refreshData.chart);
+          AsyncStorage.setItem(cacheKey, JSON.stringify(refreshData.chart)).catch(() => {});
+          return refreshData.chart;
+        }
+      }
     }
   } catch (err) {
     console.warn(`[ChartsApi] Failed to fetch chart ${chartId}:`, err);
